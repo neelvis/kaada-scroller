@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071A24">
+  <meta name="description" content="Автономный показ текстов песен по таймлайну">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <style>[hidden]{display:none!important}.song-item{padding:0;gap:2px}.song-select{min-width:0;flex:1;display:flex;text-align:left;align-items:center;border:0;background:transparent;color:inherit;padding:11px 6px 11px 9px;gap:9px}.song-item-title,.song-item-status{display:block}.song-reorder-wrap{display:flex;padding-right:4px}.song-reorder{border:0;background:transparent;color:var(--muted);padding:4px 3px;font-size:14px}.song-reorder:disabled{opacity:.25;cursor:not-allowed}.cue-row{grid-template-columns:105px minmax(0,1fr) 118px 35px 35px}@media(max-width:780px){.cue-row{grid-template-columns:82px minmax(0,1fr) 88px 30px 30px}}@media(max-width:500px){.cue-row{grid-template-columns:70px minmax(0,1fr) 30px 30px}}</style>
+  <title>Тексты песен</title>
+</head>
+<body>
+  <main class="app-shell" id="app">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Тексты песен — к списку песен"><span class="brand-mark" aria-hidden="true">♪</span><span>Тексты песен</span></a>
+      <div class="topbar-actions">
+        <span class="offline-state" id="offline-state" aria-live="polite">Проверка автономной работы…</span>
+        <span class="remote-state" id="remote-state" aria-live="polite">Локальный набор</span>
+        <button class="button quiet" id="projects" type="button">Проекты</button>
+        <button class="button quiet" id="save-project" type="button" hidden>Сохранить</button>
+        <button class="button quiet" id="login" type="button">Войти</button>
+        <button class="button quiet" id="logout" type="button" hidden>Выйти</button>
+        <button class="button quiet" id="clear-downloaded" type="button" hidden>Очистить загруженный проект</button>
+        <button class="button quiet" id="import-set" type="button">Импорт</button>
+        <button class="button quiet" id="export-set" type="button">Экспорт</button>
+        <input id="set-file" type="file" accept="application/json,.json" hidden>
+      </div>
+    </header>
+
+    <section class="workspace" id="preparation-view">
+      <aside class="song-list-panel" aria-label="Список песен">
+        <div class="panel-heading"><div><p class="eyebrow">Набор</p><input id="set-name" class="set-name" aria-label="Название набора" value="Мой набор"></div><span class="song-count" id="song-count">0 песен</span></div>
+        <div class="song-list" id="song-list"></div>
+        <button class="button add-song" id="add-song" type="button">+ Добавить песню</button>
+      </aside>
+
+      <section class="editor" id="editor" aria-live="polite"></section>
+    </section>
+
+    <section class="event-view" id="event-view" hidden>
+      <div class="event-bar"><button class="button quiet" id="exit-event" type="button">← К подготовке</button><span id="event-song-name"></span><div><button class="button quiet" id="font-down" type="button" aria-label="Уменьшить текст">A−</button><button class="button quiet" id="font-up" type="button" aria-label="Увеличить текст">A+</button></div></div>
+      <div class="audience" id="audience" style="--audience-size: 54px">
+        <div class="audience-lines" id="audience-lines"></div>
+      </div>
+      <div class="event-controls"><button class="button primary" id="event-start" type="button">Старт</button><button class="button danger" id="event-reset" type="button">Стоп и сброс</button><button class="button quiet" id="fullscreen" type="button">На весь экран</button></div>
+    </section>
+  </main>
+  <dialog id="confirm-dialog"><form method="dialog"><h2 id="confirm-title">Заменить текст?</h2><p id="confirm-text"></p><div class="dialog-actions"><button class="button quiet" value="cancel">Отмена</button><button class="button primary" id="confirm-ok" value="confirm">Заменить</button></div></form></dialog>
+  <dialog id="login-dialog"><form id="login-form"><h2>Вход организатора</h2><p>Введите общий пароль школы. Он не сохраняется в браузере.</p><label class="field">Пароль<input id="login-password" type="password" autocomplete="current-password" required></label><p class="dialog-error" id="login-error" hidden></p><div class="dialog-actions"><button class="button quiet" value="cancel" formmethod="dialog">Отмена</button><button class="button primary" type="submit">Войти</button></div></form></dialog>
+  <dialog id="projects-dialog"><form method="dialog"><h2>Проекты</h2><p>Проекты сохраняются на сервере. Подготовленные снимки доступны для показа без сети.</p><div id="project-list" class="project-list"></div><label class="field">Новый проект<input id="new-project-name" maxlength="120" placeholder="Например, Осенний концерт"></label><label class="migration-choice"><input id="migration-audio" type="checkbox"> При переносе старого набора загрузить оригинальные записи</label><div class="dialog-actions"><button class="button quiet" id="migrate-legacy" type="button">Перенести локальный набор</button><button class="button quiet" value="cancel">Закрыть</button><button class="button primary" id="create-project" type="button">Создать проект</button></div></form></dialog>
+  <dialog id="library-dialog"><form method="dialog"><h2>Общая библиотека</h2><p>Добавьте уже сохранённую песню в проект. У проекта останется выбранная версия таймлайна.</p><label class="field">Поиск<input id="library-search" placeholder="Название или исполнитель"></label><div id="library-list" class="project-list"></div><div class="dialog-actions"><button class="button quiet" value="cancel">Закрыть</button></div></form></dialog>
+  <template id="empty-state"><div class="empty-state"><span class="empty-note">♪</span><h1 data-empty-title></h1><p data-empty-copy></p><button class="button primary" type="button" data-add-song hidden>Добавить песню</button><button class="button primary" type="button" data-empty-login hidden>Войти организатору</button><button class="button quiet" type="button" data-empty-project hidden>Создать проект</button></div></template>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
