@@ -23,10 +23,10 @@ async function request(path, { method = 'GET', body, headers = {}, signal } = {}
   return data;
 }
 
-export async function session() { return request('/session'); }
+export async function session() { return request('/session', { signal: AbortSignal.timeout(5000) }); }
 export async function login(password) { return request('/login', { method: 'POST', body: JSON.stringify({ password }), headers: { 'Content-Type': 'application/json' } }); }
 export async function logout() { try { await request('/logout', { method: 'POST', signal: AbortSignal.timeout(10000) }); } finally { csrf = null; } }
-export async function listProjects() { return request('/projects'); }
+export async function listProjects() { return request('/projects', { signal: AbortSignal.timeout(5000) }); }
 export async function createProject(name) { return request('/projects', { method: 'POST', body: JSON.stringify({ name }), headers: { 'Content-Type': 'application/json' } }); }
 export async function getProject(id) { return request(`/projects/${encodeURIComponent(id)}`); }
 export async function saveProject(id, project) { return request(`/projects/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(project), headers: { 'Content-Type': 'application/json' } }); }

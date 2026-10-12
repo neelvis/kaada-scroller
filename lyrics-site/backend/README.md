@@ -43,3 +43,17 @@ Run the focused API checks from `lyrics-site` with:
 ```sh
 backend/.venv/bin/python -m unittest discover -s backend/tests -v
 ```
+
+## Backing tracks (revision 4)
+
+Project/song entries expose optional `backingAudioId` separately from the original
+`audioId`. Backing files use the existing authenticated upload, streaming and quota
+paths. A nullable SQLite migration adds the backing link to immutable song
+revisions. Old project records remain valid. An older client omitting the field
+preserves the backing from its selected revision; an explicit null unlinks it.
+The server supplies the backing filename from audio metadata. Deletion and orphan
+cleanup consider references in both roles, including older pinned revisions.
+
+Backup/restore includes and validates both audio roles. Revision-3 archives remain
+readable and receive the nullable migration when opened. Publish revision-4 viewer
+and API together; data remains outside release directories as before.

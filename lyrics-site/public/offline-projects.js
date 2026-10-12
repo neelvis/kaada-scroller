@@ -16,9 +16,18 @@ async function withDb(storeName, mode, operation) {
   try { return await new Promise((resolve, reject) => { const tx = db.transaction(storeName, mode); const request = operation(tx.objectStore(storeName)); let result; request.onsuccess = () => { result = request.result; }; request.onerror = () => reject(request.error || new Error('Не удалось сохранить автономные данные.')); tx.oncomplete = () => resolve(result); tx.onabort = () => reject(tx.error || new Error('Не удалось сохранить автономные данные.')); tx.onerror = () => reject(tx.error || new Error('Не удалось сохранить автономные данные.')); }); } finally { db.close(); }
 }
 export async function preparedProjects() { return (await withDb(PREPARED, 'readonly', store => store.getAll())) || []; }
-export async function cacheProject(project) {
+export async function cacheProject(project, backingAudio = []) {
   const snapshot = structuredClone(project);
-  return withDb(PREPARED, 'readwrite', store => store.put({ id: snapshot.id, name: snapshot.name, cachedAt: Date.now(), project: snapshot }));
+  const db = await open();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction([PREPARED, AUDIO], 'readwrite');
+      tx.oncomplete = resolve;
+      tx.onabort = tx.onerror = () => reject(tx.error || new Error('Не удалось сохранить минусовки для показа.'));
+      for (const { id, blob } of backingAudio) tx.objectStore(AUDIO).put({ id, blob });
+      tx.objectStore(PREPARED).put({ id: snapshot.id, name: snapshot.name, cachedAt: Date.now(), project: snapshot });
+    });
+  } finally { db.close(); }
 }
 export async function removePreparedProject(id) { return withDb(PREPARED, 'readwrite', store => store.delete(id)); }
 export async function openCachedProject(id) { return (await withDb(PREPARED, 'readonly', store => store.get(id)))?.project || null; }

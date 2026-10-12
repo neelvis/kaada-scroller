@@ -37,6 +37,11 @@ def valid_song(song: Any) -> bool:
     return isinstance(song, dict) and isinstance(song.get("title"), str) and isinstance(song.get("cues"), list) and isinstance(song.get("duration"), (int, float))
 
 
+def valid_entry(entry: Any) -> bool:
+    if not isinstance(entry, dict) or not valid_song(entry.get("song")): return False
+    return all(key not in entry or entry[key] is None or isinstance(entry[key], str) for key in ("audioId", "backingAudioId"))
+
+
 def verify_password(settings: Settings, password: str) -> bool:
     n, r, p, salt, expected = decode_scrypt(settings.password_scrypt)
     actual = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=n, r=r, p=p, dklen=len(expected))
@@ -133,7 +138,7 @@ async def project(request: Request) -> Response:
             store.delete_project(project_id,data["revision"]); return Response(status_code=204)
         name=data["name"].strip(); entries=data["songs"]
         if not isinstance(data["revision"],int) or not isinstance(entries,list) or len(entries)>250 or not name: raise ValueError()
-        if not all(isinstance(e,dict) and valid_song(e.get("song")) for e in entries): raise ValueError()
+        if not all(valid_entry(e) for e in entries): raise ValueError()
         return JSONResponse(store.save_project(project_id,data["revision"],name,entries))
     except Conflict: return error("Проект уже изменён другим организатором. Загрузите новую версию перед повторной попыткой.","conflict",409)
     except Missing: return error("Проект, песня, версия или запись не найдены.","not_found",404)
@@ -232,8 +237,8 @@ async def imports(request: Request) -> Response:
     store=request.app.state.store
     try:
         data=await body_json(request); key=data["migrationKey"]; name=data["name"].strip(); songs=data["songs"]
-        if not isinstance(key,str) or not key or not name or not isinstance(songs,list) or len(songs)>250 or not all(isinstance(item,dict) and valid_song(item.get("song")) for item in songs): raise ValueError()
-        entries=[{"song":item["song"],"audioId":item.get("audioId")} for item in songs]
+        if not isinstance(key,str) or not key or not name or not isinstance(songs,list) or len(songs)>250 or not all(valid_entry(item) for item in songs): raise ValueError()
+        entries=[{"song":item["song"],"audioId":item.get("audioId"),"backingAudioId":item.get("backingAudioId")} for item in songs]
         project, created=store.import_project(key,name,entries)
         return JSONResponse(project,status_code=201 if created else 200)
     except Conflict: return error("Импорт уже изменён.","conflict",409)

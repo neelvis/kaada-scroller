@@ -1,7 +1,7 @@
 # Timed lyrics revision 4: backing tracks and live display controls
 
 Feature ID: TL (extension)
-Status: Accepted — implementation in progress
+Status: Implemented and locally verified — not deployed
 Revision: 4, 2026-10-12
 Baseline: [revision 2](spec.md) and [revision 3](revision-3.md)
 
@@ -136,3 +136,9 @@ arrow step, checkbox default and switching semantics are explicit above for revi
 The user explicitly approved the reviewed draft with “Да” on 2026-10-12.
 Reviewed draft SHA-256: `8b8555fcab8d3b777ce8ab3786bad4bc7a0fc789864fef12373bca6613e0de45`. Preserve this approved scope during implementation. Implementation should cover audio persistence and lifecycle first, then
 display controls and preparation layout, with focused unit/API/browser checks.
+
+## Delivery evidence
+
+[Revision 4 verification](../../../docs/timed-lyrics-verification.md#revision-4-standalone-repository-validation)
+records automated, API, browser and independent-review coverage for TL-AC25–AC31.
+The approved scope is implemented. Deployment and event rehearsal remain separate.

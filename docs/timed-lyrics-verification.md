@@ -189,3 +189,44 @@ in independent local browsers and the isolated real-host API probe; an authentic
 production project was not created by tools. The organizer can now log in and create
 real projects. Legacy browser sets require explicit migration and remain intact.
 Representative sung recordings/projector rehearsal remain the earlier manual gaps.
+
+## Revision 4 standalone repository validation
+
+Date: 2026-10-12 (Europe/Moscow). Base: Initial commit `b59edd9` in
+`neelvis/kaada-scroller`; approved requirements commit `06aea88`.
+Scope: TL-R33–R40 / TL-AC25–AC31. Local verification; no production activation.
+
+- `pnpm install --frozen-lockfile --ignore-scripts` and `node tools/build.mjs`:
+  passed. The portable browser runtime needs no native dependency build scripts.
+- `node --test tests/*.test.mjs`: 32 passed. New coverage includes portable
+  backing labels/private-ID exclusion, declared end independent of lyric delay,
+  audio-driven clocks, mute/duplicate Start, armed/running seeking, short backing,
+  reset during loading, late play after switching and explicit lyrics-only recovery.
+- `backend/.venv/bin/python -m unittest discover -s backend/tests -v`: 12 passed
+  in an isolated test environment. Includes original/backing pins, replacement,
+  removal, conflicts/ID validation, cross-role cleanup/delete, old database
+  migration and revision-3/new backup restore, alongside existing API checks.
+- `node tests/browser.mjs`: legacy preparation/tapping/undo, source replacement,
+  cancellation, 25-song export/import, timing/geometry, root/subpath portability
+  and offline reopening passed. Model inference code is unchanged; this run did
+  not require external model downloads.
+- `node tests/server-browser.mjs`: cross-device audio persistence, backing pins,
+  failed offline download/retry, an indefinitely stalled session, offline backing,
+  display project switches, conflicts, logout/cache races and root mounting passed.
+- `node tests/live-display-browser.mjs`: synthetic WAV playback, progress/mute,
+  seeking/arrows/end/reset, no-highlight preference and equal computed styles,
+  menu/readiness/fullscreen/focus, tabs, missing backing recovery and desktop/mobile
+  list geometry passed in Chrome. Audio/progress agree within 250 ms in foreground.
+- JavaScript/Python syntax and scoped diff whitespace checks passed. Desktop and
+  narrow screenshots were visually inspected. Logs/screenshots remain under
+  ignored `lyrics-site/test-results/`.
+
+Independent read-only review found a startup issue: an unbounded session request
+could block cached projects. Session/project discovery now has a five-second
+deadline and cached fallback. The stalled-session check passed; focused rereview
+resolved the finding with no remaining material issue in the reviewed scope.
+
+Actual audio output, song arrangements and projector readability still require
+organizer rehearsal. Synthetic WAV checks do not measure singing recognition.
+A paired frontend/backend release is required to publish revision 4; historical
+NastyEdu activation evidence above describes the prior release.

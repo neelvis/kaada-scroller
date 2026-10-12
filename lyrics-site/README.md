@@ -1,12 +1,14 @@
 # Timed lyrics
 
 A portable browser application for preparing small music-school set lists and
-showing lyrics after a manual Start alongside separately played music. Initial
+showing lyrics after a manual Start, with optional synchronized backing audio. Initial
 mount: `https://nasty-edu.online/lyrics/`. The same public artifact also runs at a
 separate origin's root. Revision 3 is live as paired release `20261012_025323`, with a
 private server API and projects. Publication evidence is recorded in the
 [verification report](../docs/timed-lyrics-verification.md). Representative sung
 recordings and a projector rehearsal remain organizer checks.
+Revision 4 adds backing audio and live display controls in this repository; it
+has been verified locally and requires a paired frontend/backend release to publish.
 
 ## Prepare and save songs
 
@@ -25,6 +27,14 @@ recordings and a projector rehearsal remain organizer checks.
    acoustic word evidence; uncertain lines stay blank. Listen to the reference,
    correct starts or tap **Mark next** (Space outside an input). Use a rest cue for
    instrumental sections. LRC import and MP3-only draft recognition remain available.
+   **Text and timestamps** is the default preparation tab; **Original recording**
+   contains reference selection and recognition. Tab changes preserve entered
+   text and preview position. The original listening control stays available for
+   tapping from the text tab.
+   Optionally use the separate **Backing track** section to select/preview an
+   instrumental MP3/WAV. It uses the same limits and private library quota as the
+   original. Check its arrangement and start against the timeline; replacing or
+   removing it requires renewed readiness confirmation.
 5. Confirm the full duration and each line, choose **Confirm readiness**, then
    **Save**. A server save is explicit. Failed saves retain the local draft;
    conflicts preserve the other organizer's saved version. Reopen the project to
@@ -44,18 +54,36 @@ been measured. Manual review remains necessary.
 
 ## Show the lyrics
 
-Select a ready song, enter **Display mode**, then press **Start** at the same
-moment the separate original-timeline music starts. The current phrase remains
-centered while the lyrics move automatically. Use font controls and full screen
-for projection. **Stop and reset** returns to the armed beginning. Live pause,
-beat following and adjustments for improvised solos are outside this version.
+Select a ready song and enter **Display mode**. Press **Start** to launch its
+lyrics and selected backing track together. Without a backing track, start the
+external music at the same moment. The original vocal reference is never used as
+show audio. **Mute/unmute** changes sound without pausing or shifting the timeline.
+Audio errors offer retry or an explicit lyrics-only launch.
+
+The bottom progress bar shows position and duration. Click/drag it to seek both
+lyrics and backing audio; ArrowUp moves five seconds backward, ArrowDown five
+seconds forward, also when the bar has focus. Dialogs and editable fields keep
+ordinary keyboard behavior. Seeking preserves running/armed state; after the end,
+seek back and press Start. **Stop and reset** returns to zero. A shorter backing
+ends without truncating the lyric timeline; a longer backing stops at the declared
+song end. Lyric delay affects cue display, not audio position or duration.
+
+Clear **Highlight current line** for live performance: the text keeps advancing
+with equal emphasis across lyric lines. The setting survives song switches and
+browser reopening. Font controls and full screen remain available. The hamburger
+menu selects ready songs and online/prepared offline projects without leaving the
+display. Selection stops the old song and awaits a fresh Start. Live beat following
+and automatic tempo compensation remain outside this version.
 
 For a server project, save and confirm all songs, then choose **Prepare show**.
-This stores a selected immutable timeline snapshot plus viewer files. Reopen it
-through **Projects → Open offline** on the same laptop and verify Start without
-internet. Offline snapshots are read-only and require neither reference audio
-nor a model. Recognition downloads are outside this event guarantee. Keep the
-laptop awake and the audience tab in front. Reload returns to preparation.
+This stores an immutable timeline snapshot, every linked backing track and viewer
+files. A failed download cannot report successful preparation. Reopen through
+**Projects → Open offline** on the same laptop and verify Start without internet.
+Snapshots are read-only and require neither original references nor a model.
+Session/project discovery times out after five seconds on a stalled connection
+so prepared projects remain accessible. Recognition downloads are outside this
+event guarantee. Keep the laptop awake and the audience tab in front. Reload
+returns to preparation.
 
 **Log out** clears private v2 drafts, downloaded references and prepared projects
 on that browser. It preserves old local sets. An offline snapshot also offers
@@ -65,10 +93,12 @@ server copies and exported backups remain separate.
 ## Development and validation
 
 ```sh
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --ignore-scripts
 pnpm build
 pnpm test
 pnpm test:browser
+pnpm test:display
+pnpm test:server
 backend/.venv/bin/python -m unittest discover -s backend/tests -v
 node tests/server-browser.mjs
 node tests/recognition-profile-browser.mjs
@@ -87,6 +117,7 @@ Legacy IndexedDB is `kaada-lyrics-v1`; private drafts/snapshots are isolated in
 `kaada-lyrics-v2`. Use `LYRICS_API_PORT=8096 pnpm serve` to proxy a local API; imported HTML-like wording is rendered as text.
 
 Requirements: [TL baseline](../specs/features/timed-lyrics/spec.md) and
-[accepted revision 3](../specs/features/timed-lyrics/revision-3.md).
+[revision 3](../specs/features/timed-lyrics/revision-3.md), extended by
+[revision 4](../specs/features/timed-lyrics/revision-4.md).
 Research and evidence: [research](../docs/timed-lyrics-research.md).
 Release instructions: [deployment](deploy/README.md).

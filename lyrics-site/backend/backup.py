@@ -59,7 +59,13 @@ def restore(archive: Path, data_dir: Path) -> None:
         database=sqlite3.connect(root/"metadata.sqlite3")
         try:
             if database.execute("PRAGMA integrity_check").fetchone()[0] != "ok": raise ValueError("backup database integrity check failed")
+            columns={row[1] for row in database.execute("PRAGMA table_info(song_revisions)")}
+            if "audio_id" not in columns: raise ValueError("backup database is invalid")
             referenced=[row[0] for row in database.execute("SELECT DISTINCT audio_id FROM song_revisions WHERE audio_id IS NOT NULL")]
+            # Revision-3 archives legitimately lack this nullable column.  Newer
+            # archives must include both kinds of private audio if linked.
+            if "backing_audio_id" in columns:
+                referenced.extend(row[0] for row in database.execute("SELECT DISTINCT backing_audio_id FROM song_revisions WHERE backing_audio_id IS NOT NULL"))
         except sqlite3.DatabaseError as exc:
             raise ValueError("backup database is invalid") from exc
         finally:

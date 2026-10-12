@@ -62,6 +62,17 @@ test('cue lookup honors positive delay and declared end', () => {
   assert.deepEqual(cueAt(current, 1), { index: -1, effectiveTime: 0, ended: false });
   assert.deepEqual(cueAt(current, 2), { index: 0, effectiveTime: 1, ended: false });
   assert.deepEqual(cueAt(current, 11), { index: -1, effectiveTime: 10, ended: true });
+  assert.equal(cueAt(current, 10).ended, true, 'delay must not extend the declared audio duration');
+  assert.equal(cueAt({ ...current, delayMs: -1000 }, 9).ended, false, 'negative delay must not end the show early');
+});
+
+test('portable backing labels survive round trips while private audio identities are excluded', () => {
+  const original = { schemaVersion: 1, id: 'backing-set', name: 'Concert', songs: [song({ backing: { fileName: 'instrumental.wav', audioId: 'private' }, backingAudioId: 'private-entry' })] };
+  const restored = importSet(exportSet(original));
+  assert.deepEqual(restored.songs[0].backing, { fileName: 'instrumental.wav' });
+  assert.equal(restored.songs[0].backingAudioId, undefined);
+  const malformed = structuredClone(original); malformed.songs[0].backing = 'not-an-object';
+  assert.throws(() => importSet(JSON.stringify(malformed)), /минусовка/);
 });
 
 test('25-song export and import preserves order and manual fields', () => {

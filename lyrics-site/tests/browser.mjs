@@ -85,7 +85,7 @@ try {
   await page.getByRole('button', {name:'+ Добавить песню', exact:true}).click();
   await page.getByLabel('Название', {exact:true}).fill('Разметка вручную');
   await page.getByLabel('Название', {exact:true}).press('Tab');
-  const audioFile = () => page.locator('input[type=file][accept*="audio/mpeg"]');
+  const audioFile = () => page.locator('#original-file');
   await audioFile().setInputFiles({name:'first.wav', mimeType:'audio/wav', buffer:wave(4)});
   await page.waitForFunction(() => document.querySelector('#audio-player')?.duration === 4);
   await page.getByLabel('Длительность, секунды', {exact:true}).fill('4');
@@ -120,6 +120,7 @@ try {
   await page.locator('.song-select').last().click();
   await audioFile().setInputFiles({name:'cancellation.wav', mimeType:'audio/wav', buffer:wave(4)});
   await page.waitForFunction(()=>document.querySelector('#audio-player')?.duration===4);
+  await page.getByRole('tab', {name:'Оригинальная запись',exact:true}).click();
   await page.getByRole('button',{name:/^(Распознать MP3|Рассчитать время по тексту)$/}).click();
   await page.locator('#set-file').setInputFiles({name:'during-job.json',mimeType:'application/json',buffer:Buffer.from(json)});
   await page.waitForFunction(()=>document.querySelectorAll('.song-item').length===25);
@@ -132,10 +133,11 @@ try {
     await page.getByRole('button',{name:'+ Добавить песню',exact:true}).click();
     await page.getByLabel('Название',{exact:true}).fill('Проверка MP3');
     await page.getByLabel('Название',{exact:true}).press('Tab');
-    await page.locator('input[type=file][accept*="audio/mpeg"]').setInputFiles(process.env.LYRICS_ASR_FIXTURE);
+    await page.locator('#original-file').setInputFiles(process.env.LYRICS_ASR_FIXTURE);
     // Fail the first model download, then retry the same recording with a fresh worker.
     let blockedModelRequest = false;
     await page.route('https://huggingface.co/**', route => { blockedModelRequest=true; return route.abort(); });
+    await page.getByRole('tab', {name:'Оригинальная запись',exact:true}).click();
     await page.getByRole('button',{name:'Распознать MP3',exact:true}).click();
     await page.waitForSelector('.recognition-progress.error',{timeout:60000});
     assert.ok(blockedModelRequest,'model-download failure was exercised');

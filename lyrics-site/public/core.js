@@ -94,6 +94,7 @@ function sanitizeSong(raw, songNumber) {
     throw importError(`песня ${songNumber}: задержка должна быть конечным числом.`);
   }
   if (typeof raw.reviewed !== 'boolean') throw importError(`песня ${songNumber}: reviewed должен быть true или false.`);
+  if (raw.backing !== undefined && !plainObject(raw.backing)) throw importError(`песня ${songNumber}: некорректная минусовка.`);
   return {
     schemaVersion: SCHEMA_VERSION,
     id: identifier(raw.id, `id песни ${songNumber}`),
@@ -106,6 +107,7 @@ function sanitizeSong(raw, songNumber) {
     cues: raw.cues.map((cue, index) => sanitizeCue(cue, songNumber, index + 1)),
     reviewed: raw.reviewed,
     source: { kind: sourceKind, fileName: sourceFileName },
+    ...(raw.backing === undefined ? {} : { backing: { fileName: text(raw.backing.fileName, `имя минусовки песни ${songNumber}`, { optional: true, max: 1000 }) } }),
   };
 }
 
@@ -238,7 +240,7 @@ export function cueAt(song, elapsedSeconds) {
   const delay = finiteNumber(song?.delayMs, 0) / 1000;
   const effectiveTime = elapsed - delay;
   const duration = finiteNumber(song?.duration, Infinity);
-  if (effectiveTime >= duration) return { index: -1, effectiveTime, ended: true };
+  if (elapsed >= duration) return { index: -1, effectiveTime, ended: true };
   let index = -1;
   for (let cueIndex = 0; cueIndex < (song?.cues?.length || 0); cueIndex += 1) {
     const start = song.cues[cueIndex]?.start;
@@ -271,6 +273,7 @@ export function createSong(partial = {}) {
       kind: typeof partial.source?.kind === 'string' ? partial.source.kind : 'manual',
       fileName: typeof partial.source?.fileName === 'string' ? partial.source.fileName : '',
     },
+    ...(partial.backing ? { backing: { fileName: typeof partial.backing.fileName === 'string' ? partial.backing.fileName : '' } } : {}),
   };
 }
 

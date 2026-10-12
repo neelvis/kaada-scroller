@@ -106,3 +106,13 @@ and configure `LYRICS_ORIGIN` to the new HTTPS origin and
 with the verified restore procedure. All browser URLs are relative; no NastyEdu
 runtime is needed. Browser snapshots belong to each origin and must be prepared
 again after moving domains. Keep private files outside the public document root.
+
+## Revision 4 release check
+
+Publish the frontend and API as a paired release. On startup the API adds a
+nullable backing-track column without rewriting existing song revisions. Make a
+consistent backup before activation. Existing revision-3 archives remain readable;
+new archives validate original and backing references. After activation, verify
+backing upload/save/reopen, synchronized Start/seek/mute, and an explicitly prepared
+project reopening offline with its backing audio. Repository validation does not
+constitute production activation.

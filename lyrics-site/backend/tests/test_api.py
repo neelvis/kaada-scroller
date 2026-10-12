@@ -1,5 +1,7 @@
 import io
+import json
 import os
+import sqlite3
 import tempfile
 import unittest
 import wave
@@ -140,6 +142,96 @@ class ApiTest(unittest.TestCase):
             client=TestClient(create_app(restored_settings)); client.post("/login",headers=self.headers,json={"password":"organizer password"})
             self.assertEqual(client.get(f"/projects/{saved['id']}").status_code,200)
             self.assertEqual(client.get(f"/audio/{audio['id']}").content, payload.getvalue())
+        finally:
+            import shutil; shutil.rmtree(restored,ignore_errors=True)
+
+    def test_backing_track_persists_pins_replaces_and_removes(self):
+        headers=self.login()
+        def upload(name, seconds):
+            payload=io.BytesIO()
+            with wave.open(payload,"wb") as output:
+                output.setnchannels(1); output.setsampwidth(2); output.setframerate(8000); output.writeframes(b"\0\0" * (8000 * seconds))
+            result=self.client.post("/audio",headers={**headers,"Content-Type":"audio/wav","X-Lyrics-Filename":name},content=payload.getvalue())
+            self.assertEqual(result.status_code,201)
+            return result.json(), payload.getvalue()
+        original,_=upload("original.wav",1); backing_one,backing_bytes=upload("backing-one.wav",2); backing_two,_=upload("backing-two.wav",3)
+        project=self.client.post("/projects",headers=headers,json={"name":"Backing"}).json()
+        first=self.client.put(f"/projects/{project['id']}",headers=headers,json={"revision":project["revision"],"name":"Backing","songs":[{"song":song(),"audioId":original["id"],"backingAudioId":backing_one["id"]}]}).json()
+        entry=first["songs"][0]
+        self.assertEqual(entry["backingAudioId"],backing_one["id"])
+        self.assertEqual(entry["song"]["backing"],{"fileName":"backing-one.wav"})
+        # A second project pins the first arrangement while the first project changes.
+        pinned_project=self.client.post("/projects",headers=headers,json={"name":"Pinned"}).json()
+        pinned=self.client.put(f"/projects/{pinned_project['id']}",headers=headers,json={"revision":pinned_project["revision"],"name":"Pinned","songs":[entry]}).json()
+        replacement=dict(entry); replacement["backingAudioId"]=backing_two["id"]
+        changed=self.client.put(f"/projects/{first['id']}",headers=headers,json={"revision":first["revision"],"name":"Backing","songs":[replacement]}).json()
+        self.assertEqual(changed["songs"][0]["song"]["backing"],{"fileName":"backing-two.wav"})
+        self.assertEqual(self.client.get(f"/projects/{pinned['id']}").json()["songs"][0]["backingAudioId"],backing_one["id"])
+        # A revision-3 client omits the new ID and metadata; its save retains both.
+        old_client=dict(changed["songs"][0]); old_client.pop("backingAudioId"); old_client["song"]=dict(old_client["song"]); old_client["song"].pop("backing")
+        old_saved=self.client.put(f"/projects/{changed['id']}",headers=headers,json={"revision":changed["revision"],"name":"Backing","songs":[old_client]}).json()
+        self.assertEqual(old_saved["songs"][0]["backingAudioId"],backing_two["id"])
+        self.assertEqual(old_saved["songs"][0]["song"]["backing"],{"fileName":"backing-two.wav"})
+        removed=dict(old_saved["songs"][0]); removed["backingAudioId"]=None
+        no_backing=self.client.put(f"/projects/{old_saved['id']}",headers=headers,json={"revision":old_saved["revision"],"name":"Backing","songs":[removed]}).json()
+        self.assertIsNone(no_backing["songs"][0]["backingAudioId"])
+        self.assertNotIn("backing",no_backing["songs"][0]["song"])
+        # The old pinned revision still accounts for and serves the replaced audio.
+        self.assertEqual(self.client.get(f"/audio/{backing_one['id']}").content,backing_bytes)
+
+    def test_backing_audio_cleanup_and_backup_restore(self):
+        headers=self.login()
+        def wav(name, frames):
+            payload=io.BytesIO()
+            with wave.open(payload,"wb") as output:
+                output.setnchannels(1); output.setsampwidth(2); output.setframerate(8000); output.writeframes(b"\0\0" * frames)
+            return self.client.post("/audio",headers={**headers,"Content-Type":"audio/wav","X-Lyrics-Filename":name},content=payload.getvalue()).json(),payload.getvalue()
+        shared,shared_bytes=wav("shared.wav",8000)
+        project=self.client.post("/projects",headers=headers,json={"name":"Archive backing"}).json()
+        saved=self.client.put(f"/projects/{project['id']}",headers=headers,json={"revision":project["revision"],"name":"Archive backing","songs":[{"song":song(),"audioId":shared["id"],"backingAudioId":shared["id"]}]}).json()
+        # Shared role references prevent cleanup from deleting the same upload.
+        self.assertEqual(self.client.post("/audio/cleanup",headers=headers,json={"keepAudioIds":[]}).json()["deleted"],0)
+        archive=Path(self.temp.name)/"backing.tar.gz"; backup(Path(self.temp.name),archive)
+        restored=Path(self.temp.name).parent/"restored-backing-test"; restore(archive,restored)
+        try:
+            settings=Settings(restored,make_scrypt("organizer password"),"http://testserver","s","/",False,1024*1024)
+            client=TestClient(create_app(settings)); client.post("/login",headers=self.headers,json={"password":"organizer password"})
+            reopened=client.get(f"/projects/{saved['id']}").json()["songs"][0]
+            self.assertEqual(reopened["audioId"],shared["id"]); self.assertEqual(reopened["backingAudioId"],shared["id"])
+            self.assertEqual(client.get(f"/audio/{shared['id']}").content,shared_bytes)
+        finally:
+            import shutil; shutil.rmtree(restored,ignore_errors=True)
+
+    def test_restore_revision_three_backup_without_backing_column(self):
+        legacy=Path(self.temp.name)/"legacy"; legacy.mkdir(); (legacy/"audio").mkdir()
+        audio_id="11111111-1111-1111-1111-111111111111"; song_id="22222222-2222-2222-2222-222222222222"; revision_id="33333333-3333-3333-3333-333333333333"; project_id="44444444-4444-4444-4444-444444444444"
+        db=sqlite3.connect(legacy/"lyrics.sqlite3")
+        try:
+            db.executescript("""
+                CREATE TABLE audio(id TEXT PRIMARY KEY, file_name TEXT NOT NULL, duration REAL NOT NULL, bytes INTEGER NOT NULL, mime_type TEXT NOT NULL, content_hash TEXT, owner_token_hash TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE upload_reservations(id TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE songs(id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE song_revisions(id TEXT PRIMARY KEY, song_id TEXT NOT NULL, audio_id TEXT, body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, migration_key TEXT UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+                CREATE TABLE project_entries(project_id TEXT NOT NULL, position INTEGER NOT NULL, song_id TEXT NOT NULL, revision_id TEXT NOT NULL, PRIMARY KEY(project_id,position));
+                CREATE TABLE sessions(token_hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires_at INTEGER NOT NULL);
+            """)
+            db.execute("INSERT INTO audio(id,file_name,duration,bytes,mime_type) VALUES(?,?,?,?,?)",(audio_id,"old.wav",1,3,"audio/wav"))
+            db.execute("INSERT INTO songs(id) VALUES(?)",(song_id,))
+            db.execute("INSERT INTO song_revisions(id,song_id,audio_id,body) VALUES(?,?,?,?)",(revision_id,song_id,audio_id,json.dumps(song("Old"))))
+            db.execute("INSERT INTO projects(id,name,revision) VALUES(?,?,?)",(project_id,"Old",1))
+            db.execute("INSERT INTO project_entries(project_id,position,song_id,revision_id) VALUES(?,?,?,?)",(project_id,0,song_id,revision_id)); db.commit()
+        finally: db.close()
+        (legacy/"audio"/audio_id).write_bytes(b"old")
+        archive=Path(self.temp.name)/"legacy.tar.gz"; backup(legacy,archive)
+        restored=Path(self.temp.name)/"restored-legacy"; restore(archive,restored)
+        try:
+            settings=Settings(restored,make_scrypt("organizer password"),"http://testserver","s","/",False,1024*1024)
+            client=TestClient(create_app(settings)); client.post("/login",headers=self.headers,json={"password":"organizer password"})
+            entry=client.get(f"/projects/{project_id}").json()["songs"][0]
+            self.assertEqual(entry["audioId"],audio_id); self.assertIsNone(entry["backingAudioId"])
+            with client.app.state.store.read() as migrated:
+                self.assertIn("backing_audio_id",{row[1] for row in migrated.execute("PRAGMA table_info(song_revisions)")})
         finally:
             import shutil; shutil.rmtree(restored,ignore_errors=True)
 

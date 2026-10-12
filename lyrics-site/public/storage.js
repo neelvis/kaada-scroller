@@ -1,9 +1,10 @@
 import { exportSet, importSet } from './core.js';
 
 const DB_NAME = 'kaada-lyrics-v1';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SET_STORE = 'sets';
 const AUDIO_STORE = 'audio';
+const BACKING_STORE = 'backing-audio';
 const SET_KEY = 'active-set';
 
 function unavailable() {
@@ -20,6 +21,7 @@ function openDatabase() {
       const db = request.result;
       if (!db.objectStoreNames.contains(SET_STORE)) db.createObjectStore(SET_STORE);
       if (!db.objectStoreNames.contains(AUDIO_STORE)) db.createObjectStore(AUDIO_STORE);
+      if (!db.objectStoreNames.contains(BACKING_STORE)) db.createObjectStore(BACKING_STORE);
     };
     request.onsuccess = () => resolve(request.result);
   });
@@ -64,35 +66,40 @@ export async function saveSet(set) {
 export async function replaceStoredSet(set) {
   const clean = importSet(exportSet(set));
   return withDb(db => new Promise((resolve, reject) => {
-    const tx = db.transaction([SET_STORE, AUDIO_STORE], 'readwrite');
+    const tx = db.transaction([SET_STORE, AUDIO_STORE, BACKING_STORE], 'readwrite');
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('Не удалось импортировать набор.'));
     tx.onabort = () => reject(tx.error || new Error('Импорт отменён.'));
     tx.objectStore(SET_STORE).put(clean, SET_KEY);
     tx.objectStore(AUDIO_STORE).clear();
+    tx.objectStore(BACKING_STORE).clear();
   }));
 }
 
-export async function putAudio(songId, blob) {
+export async function putAudio(songId, blob, storeName = AUDIO_STORE) {
   if (typeof songId !== 'string' || !songId) throw new Error('Нужен id песни для аудиофайла.');
   if (!globalThis.Blob || !(blob instanceof globalThis.Blob)) throw new Error('Аудиофайл должен быть Blob.');
-  return withDb((db) => transaction(db, AUDIO_STORE, 'readwrite', (store) => store.put(blob, songId)));
+  return withDb((db) => transaction(db, storeName, 'readwrite', (store) => store.put(blob, songId)));
 }
 
-export async function getAudio(songId) {
+export async function getAudio(songId, storeName = AUDIO_STORE) {
   if (typeof songId !== 'string' || !songId) throw new Error('Нужен id песни для аудиофайла.');
   return withDb(async (db) => new Promise((resolve, reject) => {
-    const tx = db.transaction(AUDIO_STORE, 'readonly');
-    const request = tx.objectStore(AUDIO_STORE).get(songId);
+    const tx = db.transaction(storeName, 'readonly');
+    const request = tx.objectStore(storeName).get(songId);
     request.onsuccess = () => resolve(request.result === undefined ? null : request.result);
     request.onerror = () => reject(request.error || new Error('Не удалось прочитать аудиофайл.'));
   }));
 }
 
-export async function deleteAudio(songId) {
+export async function deleteAudio(songId, storeName = AUDIO_STORE) {
   if (typeof songId !== 'string' || !songId) throw new Error('Нужен id песни для аудиофайла.');
-  return withDb((db) => transaction(db, AUDIO_STORE, 'readwrite', (store) => store.delete(songId)));
+  return withDb((db) => transaction(db, storeName, 'readwrite', (store) => store.delete(songId)));
 }
+
+export const putBacking = (songId, blob) => putAudio(songId, blob, BACKING_STORE);
+export const getBacking = songId => getAudio(songId, BACKING_STORE);
+export const deleteBacking = songId => deleteAudio(songId, BACKING_STORE);
 
 export function resetLyrics() {
   if (!globalThis.indexedDB) return Promise.reject(unavailable());

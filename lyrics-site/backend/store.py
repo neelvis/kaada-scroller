@@ -37,7 +37,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS audio(id TEXT PRIMARY KEY, file_name TEXT NOT NULL, duration REAL NOT NULL, bytes INTEGER NOT NULL, mime_type TEXT NOT NULL DEFAULT 'audio/mpeg', content_hash TEXT UNIQUE, owner_token_hash TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS upload_reservations(id TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS songs(id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-            CREATE TABLE IF NOT EXISTS song_revisions(id TEXT PRIMARY KEY, song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE, audio_id TEXT REFERENCES audio(id), body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+            CREATE TABLE IF NOT EXISTS song_revisions(id TEXT PRIMARY KEY, song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE, audio_id TEXT REFERENCES audio(id), backing_audio_id TEXT REFERENCES audio(id), body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, migration_key TEXT UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS project_entries(project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, position INTEGER NOT NULL, song_id TEXT NOT NULL REFERENCES songs(id), revision_id TEXT NOT NULL REFERENCES song_revisions(id), PRIMARY KEY(project_id,position));
             CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires_at INTEGER NOT NULL);
@@ -48,6 +48,9 @@ class Store:
             if "mime_type" not in columns: db.execute("ALTER TABLE audio ADD COLUMN mime_type TEXT NOT NULL DEFAULT 'audio/mpeg'")
             if "content_hash" not in columns: db.execute("ALTER TABLE audio ADD COLUMN content_hash TEXT")
             if "owner_token_hash" not in columns: db.execute("ALTER TABLE audio ADD COLUMN owner_token_hash TEXT")
+            revision_columns={row[1] for row in db.execute("PRAGMA table_info(song_revisions)")}
+            if "backing_audio_id" not in revision_columns:
+                db.execute("ALTER TABLE song_revisions ADD COLUMN backing_audio_id TEXT REFERENCES audio(id)")
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS audio_content_hash_idx ON audio(content_hash) WHERE content_hash IS NOT NULL")
 
     def _recover_interrupted_uploads(self) -> None:
@@ -99,7 +102,7 @@ class Store:
 
     @staticmethod
     def entry(revision: sqlite3.Row) -> dict[str, Any]:
-        return {"songId": revision["song_id"], "revisionId": revision["id"], "audioId": revision["audio_id"], "song": json.loads(revision["body"])}
+        return {"songId": revision["song_id"], "revisionId": revision["id"], "audioId": revision["audio_id"], "backingAudioId": revision["backing_audio_id"], "song": json.loads(revision["body"])}
 
     def full_project(self, db: sqlite3.Connection, project_id: str) -> dict[str, Any]:
         project = self.project_row(db, project_id)
@@ -125,7 +128,7 @@ class Store:
         for row in rows:
             song=json.loads(row["body"])
             if query and query.lower() not in (str(song.get("title", "")) + " " + str(song.get("artist", ""))).lower(): continue
-            result.append({"id": row["song_id"], "title": song.get("title", ""), "artist": song.get("artist", ""), "version": song.get("version", ""), "revisionId": row["id"], "reviewed": bool(song.get("reviewed")), "hasAudio": bool(row["audio_id"])})
+            result.append({"id": row["song_id"], "title": song.get("title", ""), "artist": song.get("artist", ""), "version": song.get("version", ""), "revisionId": row["id"], "reviewed": bool(song.get("reviewed")), "hasAudio": bool(row["audio_id"]), "hasBackingAudio": bool(row["backing_audio_id"])})
         return result
 
     def get_song(self, song_id: str) -> dict[str, Any]:
@@ -144,9 +147,10 @@ class Store:
         with self.tx() as db:
             if not db.execute("SELECT 1 FROM songs WHERE id=?", (song_id,)).fetchone(): raise Missing()
             if db.execute("SELECT 1 FROM project_entries WHERE song_id=?", (song_id,)).fetchone(): raise Referenced()
-            audio_ids=[r[0] for r in db.execute("SELECT DISTINCT audio_id FROM song_revisions WHERE song_id=? AND audio_id IS NOT NULL", (song_id,))]
+            audio_ids=[r[0] for r in db.execute("""SELECT DISTINCT audio_id FROM song_revisions WHERE song_id=? AND audio_id IS NOT NULL
+                UNION SELECT DISTINCT backing_audio_id FROM song_revisions WHERE song_id=? AND backing_audio_id IS NOT NULL""", (song_id, song_id))]
             db.execute("DELETE FROM songs WHERE id=?", (song_id,))
-            unused=[a for a in audio_ids if not db.execute("SELECT 1 FROM song_revisions WHERE audio_id=?", (a,)).fetchone()]
+            unused=[a for a in audio_ids if not db.execute("SELECT 1 FROM song_revisions WHERE audio_id=? OR backing_audio_id=?", (a, a)).fetchone()]
             for audio_id in unused: db.execute("DELETE FROM audio WHERE id=?", (audio_id,))
             return unused
 
@@ -186,7 +190,10 @@ class Store:
     def cleanup_orphan_audio(self, owner_token_hash: str, keep_ids: set[str]) -> list[str]:
         """Delete only explicitly unreferenced uploads not named by the caller's live draft."""
         with self.tx() as db:
-            rows=db.execute("SELECT id FROM audio WHERE owner_token_hash=? AND id NOT IN (SELECT DISTINCT audio_id FROM song_revisions WHERE audio_id IS NOT NULL)", (owner_token_hash,)).fetchall()
+            rows=db.execute("""SELECT id FROM audio WHERE owner_token_hash=? AND id NOT IN (
+                SELECT DISTINCT audio_id FROM song_revisions WHERE audio_id IS NOT NULL
+                UNION SELECT DISTINCT backing_audio_id FROM song_revisions WHERE backing_audio_id IS NOT NULL
+            )""", (owner_token_hash,)).fetchall()
             deleted=[row["id"] for row in rows if row["id"] not in keep_ids]
             db.executemany("DELETE FROM audio WHERE id=?", [(audio_id,) for audio_id in deleted])
             return deleted
@@ -219,21 +226,40 @@ class Store:
             return self.full_project(db,row["id"])
 
     def _resolve_entry(self, db: sqlite3.Connection, raw: dict[str, Any]) -> sqlite3.Row:
-        song=raw["song"]
+        song=dict(raw["song"])
         audio_id=raw.get("audioId")
         if audio_id and not db.execute("SELECT 1 FROM audio WHERE id=?", (audio_id,)).fetchone(): raise Missing()
         song_id, revision_id=raw.get("songId"),raw.get("revisionId")
         if song_id and revision_id:
             prior=self.revision(db, revision_id, song_id)
+            # Clients from revision 3 do not know this field.  Their saves must not
+            # silently unlink a backing selected by a newer client.
+            backing_audio_id=raw["backingAudioId"] if "backingAudioId" in raw else prior["backing_audio_id"]
+            if backing_audio_id and not db.execute("SELECT 1 FROM audio WHERE id=?", (backing_audio_id,)).fetchone(): raise Missing()
+            song=self._with_backing_metadata(db, song, backing_audio_id)
             canonical=json.dumps(song, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-            if prior["body"] == canonical and prior["audio_id"] == audio_id: return prior
-            return self._new_revision(db, song_id, audio_id, song)
+            if prior["body"] == canonical and prior["audio_id"] == audio_id and prior["backing_audio_id"] == backing_audio_id: return prior
+            return self._new_revision(db, song_id, audio_id, backing_audio_id, song)
         if song_id or revision_id: raise Missing()
-        song_id=str(uuid.uuid4()); song=dict(song); song["id"]=song_id
+        backing_audio_id=raw.get("backingAudioId")
+        if backing_audio_id and not db.execute("SELECT 1 FROM audio WHERE id=?", (backing_audio_id,)).fetchone(): raise Missing()
+        song_id=str(uuid.uuid4()); song["id"]=song_id
         db.execute("INSERT INTO songs(id) VALUES(?)", (song_id,))
-        return self._new_revision(db, song_id, audio_id, song)
+        return self._new_revision(db, song_id, audio_id, backing_audio_id, self._with_backing_metadata(db, song, backing_audio_id))
 
-    def _new_revision(self, db: sqlite3.Connection, song_id: str, audio_id: str | None, song: dict[str, Any]) -> sqlite3.Row:
+    @staticmethod
+    def _with_backing_metadata(db: sqlite3.Connection, song: dict[str, Any], backing_audio_id: str | None) -> dict[str, Any]:
+        """Keep portable song metadata aligned with the private backing link."""
+        song=dict(song)
+        if not backing_audio_id:
+            song.pop("backing", None)
+            return song
+        row=db.execute("SELECT file_name FROM audio WHERE id=?", (backing_audio_id,)).fetchone()
+        if not row: raise Missing()
+        song["backing"]={"fileName": row["file_name"]}
+        return song
+
+    def _new_revision(self, db: sqlite3.Connection, song_id: str, audio_id: str | None, backing_audio_id: str | None, song: dict[str, Any]) -> sqlite3.Row:
         revision_id=str(uuid.uuid4()); body=json.dumps(song, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        db.execute("INSERT INTO song_revisions(id,song_id,audio_id,body) VALUES(?,?,?,?)", (revision_id,song_id,audio_id,body))
+        db.execute("INSERT INTO song_revisions(id,song_id,audio_id,backing_audio_id,body) VALUES(?,?,?,?,?)", (revision_id,song_id,audio_id,backing_audio_id,body))
         return self.revision(db, revision_id)
