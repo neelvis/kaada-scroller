@@ -230,3 +230,41 @@ Actual audio output, song arrangements and projector readability still require
 organizer rehearsal. Synthetic WAV checks do not measure singing recognition.
 A paired frontend/backend release is required to publish revision 4; historical
 NastyEdu activation evidence above describes the prior release.
+
+## Revision 4 production publication
+
+The user explicitly requested deployment on 2026-10-12. Paired release
+`20261012_080618` is live at `https://nasty-edu.online/lyrics/`.
+Application commit: `a3cc8a7`; migration-safety commit: `9ec45b9`.
+Previous paired release `20261012_025323` is retained for rollback.
+
+Deployment permissions allow the exact API restart but no private-data reads.
+Before ALTER, first service startup now creates an atomic, fsynced private library
+archive (0700 directory/0600 file). Failure aborts migration and activation restores
+both previous links. Credentials stay in their existing protected file. The
+snapshot uses SQLite backup plus the original audio manifest while the old API is
+stopped. Restart after migration does not create repeated archives. A fresh legacy
+fixture verifies restoration, permissions, idempotence and injected-failure refusal;
+all 13 API tests passed. Independent deployment-safety review accepted the final
+source. The deploy user did not read the production archive or credentials;
+successful guarded startup establishes that the pre-migration step completed.
+
+- Reused 12 checksum-locked wheels and the checksum-pinned bootstrap; all 44 staged
+  frontend/API/runtime inputs verified. Preparation did not change live links.
+- Activation selected both new links and restarted only `kaada-lyrics-api.service`.
+  Post-publication status: enabled, active/running, zero restarts; observed memory
+  about 31 MiB (peak about 33 MiB), within its 256 MiB limit.
+- HTTPS hashes of all 22 public files matched the staged manifest. JS/MJS and WASM
+  MIME checks passed. Main `/`, host `/health` and lyrics API health returned 200.
+  Anonymous projects/library/session/song/audio returned 401; API is `no-store`.
+- An isolated live Chrome context imported a synthetic local set and WAV backing,
+  tested Start, mute, seeking, equal-emphasis lyrics, navigation/reset, then reopened
+  and played offline. No page errors or API writes/uploads occurred. Real organizer
+  credentials and server projects were not used or changed by the smoke test.
+- Evidence is retained under ignored `.work/deploy-*.log` and
+  `lyrics-site/test-results/live-v4.png`. Authenticated project/backing save and
+  version-pinning paths were validated locally in independent browser contexts.
+
+Close/reopen existing lyrics tabs to adopt the new service-worker shell. Actual
+speaker/projector rehearsal and representative sung-recording quality remain the
+organizer checks documented earlier.

@@ -1,7 +1,7 @@
 # Timed lyrics revision 4: backing tracks and live display controls
 
 Feature ID: TL (extension)
-Status: Implemented and locally verified — not deployed
+Status: Implemented, verified and deployed — event rehearsal pending
 Revision: 4, 2026-10-12
 Baseline: [revision 2](spec.md) and [revision 3](revision-3.md)
 
@@ -141,4 +141,6 @@ display controls and preparation layout, with focused unit/API/browser checks.
 
 [Revision 4 verification](../../../docs/timed-lyrics-verification.md#revision-4-standalone-repository-validation)
 records automated, API, browser and independent-review coverage for TL-AC25–AC31.
-The approved scope is implemented. Deployment and event rehearsal remain separate.
+The approved scope is implemented. The user authorized deployment on 2026-10-12;
+paired release `20261012_080618` is live at NastyEdu. Event rehearsal remains an
+organizer check.

@@ -8,7 +8,7 @@ private server API and projects. Publication evidence is recorded in the
 [verification report](../docs/timed-lyrics-verification.md). Representative sung
 recordings and a projector rehearsal remain organizer checks.
 Revision 4 adds backing audio and live display controls in this repository; it
-has been verified locally and requires a paired frontend/backend release to publish.
+is live as paired release `20261012_080618` after local and production checks.
 
 ## Prepare and save songs
 
