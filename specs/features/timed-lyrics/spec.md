@@ -8,7 +8,9 @@ Related requirements: KMP-R04 preserves existing NastyEdu storage and origin
 Verification: [validation and manual gaps](../../../docs/timed-lyrics-verification.md)
 Canonical path: `specs/features/timed-lyrics/spec.md`
 Accepted and deployed extension: [revision 3 — shared projects and text-guided preparation](revision-3.md)
-(draft, not implemented; baseline below remains deployed)
+(implemented and deployed; supersedes the affected baseline requirements)
+Accepted extension: [revision 4 — backing tracks and live display controls](revision-4.md).
+Read the applicable extensions before using a superseded baseline rule.
 
 ## Purpose
 
@@ -22,10 +24,10 @@ are played separately. The first version uses an identified original vocal
 recording as its timing reference and assumes performers follow that recording's
 tempo, structure and timeline. The tool does not listen to the live performance.
 
-This specification now belongs to the existing NastyEdu Git repository. The
-initial draft in the adjacent KaadaScroller folder is superseded by this canonical
-file. NastyEdu currently documents a legacy server deployment and an unactivated
-static migration; the lyrics feature must not require a whole-site migration.
+This specification was developed in the NastyEdu repository. The standalone
+KaadaScroller repository now maintains the lyrics module and its canonical
+requirements. Historical hosting evidence remains in the verification report;
+the lyrics feature must not require a whole-site migration.
 Lyrics implementation is authorized. The user subsequently authorized production
 deployment; audio quality measurements and host activation remain separate evidence.
 
