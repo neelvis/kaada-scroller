@@ -110,8 +110,16 @@ again after moving domains. Keep private files outside the public document root.
 ## Revision 4 release check
 
 Publish the frontend and API as a paired release. On startup the API adds a
-nullable backing-track column without rewriting existing song revisions. Make a
-consistent backup before activation. Existing revision-3 archives remain readable;
+nullable backing-track column without rewriting existing song revisions. The first startup against a revision-3 database creates a protected, consistent
+archive under `/var/lib/kaada-lyrics/backups/` before changing its schema. The old
+API has stopped during the service restart, so uploads and saves cannot race the
+snapshot. Backup failure prevents the migration; activation restores the prior
+paired links. The archive is private (directory 0700, file 0600); credentials stay
+in their existing protected file. The service journal records only the completed
+archive path and SHA-256. Activation allows up to 180 seconds for initial snapshot
+and health. Later starts skip the snapshot once the nullable column exists.
+Administrators can retrieve/verify the private archive; deploy-user access is not
+expanded. Existing revision-3 archives remain readable;
 new archives validate original and backing references. After activation, verify
 backing upload/save/reopen, synchronized Start/seek/mute, and an explicitly prepared
 project reopening offline with its backing audio. Repository validation does not

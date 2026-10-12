@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import shutil
 import sqlite3
 import tarfile
@@ -22,17 +23,39 @@ def sha256(path: Path) -> str:
 def backup(data_dir: Path, archive: Path) -> None:
     db=data_dir/"lyrics.sqlite3"; audio=data_dir/"audio"
     if not db.is_file(): raise ValueError("metadata database does not exist")
-    with tempfile.TemporaryDirectory(dir=data_dir) as temporary:
-        snapshot=Path(temporary)/"lyrics.sqlite3"
-        source=sqlite3.connect(db); target=sqlite3.connect(snapshot)
-        try: source.backup(target)
-        finally: target.close(); source.close()
-        files=[snapshot]+sorted(p for p in audio.iterdir() if p.is_file())
-        manifest={"format":1,"files":{("metadata.sqlite3" if f==snapshot else "audio/"+f.name): {"sha256":sha256(f),"bytes":f.stat().st_size} for f in files}}
-        with tarfile.open(archive,"w:gz") as output:
-            output.add(snapshot,arcname="metadata.sqlite3")
-            for file in files[1:]: output.add(file,arcname="audio/"+file.name)
-            payload=json.dumps(manifest,sort_keys=True).encode(); info=tarfile.TarInfo("manifest.json"); info.size=len(payload); output.addfile(info,io.BytesIO(payload))
+    parent=archive.parent
+    try: parent.lstat()
+    except FileNotFoundError as exc: raise ValueError("backup directory does not exist") from exc
+    if archive.exists() or archive.is_symlink() or not parent.is_dir() or parent.is_symlink():
+        raise ValueError("unsafe backup destination")
+    if audio.is_symlink() or not audio.is_dir(): raise ValueError("unsafe audio directory")
+    descriptor, temporary_archive=tempfile.mkstemp(prefix=f".{archive.name}.",suffix=".tmp",dir=parent)
+    os.close(descriptor)
+    temporary_path=Path(temporary_archive)
+    try:
+        with tempfile.TemporaryDirectory(dir=data_dir) as temporary:
+            snapshot=Path(temporary)/"lyrics.sqlite3"
+            source=sqlite3.connect(db); target=sqlite3.connect(snapshot)
+            try: source.backup(target)
+            finally: target.close(); source.close()
+            audio_files=sorted(audio.iterdir())
+            if any(file.is_symlink() or not file.is_file() for file in audio_files): raise ValueError("unsafe audio file")
+            files=[snapshot]+audio_files
+            manifest={"format":1,"files":{("metadata.sqlite3" if f==snapshot else "audio/"+f.name): {"sha256":sha256(f),"bytes":f.stat().st_size} for f in files}}
+            with tarfile.open(temporary_path,"w:gz") as output:
+                output.add(snapshot,arcname="metadata.sqlite3")
+                for file in files[1:]: output.add(file,arcname="audio/"+file.name)
+                payload=json.dumps(manifest,sort_keys=True).encode(); info=tarfile.TarInfo("manifest.json"); info.size=len(payload); output.addfile(info,io.BytesIO(payload))
+        os.chmod(temporary_path,0o600)
+        archive_fd=os.open(temporary_path,os.O_RDONLY)
+        try: os.fsync(archive_fd)
+        finally: os.close(archive_fd)
+        os.replace(temporary_path,archive)
+        parent_fd=os.open(parent,os.O_RDONLY)
+        try: os.fsync(parent_fd)
+        finally: os.close(parent_fd)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def restore(archive: Path, data_dir: Path) -> None:

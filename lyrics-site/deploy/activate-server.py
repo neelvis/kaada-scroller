@@ -25,7 +25,9 @@ def restart():
 
 
 def healthy():
-    deadline = time.monotonic() + 30
+    # The first backing-track migration creates a protected, consistent backup
+    # before touching the database. Large private libraries need time to snapshot.
+    deadline = time.monotonic() + 180
     while True:
         if subprocess.run(['/usr/bin/curl', '-q', '--noproxy', '*', '--fail', '--silent', '--max-time', '3',
                            '-o', '/dev/null', 'http://127.0.0.1:8096/health'], timeout=4).returncode == 0:

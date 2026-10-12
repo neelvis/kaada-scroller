@@ -232,8 +232,38 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(entry["audioId"],audio_id); self.assertIsNone(entry["backingAudioId"])
             with client.app.state.store.read() as migrated:
                 self.assertIn("backing_audio_id",{row[1] for row in migrated.execute("PRAGMA table_info(song_revisions)")})
+            migration_backups=list((restored/"backups").glob("pre-backing-migration-*.tar.gz"))
+            self.assertEqual(len(migration_backups),1)
+            self.assertEqual((restored/"backups").stat().st_mode & 0o777,0o700)
+            self.assertEqual(migration_backups[0].stat().st_mode & 0o777,0o600)
+            recovered=Path(self.temp.name)/"recovered-legacy"; restore(migration_backups[0],recovered)
+            try:
+                old_db=sqlite3.connect(recovered/"lyrics.sqlite3")
+                try: self.assertNotIn("backing_audio_id",{row[1] for row in old_db.execute("PRAGMA table_info(song_revisions)")})
+                finally: old_db.close()
+                self.assertEqual((recovered/"audio"/audio_id).read_bytes(),b"old")
+            finally:
+                import shutil; shutil.rmtree(recovered,ignore_errors=True)
+            # A later restart sees the migrated column and leaves the sole archive alone.
+            create_app(settings)
+            self.assertEqual(len(list((restored/"backups").glob("pre-backing-migration-*.tar.gz"))),1)
         finally:
             import shutil; shutil.rmtree(restored,ignore_errors=True)
+
+    def test_pre_migration_backup_failure_leaves_old_schema_untouched(self):
+        legacy=Path(self.temp.name)/"failed-migration"; legacy.mkdir(); (legacy/"audio").mkdir()
+        db=sqlite3.connect(legacy/"lyrics.sqlite3")
+        try:
+            db.execute("CREATE TABLE song_revisions(id TEXT PRIMARY KEY, song_id TEXT NOT NULL, audio_id TEXT, body TEXT NOT NULL)"); db.commit()
+        finally: db.close()
+        from backend.store import Store
+        with patch("backend.store.backup",side_effect=OSError("full")):
+            with self.assertRaises(RuntimeError): Store(legacy)
+        db=sqlite3.connect(legacy/"lyrics.sqlite3")
+        try: self.assertNotIn("backing_audio_id",{row[1] for row in db.execute("PRAGMA table_info(song_revisions)")})
+        finally: db.close()
+        backups=legacy/"backups"
+        self.assertFalse(backups.exists() and any(backups.iterdir()))
 
     def test_backup_cli_and_restore_retains_existing_credentials(self):
         headers=self.login(); self.client.post("/projects",headers=headers,json={"name":"Backup"})

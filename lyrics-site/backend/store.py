@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
+
+from .backup import backup, sha256
 
 
 class Conflict(Exception): pass
@@ -19,10 +22,41 @@ class Store:
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.audio_dir = self.data_dir / "audio"
-        self.audio_dir.mkdir(exist_ok=True)
         self.db_path = self.data_dir / "lyrics.sqlite3"
+        self._backup_before_backing_migration()
+        self.audio_dir.mkdir(exist_ok=True)
         self._init()
         self._recover_interrupted_uploads()
+
+    def _backup_before_backing_migration(self) -> None:
+        """Fail closed before adding the backing column to an existing library."""
+        if not self.db_path.exists(): return
+        try:
+            db=sqlite3.connect(f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True)
+            try:
+                exists=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='song_revisions'").fetchone()
+                if not exists: return
+                columns={row[1] for row in db.execute("PRAGMA table_info(song_revisions)")}
+            finally:
+                db.close()
+        except sqlite3.DatabaseError as exc:
+            raise RuntimeError("cannot inspect existing lyrics database before migration") from exc
+        if "backing_audio_id" in columns: return
+        backup_dir=self.data_dir / "backups"
+        if backup_dir.exists():
+            if backup_dir.is_symlink() or not backup_dir.is_dir():
+                raise RuntimeError("unsafe lyrics backup directory")
+            os.chmod(backup_dir, 0o700)
+        else:
+            backup_dir.mkdir(mode=0o700)
+            if backup_dir.is_symlink() or not backup_dir.is_dir():
+                raise RuntimeError("unsafe lyrics backup directory")
+        archive=backup_dir / f"pre-backing-migration-{uuid.uuid4()}.tar.gz"
+        try:
+            backup(self.data_dir, archive)
+        except Exception as exc:
+            raise RuntimeError("could not create pre-migration lyrics backup") from exc
+        logging.getLogger("uvicorn.error").info("Created pre-migration lyrics backup: %s sha256=%s", archive, sha256(archive))
 
     def connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.db_path, isolation_level=None)
