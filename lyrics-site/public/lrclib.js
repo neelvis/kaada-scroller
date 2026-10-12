@@ -1,0 +1,206 @@
+import { createSong, exportSet, importSet, parseLrc } from './core.js';
+
+const SEARCH_URL = 'https://lrclib.net/api/search';
+const CLIENT_NAME = 'KaadaScroller v0.1.0 (https://github.com/neelvis/kaada-scroller)';
+const MIN_REQUEST_INTERVAL_MS = 350;
+const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_RATE_LIMIT_MS = 60_000;
+const MAX_RESPONSE_BYTES = 1_000_000;
+const MAX_RESULTS = 100;
+const MAX_LRC_LENGTH = 200_000;
+
+function problem(message, name) {
+  const error = new Error(message);
+  if (name) error.name = name;
+  return error;
+}
+
+function abortProblem(message) {
+  return problem(message, 'AbortError');
+}
+
+function retryAfterMs(value, now) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : null;
+}
+
+function nonEmptyText(value, field) {
+  if (typeof value !== 'string' || !value.trim()) throw problem(`LRCLIB вернул некорректное поле «${field}». Повторите поиск позже.`);
+  return value;
+}
+
+function optionalText(value, field) {
+  if (value === null || value === undefined) return '';
+  if (typeof value !== 'string') throw problem(`LRCLIB вернул некорректное поле «${field}». Повторите поиск позже.`);
+  return value;
+}
+
+function normalizeRecord(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw problem('LRCLIB вернул некорректный результат. Повторите поиск позже.');
+  }
+  if ((typeof raw.id !== 'number' && typeof raw.id !== 'string') || String(raw.id).trim() === '') {
+    throw problem('LRCLIB вернул результат без идентификатора. Повторите поиск позже.');
+  }
+  if (raw.duration !== null && (typeof raw.duration !== 'number' || !Number.isFinite(raw.duration) || raw.duration < 0)) {
+    throw problem('LRCLIB вернул некорректную длительность. Повторите поиск позже.');
+  }
+  if (typeof raw.instrumental !== 'boolean') {
+    throw problem('LRCLIB вернул некорректный признак инструментальной записи. Повторите поиск позже.');
+  }
+  if (raw.syncedLyrics !== null && raw.syncedLyrics !== undefined && typeof raw.syncedLyrics !== 'string') {
+    throw problem('LRCLIB вернул некорректный синхронизированный текст. Повторите поиск позже.');
+  }
+  if (typeof raw.syncedLyrics === 'string' && raw.syncedLyrics.length > MAX_LRC_LENGTH) {
+    throw problem('LRCLIB вернул слишком большой синхронизированный текст. Выберите другую запись.');
+  }
+  return {
+    id: raw.id,
+    trackName: nonEmptyText(raw.trackName, 'trackName'),
+    artistName: optionalText(raw.artistName, 'artistName'),
+    albumName: optionalText(raw.albumName, 'albumName'),
+    duration: raw.duration ?? null,
+    instrumental: raw.instrumental,
+    syncedLyrics: raw.syncedLyrics || '',
+  };
+}
+
+/** Browser client for explicit, privacy-limited LRCLIB searches. */
+export class LrclibClient {
+  constructor({
+    fetch: fetchImpl = globalThis.fetch.bind(globalThis),
+    clock = () => Date.now(),
+    wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    setTimeout: setTimeoutImpl = globalThis.setTimeout.bind(globalThis),
+    clearTimeout: clearTimeoutImpl = globalThis.clearTimeout.bind(globalThis),
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    minRequestIntervalMs = MIN_REQUEST_INTERVAL_MS,
+    fallbackRetryMs = DEFAULT_RATE_LIMIT_MS,
+  } = {}) {
+    if (typeof fetchImpl !== 'function') throw new TypeError('Для поиска LRCLIB требуется fetch.');
+    this.fetch = fetchImpl;
+    this.clock = clock;
+    this.wait = wait;
+    this.setTimeout = setTimeoutImpl;
+    this.clearTimeout = clearTimeoutImpl;
+    this.timeoutMs = timeoutMs;
+    this.minRequestIntervalMs = minRequestIntervalMs;
+    this.fallbackRetryMs = fallbackRetryMs;
+    this.lastCompletedAt = -Infinity;
+    this.pending = false;
+    this.retryAt = 0;
+  }
+
+  async search({ title, artist, signal } = {}) {
+    const trackName = typeof title === 'string' ? title.trim() : '';
+    const artistName = typeof artist === 'string' ? artist.trim() : '';
+    if (!trackName) throw problem('Введите название песни для поиска в LRCLIB.');
+    if (this.pending) throw problem('Поиск LRCLIB уже выполняется. Дождитесь его завершения или отмените поиск.');
+    if (signal?.aborted) throw abortProblem('Поиск LRCLIB отменён. Данные песни не изменены.');
+
+    this.pending = true;
+    let timeoutId;
+    let timedOut = false;
+    let requestStarted = false;
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      const now = this.clock();
+      if (this.retryAt > now) {
+        throw problem(`LRCLIB попросил подождать до ${new Date(this.retryAt).toLocaleTimeString()}. Повторите поиск позже.`);
+      }
+      const pause = Math.max(0, this.lastCompletedAt + this.minRequestIntervalMs - now);
+      if (pause) await this.waitFor(pause, signal);
+      if (signal?.aborted) throw abortProblem('Поиск LRCLIB отменён. Данные песни не изменены.');
+
+      const params = new URLSearchParams({ track_name: trackName });
+      if (artistName) params.set('artist_name', artistName);
+      requestStarted = true;
+      timeoutId = this.setTimeout(() => { timedOut = true; controller.abort(); }, this.timeoutMs);
+      let response;
+      try {
+        response = await this.fetch(`${SEARCH_URL}?${params}`, {
+          method: 'GET', signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer',
+          headers: { Accept: 'application/json', 'Lrclib-Client': CLIENT_NAME },
+        });
+      } catch (error) {
+        if (timedOut) throw problem('LRCLIB не ответил за 15 секунд. Проверьте соединение и повторите поиск.');
+        if (signal?.aborted || error?.name === 'AbortError') throw abortProblem('Поиск LRCLIB отменён. Данные песни не изменены.');
+        throw problem('Не удалось связаться с LRCLIB. Проверьте подключение к интернету и повторите поиск.');
+      }
+      const retryDelay = retryAfterMs(response.headers?.get?.('Retry-After'), this.clock());
+      if (response.status === 429 || retryDelay !== null) {
+        const delay = retryDelay ?? this.fallbackRetryMs;
+        this.retryAt = Math.max(this.retryAt, this.clock() + delay);
+        throw problem(`LRCLIB временно ограничил поиск. Повторите после ${new Date(this.retryAt).toLocaleTimeString()}.`);
+      }
+      if (!response.ok) throw problem(`LRCLIB вернул ошибку ${response.status}. Повторите поиск позже.`);
+      const declaredLength = Number(response.headers?.get?.('content-length'));
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
+        throw problem('LRCLIB вернул слишком большой ответ. Уточните название песни и повторите поиск.');
+      }
+      let body;
+      try {
+        body = await response.text();
+      } catch (error) {
+        if (timedOut) throw problem('LRCLIB не ответил за 15 секунд. Проверьте соединение и повторите поиск.');
+        if (signal?.aborted || error?.name === 'AbortError') throw abortProblem('Поиск LRCLIB отменён. Данные песни не изменены.');
+        throw problem('Не удалось прочитать ответ LRCLIB. Повторите поиск позже.');
+      }
+      if (signal?.aborted) throw abortProblem('Поиск LRCLIB отменён. Данные песни не изменены.');
+      if (new TextEncoder().encode(body).byteLength > MAX_RESPONSE_BYTES) throw problem('LRCLIB вернул слишком большой ответ. Уточните название песни и повторите поиск.');
+      let raw;
+      try { raw = JSON.parse(body); } catch { throw problem('LRCLIB вернул некорректный ответ. Повторите поиск позже.'); }
+      if (!Array.isArray(raw) || raw.length > MAX_RESULTS) {
+        throw problem('LRCLIB вернул некорректный список результатов. Повторите поиск позже.');
+      }
+      return raw.map(normalizeRecord);
+    } finally {
+      if (timeoutId !== undefined) this.clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', onAbort);
+      if (requestStarted) this.lastCompletedAt = this.clock();
+      this.pending = false;
+    }
+  }
+
+  async waitFor(milliseconds, signal) {
+    if (!signal) return this.wait(milliseconds);
+    return new Promise((resolve, reject) => {
+      const onAbort = () => reject(abortProblem('Поиск LRCLIB отменён. Данные песни не изменены.'));
+      signal.addEventListener('abort', onAbort, { once: true });
+      Promise.resolve(this.wait(milliseconds)).then(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, reject);
+    });
+  }
+}
+
+/** Convert an explicitly selected LRCLIB record into a normal LRC replacement. */
+export function prepareLrcImport(song, record) {
+  if (!record || typeof record !== 'object') throw problem('Выберите запись LRCLIB перед импортом.');
+  if (record.instrumental) throw problem('Инструментальную запись нельзя импортировать как синхронизированный текст.');
+  if (typeof record.syncedLyrics !== 'string' || !record.syncedLyrics.trim()) {
+    throw problem('У выбранной записи нет синхронизированного LRC. Выберите другую версию или импортируйте LRC вручную.');
+  }
+  let parsed;
+  try { parsed = parseLrc(record.syncedLyrics); } catch (error) {
+    throw problem(`Синхронизированный LRC выбранной записи некорректен: ${error.message}`);
+  }
+  if (!parsed.cues.length) throw problem('В синхронизированном LRC не найдено строк с таймкодами.');
+  const details = {};
+  if (!String(song?.title || '').trim() && typeof record.trackName === 'string' && record.trackName.trim()) details.title = record.trackName.trim();
+  if (!String(song?.artist || '').trim() && typeof record.artistName === 'string' && record.artistName.trim()) details.artist = record.artistName.trim();
+  if (!(typeof song?.duration === 'number' && Number.isFinite(song.duration) && song.duration > 0)
+      && typeof record.duration === 'number' && Number.isFinite(record.duration) && record.duration > 0) details.duration = record.duration;
+  // Apply the same portable-data limits before changing the editable song.
+  try {
+    const candidate = createSong({ ...song, ...details, cues: parsed.cues });
+    importSet(exportSet({ schemaVersion: 1, id: 'lrclib-import-check', name: '', songs: [candidate] }));
+  } catch (error) { throw problem(`LRC нельзя сохранить в приложении: ${error.message}`); }
+  return { cues: parsed.cues, details };
+}

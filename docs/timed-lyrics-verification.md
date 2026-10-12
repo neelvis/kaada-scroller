@@ -268,3 +268,60 @@ successful guarded startup establishes that the pre-migration step completed.
 Close/reopen existing lyrics tabs to adopt the new service-worker shell. Actual
 speaker/projector rehearsal and representative sung-recording quality remain the
 organizer checks documented earlier.
+
+## Revision 5: LRCLIB search
+
+Approved on 2026-10-12 and implemented in the local KaadaScroller workspace.
+No backend data model or dependencies changed. This revision has not been
+published; the production pair remains `20261012_080618`.
+
+Validation used the bundled Node runtime and Chrome, with synthetic fixtures and
+an isolated temporary backend. Commands ran from `lyrics-site`:
+
+- `node tools/build.mjs`: passed; the new module is included in the portable
+  artifact and generated offline-shell manifest.
+- `node --test tests/*.test.mjs`: 39 passed, including encoded/private requests,
+  cancellation during fetch/body reading, timeout, sequential request pacing,
+  HTTP errors, non-JSON Retry-After responses, exact repeated LRC occurrences,
+  missing-metadata rules and portable-storage limits before mutation.
+- `node tests/lrclib-browser.mjs`: passed. Covers explicit search, no empty
+  request, variants and disabled unsynchronized/instrumental records, literal
+  preview, declined replacement, successful import, duration mismatch, edits
+  during confirmation/request, invalid-LRC atomicity, obsolete queries, network
+  and service failures, actual 15-second timeout, rate-limit cooldown, local
+  reopen/export/import, offline notice, root mounting and narrow keyboard use.
+- `node tests/lrclib-server-browser.mjs`: passed. Imported text/timings remain an
+  unsaved shared draft until Save; save/reopen retains repeats; another project
+  retains its pinned revision after a later import/save; prepared snapshots show
+  imported lyrics offline with no LRCLIB request on Start. Project switching and
+  logout invalidate pending searches.
+- Existing `node tests/browser.mjs`, `node tests/live-display-browser.mjs` and
+  `node tests/server-browser.mjs` passed, covering preparation, dual audio roles,
+  event playback, persistence/conflicts, offline show and root/subpath mounts.
+- JavaScript syntax and `git diff --check` passed. Desktop/mobile screenshots
+  were visually inspected; no horizontal overflow at 375 pixels.
+
+| Acceptance criterion | Evidence |
+| --- | --- |
+| TL-AC32 | Client tests, fixture browser selection/preview, live browser search |
+| TL-AC33 | Exact repeated/literal text, preserved metadata, cancelled/invalid import, renewed review |
+| TL-AC34 | Slow request/confirmation edits, abort/timeout, service/cooldown, project/logout races and private request checks |
+| TL-AC35 | Local reopen/export/import, real shared save/pinning and offline snapshot, both mounts and narrow keyboard layout |
+
+The [live LRCLIB API](https://lrclib.net/docs) accepted browser client identification
+and exposed Retry-After through CORS. An unmocked Chrome search returned 20
+records without page errors. Existing strict LRC parsing accepted 17 sample
+records and rejected three without applying them; no normalization silently
+changes imported wording.
+
+Independent review found duration-mismatch visibility and offline-search notice
+gaps; both were corrected and rereviewed with no remaining material finding.
+Browser checks caught the native-method receiver issue; browser defaults now bind
+their receiver, and subsequent browser runs passed. Final focused inspection also
+added portable-data validation before mutation, with a passing regression test.
+Logs are under ignored `.work/lrclib-*.log`; screenshots are under ignored
+`lyrics-site/test-results/lrclib/`.
+
+Matching a real recording/arrangement and checking its timing remain organizer
+review steps. Search does not automatically confirm readiness or identify the
+correct recording version.

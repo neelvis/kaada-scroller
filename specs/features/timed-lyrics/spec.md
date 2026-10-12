@@ -10,6 +10,7 @@ Canonical path: `specs/features/timed-lyrics/spec.md`
 Accepted and deployed extension: [revision 3 — shared projects and text-guided preparation](revision-3.md)
 (implemented and deployed; supersedes the affected baseline requirements)
 Accepted extension: [revision 4 — backing tracks and live display controls](revision-4.md).
+Accepted extension: [revision 5 — LRCLIB search and safe LRC import](revision-5.md).
 Read the applicable extensions before using a superseded baseline rule.
 
 ## Purpose

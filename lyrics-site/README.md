@@ -52,6 +52,30 @@ Recognition proposes a draft. Synthetic speech integration checks passed for bot
 profiles, but improved accuracy or 25-song throughput on actual singing has not
 been measured. Manual review remains necessary.
 
+## Find an existing LRC
+
+In **Text and timestamps**, use **Find LRC in LRCLIB**. The separate search fields
+start with the song title and artist; editing them does not rename the song.
+Enter a title and optionally an artist, then submit the search. Only these search
+terms are sent to LRCLIB; recordings, existing lyrics and organizer credentials
+are excluded. Search requires internet and can be cancelled.
+
+Compare each result's artist, album and duration with your original/backing
+recording. Preview the literal LRC, then choose **Import LRC**. Unsynchronized and
+instrumental results cannot be imported. Replacing existing rows requires
+confirmation; invalid LRC leaves the song unchanged. The original/backing audio,
+delay, recording-version description and existing metadata are preserved. Only
+blank title/artist and missing duration are filled. A differing duration remains
+visible after import. Check every line and confirm readiness again; shared
+projects still require explicit **Save**. Prepared offline playback uses the
+saved timeline and does not contact LRCLIB.
+
+Network/service errors retain your work. After a rate limit, the client honors
+the service's requested waiting interval; there are no automatic retry loops.
+Manual LRC/text import remains available in editable local sets without internet.
+Revision 5 is implemented locally; the production release described above still
+contains revision 4.
+
 ## Show the lyrics
 
 Select a ready song and enter **Display mode**. Press **Start** to launch its
@@ -99,6 +123,8 @@ pnpm test
 pnpm test:browser
 pnpm test:display
 pnpm test:server
+pnpm test:lrclib
+pnpm test:lrclib:server
 backend/.venv/bin/python -m unittest discover -s backend/tests -v
 node tests/server-browser.mjs
 node tests/recognition-profile-browser.mjs
@@ -119,5 +145,6 @@ Legacy IndexedDB is `kaada-lyrics-v1`; private drafts/snapshots are isolated in
 Requirements: [TL baseline](../specs/features/timed-lyrics/spec.md) and
 [revision 3](../specs/features/timed-lyrics/revision-3.md), extended by
 [revision 4](../specs/features/timed-lyrics/revision-4.md).
+LRCLIB search requirements: [revision 5](../specs/features/timed-lyrics/revision-5.md).
 Research and evidence: [research](../docs/timed-lyrics-research.md).
 Release instructions: [deployment](deploy/README.md).

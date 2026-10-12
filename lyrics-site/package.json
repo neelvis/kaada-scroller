@@ -9,7 +9,9 @@
     "serve": "node tools/serve.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:display": "node tests/live-display-browser.mjs",
-    "test:server": "node tests/server-browser.mjs"
+    "test:server": "node tests/server-browser.mjs",
+    "test:lrclib": "node tests/lrclib-browser.mjs",
+    "test:lrclib:server": "node tests/lrclib-server-browser.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1"
