@@ -272,8 +272,9 @@ organizer checks documented earlier.
 ## Revision 5: LRCLIB search
 
 Approved on 2026-10-12 and implemented in the local KaadaScroller workspace.
-No backend data model or dependencies changed. This revision has not been
-published; the production pair remains `20261012_080618`.
+No backend data model or dependencies changed. The user subsequently authorized
+commit and deployment; paired release `20261012_202705` is live. Application
+commit: `caa009e`. Previous pair `20261012_080618` is retained for rollback.
 
 Validation used the bundled Node runtime and Chrome, with synthetic fixtures and
 an isolated temporary backend. Commands ran from `lyrics-site`:
@@ -325,3 +326,30 @@ Logs are under ignored `.work/lrclib-*.log`; screenshots are under ignored
 Matching a real recording/arrangement and checking its timing remain organizer
 review steps. Search does not automatically confirm readiness or identify the
 correct recording version.
+
+## Revision 5 production publication
+
+The feature commit `caa009e` was pushed to `origin/main`. The reviewed immutable
+package contained 45 public/service payload files and five deployment/metadata
+files. All service source and runtime hashes matched the previous paired release;
+no new database migration or dependency change was introduced. Independent
+preactivation review accepted the exact package with no material finding.
+Unprivileged preparation verified hashes and installed the locked local wheels.
+Activation selected both `20261012_202705` links and restarted only the lyrics API.
+
+- Active/enabled service, running with zero restarts; previous release retained.
+- HTTPS hashes of all 19 public top-level files matched the staged package.
+  The new module, runtime MJS and WASM MIME checks passed.
+- Main `/`, host `/health`, lyrics entry and API health returned 200. Anonymous
+  session/projects/library/song/audio returned 401.
+- An isolated Chrome context performed a real LRCLIB search (20 results),
+  previewed/imported 72 exact LRC cues, retained the unreviewed draft and reopened
+  it offline. Synthetic ready lyrics then passed offline Start without any new
+  LRCLIB request. No page errors, production API writes or uploads occurred.
+  Production organizer credentials, projects and audio were not read or modified
+  by the smoke test.
+- Evidence: ignored `.work/lrclib-deploy-*` and `.work/lrclib-production-*`;
+  live screenshot: `lyrics-site/test-results/live-lrclib.png`.
+
+Close/reopen existing lyrics tabs to adopt the new cached application shell.
+Real recording/version selection and timing review remain organizer tasks.

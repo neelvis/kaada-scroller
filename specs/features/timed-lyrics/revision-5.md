@@ -1,7 +1,7 @@
 # Timed lyrics revision 5: LRCLIB search
 
 Feature ID: TL (extension)
-Status: Implemented and locally verified — production publication pending
+Status: Implemented, verified and deployed
 Revision: 5, 2026-10-12
 Baseline: [specification](spec.md), [revision 3](revision-3.md) and
 [revision 4](revision-4.md)
@@ -105,3 +105,7 @@ TL-AC32–TL-AC35 are covered by focused helper tests and local/shared browser
 scenarios. Live browser search, responsive layout and offline notices were also
 checked. See [revision 5 verification](../../../docs/timed-lyrics-verification.md#revision-5-lrclib-search).
 The organizer must still check that each chosen recording matches the timeline.
+Paired release `20261012_202705` was activated on 2026-10-12; application commit
+`caa009e`. Live artifact/health/privacy checks and isolated browser search/import,
+offline reopening and synthetic offline playback passed. Prior pair
+`20261012_080618` remains available for rollback.

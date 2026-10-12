@@ -7,8 +7,9 @@ separate origin's root. Revision 3 is live as paired release `20261012_025323`, 
 private server API and projects. Publication evidence is recorded in the
 [verification report](../docs/timed-lyrics-verification.md). Representative sung
 recordings and a projector rehearsal remain organizer checks.
-Revision 4 adds backing audio and live display controls in this repository; it
-is live as paired release `20261012_080618` after local and production checks.
+Revision 4 added backing audio and live display controls, published as paired
+release `20261012_080618`. Revision 5 adds LRCLIB search and is now live as paired
+release `20261012_202705` after local and production checks.
 
 ## Prepare and save songs
 
@@ -73,8 +74,7 @@ saved timeline and does not contact LRCLIB.
 Network/service errors retain your work. After a rate limit, the client honors
 the service's requested waiting interval; there are no automatic retry loops.
 Manual LRC/text import remains available in editable local sets without internet.
-Revision 5 is implemented locally; the production release described above still
-contains revision 4.
+Revision 5 is published in paired release `20261012_202705`.
 
 ## Show the lyrics
 

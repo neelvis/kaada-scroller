@@ -124,3 +124,13 @@ new archives validate original and backing references. After activation, verify
 backing upload/save/reopen, synchronized Start/seek/mute, and an explicitly prepared
 project reopening offline with its backing audio. Repository validation does not
 constitute production activation.
+
+## Revision 5 release check
+
+LRCLIB search was published as paired release `20261012_202705` on 2026-10-12.
+Its backend source and locked runtime are unchanged from revision 4; no additional
+database migration is needed. Use the same paired staging/preparation/activation
+workflow. Verify the new `lrclib.js` is present in the offline-shell manifest,
+client identification/CORS, live search and safe LRC import, local reopening
+without internet and prepared-show independence from LRCLIB. Retain the preceding
+pair for rollback and close/reopen old browser tabs after publication.
