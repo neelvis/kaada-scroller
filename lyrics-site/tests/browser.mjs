@@ -25,6 +25,9 @@ try {
   await page.goto(origin + '/lyrics/');
   await page.waitForSelector('#editor h1');
   assert.equal(await page.locator('#event-view').isVisible(), false, 'audience hidden during preparation');
+  assert.equal(await page.locator('#add-song').isEnabled(), true, 'first local song can be added without signing in');
+  await page.locator('#add-song').click();
+  await page.getByLabel('Название', {exact:true}).waitFor();
   await page.evaluate(async () => {
     localStorage.setItem('nasty-piano-marker', 'keep');
     await new Promise((resolve, reject) => {
