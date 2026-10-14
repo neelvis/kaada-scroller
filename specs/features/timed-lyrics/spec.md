@@ -12,6 +12,7 @@ Accepted and deployed extension: [revision 3 — shared projects and text-guided
 Accepted extension: [revision 4 — backing tracks and live display controls](revision-4.md).
 Accepted extension: [revision 5 — LRCLIB search and safe LRC import](revision-5.md).
 Accepted and deployed extension: [revision 6 — preparation redesign and portable backing tracks](revision-6.md).
+Accepted extension: [revision 7 — display pause and resume](revision-7.md).
 Read the applicable extensions before using a superseded baseline rule.
 
 ## Purpose

@@ -552,13 +552,16 @@ function renderReview(song) {
 function renderSongActions(song) {
   const del = button(project ? 'Убрать из проекта' : 'Удалить песню', 'button danger', async () => { if (!confirm(project ? 'Убрать песню только из этого проекта?' : 'Удалить песню и локальную запись?')) return; recognition.get(song.id)?.controller?.abort(); if (!project) await Promise.all([deleteAudio(song.id), deleteBacking(song.id)]).catch(() => {}); projectEntries.delete(song.id); set = { ...set, songs: set.songs.filter((s) => s.id !== song.id) }; selectedId = null; if (project) markRemoteDirty(); else persist(); render(); });
   const controls = [del];
+  let versionHint;
   if (project) {
     const versionButton = button('Обновить версию', 'button quiet', () => adoptLatest(song));
     versionButton.disabled = !entryFor(song).songId || !sessionActive || offlineProjectOpen;
-    controls.push(node('div', { className: 'version-action' }, [versionButton, node('p', { className: 'hint', text: 'Применит последнюю версию песни из библиотеки только в этом проекте: заменит текст, таймкоды и ссылки на аудио. Остальные проекты сохранят свои версии. После обновления нажмите «Сохранить».' })]));
+    versionButton.setAttribute('aria-describedby', 'version-action-hint');
+    controls.push(versionButton);
+    versionHint = node('p', { id: 'version-action-hint', className: 'hint', text: 'Применит последнюю версию песни из библиотеки только в этом проекте: заменит текст, таймкоды и ссылки на аудио. Остальные проекты сохранят свои версии. После обновления нажмите «Сохранить».' });
     if (entryFor(song).songId) controls.push(button('Удалить из библиотеки', 'button danger', () => deleteSharedSong(song)));
   }
-  return node('div', { className: 'action-row' }, controls);
+  return node('div', { className: 'song-actions' }, [node('div', { className: 'action-row' }, controls), ...(versionHint ? [versionHint] : [])]);
 }
 function render() { renderList(); els.setName.value = set.name || 'Мой набор'; els.setName.disabled = offlineProjectOpen; $('#add-song').disabled = offlineProjectOpen; $('#show-mode').disabled = !set.songs.length; renderEditor(); updateRemoteState(); if (offlineProjectOpen) { [...els.editor.querySelectorAll('input,textarea,select,button')].forEach(control => { control.disabled = true; }); [...els.list.querySelectorAll('.song-reorder')].forEach(control => control.disabled = true); } }
 function addSong() { editorTab = 'lrclib'; const song = createSong({ language: 'ru' }); set = { ...set, songs: [...set.songs, song] }; selectedId = song.id; if (project) markRemoteDirty(); else persist(); render(); }
@@ -623,7 +626,7 @@ function updateEvent() {
   $('#event-progress').setAttribute('aria-valuetext', `${displayTime(elapsed)} из ${displayTime(song.duration)}`);
   $('#event-elapsed').textContent = displayTime(elapsed); $('#event-duration').textContent = displayTime(song.duration);
   $('#event-start').disabled = playback.starting || elapsed >= song.duration;
-  $('#event-start').textContent = playback.starting ? 'Запуск…' : 'Старт';
+  $('#event-start').textContent = playback.starting ? 'Запуск…' : playback.running ? 'Пауза' : 'Старт';
   $('#event-mute').hidden = !playback.loadAudio;
   $('#event-mute').textContent = playback.muted ? 'Включить звук' : 'Выключить звук';
   $('#event-mute').setAttribute('aria-pressed', String(Boolean(playback.muted)));
@@ -634,7 +637,8 @@ function tick() {
   if (playback.running) eventState.frame = requestAnimationFrame(tick);
 }
 function startEvent() {
-  if (!eventState.song || playback.running || playback.starting) return;
+  if (!eventState.song || playback.starting) return;
+  if (playback.running) { playback.stop(); return; }
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
   return playback.start();
 }

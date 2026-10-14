@@ -118,6 +118,20 @@ try {
   });
   assert.ok(startState.player.currentTime > 0, JSON.stringify(startState));
   console.log('live-display: event audio started');
+  // TL-AC40: pause freezes backing audio and timeline; Start resumes in place.
+  assert.equal(startState.start.text, 'Пауза');
+  await page.locator('#event-start').click();
+  assert.equal(await page.locator('#event-start').textContent(), 'Старт');
+  const paused = Number(await page.locator('#event-progress').inputValue());
+  assert.equal(await page.locator('#event-player').count(), 0, 'pause releases the stopped audio');
+  await page.waitForTimeout(300);
+  assert.equal(Number(await page.locator('#event-progress').inputValue()), paused);
+  await page.locator('#event-start').click();
+  await page.waitForFunction(position => {
+    const player = document.querySelector('#event-player');
+    return player && !player.paused && player.currentTime > position;
+  }, paused);
+  assert.equal(await page.locator('#event-start').textContent(), 'Пауза');
   await page.locator('#event-mute').click();
   assert.equal(await page.locator('#event-player').evaluate(player => player.muted), true);
   const beforeMutePosition = await page.locator('#event-player').evaluate(player => player.currentTime);
@@ -167,6 +181,19 @@ try {
   await page.waitForFunction(() => document.querySelector('#event-song-name').textContent === 'Финал');
   assert.equal(await page.locator('#event-player').count(), 0, 'song switch awaits manual Start');
   assert.equal(await page.locator('#highlight-current').isChecked(), false, 'line-emphasis preference follows song switching');
+  await page.locator('#event-start').click();
+  await page.waitForFunction(() => Number(document.querySelector('#event-progress').value) > .2);
+  assert.equal(await page.locator('#event-start').textContent(), 'Пауза');
+  await page.locator('#event-start').click();
+  const lyricsPaused = Number(await page.locator('#event-progress').inputValue());
+  await page.waitForTimeout(300);
+  assert.equal(Number(await page.locator('#event-progress').inputValue()), lyricsPaused);
+  await page.locator('#event-progress').evaluate(input => { input.value = '5'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+  assert.equal(await page.locator('#event-start').textContent(), 'Старт');
+  await page.locator('#event-start').click();
+  await page.waitForFunction(() => Number(document.querySelector('#event-progress').value) > 5);
+  assert.equal(await page.locator('#event-player').count(), 0);
+  await page.locator('#event-reset').click();
   if (await page.locator('#fullscreen').evaluate(button => Boolean(button.closest('#event-view')?.requestFullscreen))) {
     await page.locator('#fullscreen').click();
     await page.waitForTimeout(100);

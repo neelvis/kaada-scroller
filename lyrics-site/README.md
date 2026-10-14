@@ -83,6 +83,9 @@ lyrics and selected backing track together. Without a backing track, start the
 external music at the same moment. The original vocal reference is never used as
 show audio. **Mute/unmute** changes sound without pausing or shifting the timeline.
 Audio errors offer retry or an explicit lyrics-only launch.
+While playback is running, **Start** becomes **Pause**. Press it to pause lyrics
+and backing audio at the current position; press **Start** again to resume there.
+This also works without backing audio. See [display pause requirements](../specs/features/timed-lyrics/revision-7.md).
 
 The bottom progress bar shows position and duration. Click/drag it to seek both
 lyrics and backing audio; ArrowUp moves five seconds backward, ArrowDown five
