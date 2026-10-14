@@ -13,7 +13,7 @@ const password = 'ephemeral lrclib organizer password';
 const salt = Buffer.alloc(16, 13);
 await writeFile(temporary + '/credentials.json', JSON.stringify({ salt: salt.toString('hex'), hash: scryptSync(password, salt, 32).toString('hex') }));
 const env = { ...process.env, LYRICS_DATA_DIR: temporary + '/data', LYRICS_PASSWORD_FILE: temporary + '/credentials.json', LYRICS_ORIGIN: origin, LYRICS_COOKIE_PATH: '/', LYRICS_COOKIE_SECURE: 'false' };
-const api = spawn('backend/.venv/bin/python', ['-m', 'uvicorn', 'backend.app:app', '--host', '127.0.0.1', '--port', String(apiPort)], { env, stdio: 'pipe' });
+const api = spawn(process.env.LYRICS_TEST_PYTHON || 'backend/.venv/bin/python', ['-m', 'uvicorn', 'backend.app:app', '--host', '127.0.0.1', '--port', String(apiPort)], { env, stdio: 'pipe' });
 const server = spawn(process.execPath, ['tools/serve.mjs'], { env: { ...env, LYRICS_PORT: String(port), LYRICS_API_PORT: String(apiPort) }, stdio: 'pipe' });
 let logs = ''; api.stderr.on('data', value => { logs += value; }); server.stderr.on('data', value => { logs += value; });
 let browser;
@@ -21,10 +21,10 @@ const lrc = '[00:00.10]literal <tag>\n[00:01.20][00:03.40]chorus';
 let lyricRequests = 0; let changed = false; let holdSearch = false; let releaseSearch; let slowStarted;
 const result = () => [{ id: 11, trackName: 'Literal song', artistName: 'Test artist', albumName: 'Test album', duration: 5, instrumental: false, syncedLyrics: changed ? '[00:00.10]new literal\n[00:01.20]new chorus' : lrc }];
 async function login(page) { await page.locator('#login').click(); await page.locator('#login-password').fill(password); await page.locator('#login-form button[type=submit]').click(); await page.waitForSelector('#logout', { state: 'visible' }); }
-async function createProject(page, name) { await page.locator('#projects').click(); await page.locator('#new-project-name').fill(name); await page.locator('#create-project').click(); await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); }
+async function createProject(page, name) { await page.locator('#projects').click(); await page.locator('#new-project-name').fill(name); await page.locator('#create-project').click(); await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click(); }
 async function save(page) { await page.locator('#save-project').click(); await page.waitForFunction(() => document.querySelector('#remote-state').textContent === 'Сохранено на сервере'); }
 async function apiCall(page, path, method = 'GET', body) { return page.evaluate(async ({ path, method, body }) => { const remote = await import('./remote.js'); if (method !== 'GET') await remote.session(); if (method === 'POST') return remote.createProject(body); if (method === 'PUT') return remote.saveProject(path, body); return remote.getProject(path); }, { path, method, body }); }
-async function openProject(page, name) { await page.locator('#projects').click(); const row = page.locator('#project-list .project-row').filter({ hasText: name }); await row.getByRole('button', { name: 'Открыть', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); }
+async function openProject(page, name) { await page.locator('#projects').click(); const row = page.locator('#project-list .project-row').filter({ hasText: name }); await row.getByRole('button', { name: 'Открыть', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click(); }
 async function searchAndImport(page) {
   await page.locator('#lrclib-title').fill('Literal song');
   await page.locator('#lrclib-search-form').evaluate(form => form.requestSubmit());
@@ -67,8 +67,8 @@ try {
   changed = true; await searchAndImport(page); await save(page);
   assert.equal((await apiCall(page, second.id)).songs[0].song.cues[0].text, 'literal <tag>', 'second project keeps the pinned shared revision');
   await openProject(page, 'Второй закреплённый проект'); await context.setOffline(true); await page.locator('#lrclib-search-form').evaluate(form => form.requestSubmit()); await page.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('доступен при подключении')); await context.setOffline(false);
-  await page.getByRole('button', { name: 'Подготовить показ', exact: true }).click(); await page.waitForFunction(async () => (await (await import('./offline-projects.js')).preparedProjects()).length === 1);
-  await context.setOffline(true); await page.reload(); await page.locator('#projects').click(); await page.getByRole('button', { name: 'Открыть без сети', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('#projects-dialog').open);
+  await page.getByRole('button', { name: 'Сохранить локально', exact: true }).click(); await page.waitForFunction(async () => (await (await import('./offline-projects.js')).preparedProjects()).length === 1);
+  await context.setOffline(true); await page.reload(); await page.locator('#offline-projects').click(); await page.getByRole('button', { name: 'Открыть без сети', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click();
   assert.match(await page.locator('#lrclib-status').textContent(), /недоступен в автономном снимке/);
   assert.equal(await page.getByLabel('Текст строки 3', { exact: true }).inputValue(), 'chorus', 'offline snapshot retains repeated occurrences');
   const beforeStart = lyricRequests; await page.getByRole('button', { name: 'Режим показа', exact: true }).click(); await page.locator('#event-start').click(); await page.waitForFunction(() => document.querySelector('.audience-line.active')?.textContent === 'literal <tag>'); assert.equal(lyricRequests, beforeStart, 'offline Start makes no LRCLIB request');

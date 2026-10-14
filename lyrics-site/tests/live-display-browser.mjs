@@ -58,26 +58,42 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('.song-item').length === 3);
   console.log('live-display: imported initial songs');
 
-  // TL-AC31: text is the default preparation tab; switching retains draft text and audio position.
-  assert.equal(await page.locator('#text-tab').getAttribute('aria-selected'), 'true');
-  await page.locator('#original-tab').click();
-  await page.locator('#original-file').setInputFiles({ name: 'original.wav', mimeType: 'audio/wav', buffer: wave() });
-  await page.waitForFunction(() => document.querySelector('#audio-player')?.readyState >= 1);
-  await page.locator('#audio-player').evaluate(player => { player.currentTime = 3; });
-  await page.locator('#text-tab').click();
-  await page.locator('#text-panel textarea').first().fill('[00:00.20]Черновой текст остаётся');
-  await page.locator('#original-tab').click();
-  await page.locator('#text-tab').click();
-  assert.equal(await page.locator('#text-panel textarea').first().inputValue(), '[00:00.20]Черновой текст остаётся');
-  await page.locator('#original-tab').click();
-  assert.ok(Math.abs(await page.locator('#audio-player').evaluate(player => player.currentTime) - 3) < .15, 'tab switch keeps original preview position');
+  await page.evaluate(async audio => {
+    const storage = await import('./storage.js');
+    const set = await storage.loadSet();
+    const song = set.songs[0];
+    song.source = { kind: 'manual', fileName: 'original.wav' };
+    await storage.saveSet(set);
+    await storage.putAudio(song.id, new Blob([new Uint8Array(audio)], { type: 'audio/wav' }));
+  }, [...wave()]);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll('.song-item').length === 3);
+  await page.locator('.song-select').first().click();
+
+  // TL-AC37: LRCLIB is the default; LRC and plain-text drafts remain separate and the original preview stays available.
+  assert.equal(await page.locator('#lrclib-tab').getAttribute('aria-selected'), 'true');
+  assert.equal(await page.locator('#original-file').count(), 0, 'original upload is hidden');
+  assert.equal(await page.getByRole('button', { name: /Распознать MP3|Рассчитать время по тексту/ }).count(), 0, 'recognition controls are hidden');
+  await page.waitForFunction(() => document.querySelector('.text-reference audio')?.readyState >= 1);
+  await page.locator('.text-reference audio').evaluate(player => { player.currentTime = 3; });
+  await page.locator('#lrc-tab').click();
+  await page.locator('#lrc-panel textarea').fill('[00:00.20]Черновой LRC остаётся');
+  await page.locator('#plain-tab').click();
+  await page.locator('#plain-panel textarea').fill('Отдельный черновик чистого текста');
+  await page.locator('#lrclib-tab').click();
+  await page.locator('#lrc-tab').click();
+  assert.equal(await page.locator('#lrc-panel textarea').inputValue(), '[00:00.20]Черновой LRC остаётся');
+  await page.locator('#plain-tab').click();
+  assert.equal(await page.locator('#plain-panel textarea').inputValue(), 'Отдельный черновик чистого текста');
+  await page.locator('#lrclib-tab').click();
+  assert.ok(Math.abs(await page.locator('.text-reference audio').evaluate(player => player.currentTime) - 3) < .15, 'tab switch keeps original preview position');
   console.log('live-display: preparation tabs');
 
   // A separate backing file invalidates readiness, while the original remains independently selected.
   await page.locator('#backing-file').setInputFiles({ name: 'backing.wav', mimeType: 'audio/wav', buffer: wave() });
   await page.waitForFunction(() => document.querySelector('.backing-card .file-name')?.textContent.includes('backing.wav'));
   assert.equal(await page.locator('.status-pill').textContent(), 'Нужно проверить');
-  assert.equal(await page.locator('#audio-player').count(), 1, 'backing upload does not replace original preview');
+  assert.equal(await page.locator('.text-reference audio').count(), 1, 'backing upload does not replace original preview');
   await page.getByRole('button', { name: 'Подтвердить готовность', exact: true }).click();
   assert.equal(await page.locator('.status-pill').textContent(), 'Готова');
   console.log('live-display: backing and readiness');
@@ -169,8 +185,9 @@ try {
   await page.locator('#exit-event').click();
 
   // TL-AC31: adding stays directly under a short list and a long list scrolls before it.
-  const shortPlacement = await page.evaluate(() => document.querySelector('#add-song').previousElementSibling?.id);
-  assert.equal(shortPlacement, 'song-list');
+  const controlPlacement = await page.evaluate(() => ({ newSong: document.querySelector('#add-song').previousElementSibling?.id, library: document.querySelector('#add-library-song')?.previousElementSibling?.id }));
+  assert.equal(controlPlacement.newSong, 'song-list');
+  assert.equal(controlPlacement.library, 'add-song');
   const many = { ...localSet, id: 'many-live', songs: Array.from({ length: 25 }, (_, index) => readySong(`many-${index}`, `Номер ${index + 1}`)) };
   await page.locator('#set-file').setInputFiles({ name: 'many.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(many)) });
   await page.waitForFunction(() => document.querySelectorAll('.song-item').length === 25);
@@ -207,7 +224,7 @@ try {
   await page.waitForTimeout(100);
   assert.equal(await page.locator('#event-player').count(), 0, 'failed or cancelled load cannot start audio after reset');
   assert.deepEqual(errors, []);
-  console.log('PASS: revision 4 backing, display controls, navigation, tabs and responsive layout.');
+  console.log('PASS: revision 6 display controls, navigation, tabs, original preview and responsive layout.');
 } finally {
   if (browser) await browser.close();
   server.kill();

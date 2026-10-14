@@ -133,7 +133,7 @@ export class LrclibClient {
         throw problem('Не удалось связаться с LRCLIB. Проверьте подключение к интернету и повторите поиск.');
       }
       const retryDelay = retryAfterMs(response.headers?.get?.('Retry-After'), this.clock());
-      if (response.status === 429 || retryDelay !== null) {
+      if (response.status === 429 || (!response.ok && retryDelay !== null)) {
         const delay = retryDelay ?? this.fallbackRetryMs;
         this.retryAt = Math.max(this.retryAt, this.clock() + delay);
         throw problem(`LRCLIB временно ограничил поиск. Повторите после ${new Date(this.retryAt).toLocaleTimeString()}.`);
@@ -178,6 +178,12 @@ export class LrclibClient {
       }, reject);
     });
   }
+}
+
+/** An available result must contain a usable line-timed LRC, not just text. */
+export function hasSynchronizedLyrics(record) {
+  if (record?.instrumental || typeof record?.syncedLyrics !== 'string' || !record.syncedLyrics.trim()) return false;
+  try { return parseLrc(record.syncedLyrics).cues.length > 0; } catch { return false; }
 }
 
 /** Convert an explicitly selected LRCLIB record into a normal LRC replacement. */

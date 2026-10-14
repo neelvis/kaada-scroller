@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { LrclibClient, prepareLrcImport } from '../public/lrclib.js';
+import { hasSynchronizedLyrics, LrclibClient, prepareLrcImport } from '../public/lrclib.js';
 
 const record = (overrides = {}) => ({ id: 7, trackName: 'Песня & Song', artistName: 'Исполнитель', albumName: 'Album', duration: 123, instrumental: false, syncedLyrics: '[00:01.00]Припев\n[00:03.00][00:08.00]Again <tag>', ...overrides });
 const response = (body, { status = 200, headers = {} } = {}) => new Response(body, { status, headers });
+
+test('LRC availability excludes plain, malformed, empty and instrumental lyrics', () => {
+  assert.equal(hasSynchronizedLyrics(record()), true);
+  for (const syncedLyrics of [null, '', '  ', 'plain text', '[bad timestamp]broken', '[00:70]bad']) {
+    assert.equal(hasSynchronizedLyrics(record({ syncedLyrics })), false);
+  }
+  assert.equal(hasSynchronizedLyrics(record({ instrumental: true })), false);
+});
 
 test('search encodes only title and artist and uses privacy-limited request options', async () => {
   let request;
@@ -70,6 +78,20 @@ test('LRC import preserves literal repeated occurrences and fills only missing m
   assert.throws(() => prepareLrcImport(song, record({ syncedLyrics: '[00:70]bad' })), /некорректен/);
   assert.throws(() => prepareLrcImport(song, record({ instrumental: true })), /Инструментальную/);
   assert.throws(() => prepareLrcImport(song, record({ syncedLyrics: '' })), /нет синхронизированного/);
+});
+
+test('successful empty search stays empty even with Retry-After, and permits another search', async () => {
+  for (const headers of [{}, { 'Retry-After': '60' }]) {
+    let requests = 0;
+    const client = new LrclibClient({ minRequestIntervalMs: 0, fetch: async () => {
+      requests += 1;
+      return response(requests === 1 ? '[]' : JSON.stringify([record()]), { headers });
+    } });
+    assert.deepEqual(await client.search({ title: 'no such song' }), []);
+    assert.equal(client.retryAt, 0);
+    assert.equal((await client.search({ title: 'Песня & Song' })).length, 1);
+    assert.equal(requests, 2);
+  }
 });
 
 test('cancellation while reading a slow body releases the client for a new search', async () => {

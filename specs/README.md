@@ -5,3 +5,4 @@
 | TL | Timed lyrics, shared projects and song preparation | Implemented baseline; revisions documented in the feature spec | [Specification](features/timed-lyrics/spec.md) |
 | TL revision 4 | Backing tracks and live display controls | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-4.md) |
 | TL revision 5 | LRCLIB search and safe LRC import | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-5.md) |
+| TL revision 6 | Preparation redesign and portable backing tracks | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-6.md) |

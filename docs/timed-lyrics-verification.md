@@ -353,3 +353,120 @@ Activation selected both `20261012_202705` links and restarted only the lyrics A
 
 Close/reopen existing lyrics tabs to adopt the new cached application shell.
 Real recording/version selection and timing review remain organizer tasks.
+
+## Revision 6: preparation redesign and portable backing tracks
+
+Revision 6 was explicitly approved with “го” on 2026-10-13. The implementation
+was locally verified and subsequently deployed at the user’s explicit request
+“деплой”. It has not been committed. Canonical requirements:
+[revision 6](../specs/features/timed-lyrics/revision-6.md), TL-R46–R51.
+
+Validation used bundled Node v24.19.0, installed Chrome and an isolated temporary
+Python environment with the project's hash-locked API requirements. No production
+accounts, datasets, audio or server instances were changed.
+
+- `node tools/build.mjs`: passed. The ZIP module is included in the cached shell.
+- `node --test tests/*.test.mjs`: 55 passed. Includes stored/deflated ZIP parsing,
+  integrity checks, unique paths, path safety, legacy JSON, limits, missing audio,
+  malformed LRC availability and successful empty search with Retry-After.
+- `node tests/redesign-browser.mjs`: passed. Covers hidden fields and recognition
+  controls, fractional duration preservation, valid/invalid MM:SS edits, tab
+  drafts, exact audio round trips, corrupt import, an aborted real IndexedDB
+  transaction retaining previous metadata/audio, and a delayed backing replacement
+  unable to overwrite an imported file. Desktop and 375px layouts were inspected.
+- `node tests/browser.mjs`: passed. Covers 25 songs, manual timing using a previously
+  linked original, ZIP backing export, independent origins, long multiline cues,
+  offline reopening/playback and unrelated host-storage preservation.
+- `node tests/live-display-browser.mjs`: passed. Covers original preview across
+  tabs, backing playback, progress/mute/seeking, navigation and responsive layout.
+- `node tests/lrclib-browser.mjs`: passed. Covers explicit private search, disabled
+  missing/instrumental/malformed LRC, replacement safety, empty results with
+  Retry-After, genuine rate limiting, races and narrow/root-route operation.
+- `node tests/server-browser.mjs`: passed. Covers authentication, migration,
+  library pinning, two-device persistence, failed offline downloads, prepared
+  project access during stalled session discovery, private server backing export
+  without a cached copy, offline backing export and playback, project switching,
+  conflicts and logout races. `LYRICS_TEST_PYTHON` selected the isolated environment.
+- `node tests/lrclib-server-browser.mjs`: passed. Covers imported shared drafts,
+  pinned versions, offline snapshots and search/project/logout races.
+- `git diff --check`: passed. Standard `unzip -t` accepted a generated archive.
+
+An independent read-only review covered portable archive validation, atomic
+storage, transfer lifecycle, UI/authentication/offline boundaries and hidden-field
+preservation. Its malformed-LRC finding was corrected and rechecked; no material
+findings remain. Early import workspace invalidation prevents delayed audio writes
+from attaching an old backing file after replacement.
+
+The initial live diagnostic fake-title search returned HTTP 200 and `[]`; the
+reported rate limit was not reproduced. Successful responses no longer become
+rate limits solely because of a Retry-After header. Genuine HTTP 429 still produces
+retry guidance; this change does not disguise actual service restrictions.
+Recognition-quality and event-rehearsal limitations from earlier revisions remain.
+
+
+### Revision 6 production activation
+
+On 2026-10-13 the user explicitly requested deployment. Paired release
+`20261013_193539` is active at `https://nasty-edu.online/lyrics/`. It was built from
+unchanged locally verified application fingerprints and prepared with the normal
+paired deployment workflow. All 22 backend/source/locked-runtime inputs matched
+prior pair `20261012_202705`; no new database migration was introduced. Both
+prior release directories were retained for rollback.
+
+After activation, live HTTPS hashes of the shell/editor/portable-storage/LRCLIB
+and playback modules matched the staged artifact. Entry redirect, JS/MJS/WASM
+MIME, API health, anonymous project/audio rejection, main site and host health
+passed. An isolated fresh Chrome context exercised the shipped editor, disabled
+Projects without login, MM:SS duration, hidden original controls, a simulated
+successful empty LRCLIB response carrying Retry-After, synthetic local WAV upload,
+exact ZIP audio export/import, desktop/mobile layout and offline reopening with
+backing playback. No private server records were changed. Authenticated production
+library edits were not attempted; their behavior was tested locally against the
+unchanged API. Browser screenshots and the smoke script are in ignored
+`lyrics-site/test-results/deploy-revision-6/`; concise logs are in
+`/tmp/kaada-redesign-deploy-smoke.log`.
+
+Existing tabs must close and reopen to adopt the new service-worker shell.
+
+## Navigation and first-activation confirmation follow-up — 2026-10-13
+
+Requested corrections are implemented locally: display entry immediately above
+the sidebar songs, no automatic editor selection on load/import/open/delete,
+selected-song-only editing, preserved selection on save, Projects hidden while
+logged out, and first-activation confirmation after committing a focused edit.
+Offline songs can be selected while editing and reordering remain disabled.
+
+Validation: portable build, all 55 unit tests, redesign browser, general browser,
+live display browser, LRCLIB browser and LRCLIB server browser passed. Redesign
+regressions cover the initial placeholder, reload, deletion, show entry position,
+logged-out visibility and confirming freshly edited lyric text with one click.
+Diff whitespace checks passed. Backend browser checks use the existing isolated
+Python environment at `/tmp/kaada-redesign-api-venv/bin/python` because the default
+backend `.venv` link points to a missing temporary directory.
+At the local verification checkpoint, these follow-up changes had not yet been deployed. Existing unrelated work was
+preserved; no commit was requested.
+
+Scheduled continuation completed on 2026-10-14 at 03:00 Moscow time. The full
+server browser suite passed, including migration, saved selection, offline
+project switching, conflicts and logout races. Tests now explicitly select a
+song where editing is expected and retain the placeholder after logout.
+A further readiness regression passed: invalid pending text is rejected and its
+focused valid correction is confirmed on the first activation. Desktop visual
+inspection confirms the sidebar entry position, placeholder and hidden Projects.
+All requested local changes and validation were complete at that checkpoint.
+
+## Navigation follow-up deployment — 2026-10-14
+
+The user explicitly authorized ignoring `work/`, committing/pushing the completed
+changes and deploying them. Paired release `20261014_132817` is active at
+`https://nasty-edu.online/lyrics/`. The prior pair `20261013_193539` is retained
+for rollback. All 22 backend and locked runtime inputs match the prior release;
+no new database migration or server behavior change is introduced.
+
+Preparation and activation succeeded. HTTPS checks verified live asset hashes,
+redirects, JavaScript/WASM MIME, API/main-site health and anonymous private-data
+rejection. Isolated production browser checks passed: hidden Projects without
+login, display entry above songs, placeholder before selection, confirmation of
+a focused lyric edit with one click, ZIP backing round trip, narrow layout and
+offline backing playback after reopening. No private server projects were changed.
+Close and reopen existing lyrics tabs to adopt the new cached shell.

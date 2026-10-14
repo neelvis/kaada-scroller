@@ -1,4 +1,5 @@
 import { exportSet, importSet } from './core.js';
+import { portableLimits } from './portable.js';
 
 const DB_NAME = 'kaada-lyrics-v1';
 const DB_VERSION = 2;
@@ -62,17 +63,35 @@ export async function saveSet(set) {
   return withDb((db) => transaction(db, SET_STORE, 'readwrite', (store) => store.put(clean, SET_KEY)));
 }
 
-/** Imported sets exclude audio; replace both stores atomically to require explicit relinking. */
-export async function replaceStoredSet(set) {
+/** Replace the set and its backing audio together; originals are excluded from portable imports. */
+export async function replaceStoredSet(set, backingAudio = new Map()) {
   const clean = importSet(exportSet(set));
+  if (!(backingAudio instanceof Map)) throw new Error('Минусовки должны быть переданы как Map.');
+  const audio = new Map(backingAudio);
+  const songIds = new Set(clean.songs.map(song => song.id));
+  let total = 0;
+  for (const [songId, blob] of audio) {
+    if (!songIds.has(songId)) throw new Error('Минусовка не принадлежит импортируемому набору.');
+    if (!globalThis.Blob || !(blob instanceof globalThis.Blob) || !blob.size) throw new Error('Минусовка должна быть непустым Blob.');
+    if (blob.size > portableLimits.track) throw new Error('Минусовка больше 150 МиБ.');
+    total += blob.size;
+    if (total > portableLimits.archive) throw new Error('Минусовки занимают больше 1 ГиБ.');
+  }
   return withDb(db => new Promise((resolve, reject) => {
     const tx = db.transaction([SET_STORE, AUDIO_STORE, BACKING_STORE], 'readwrite');
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('Не удалось импортировать набор.'));
     tx.onabort = () => reject(tx.error || new Error('Импорт отменён.'));
-    tx.objectStore(SET_STORE).put(clean, SET_KEY);
-    tx.objectStore(AUDIO_STORE).clear();
-    tx.objectStore(BACKING_STORE).clear();
+    try {
+      tx.objectStore(SET_STORE).put(clean, SET_KEY);
+      tx.objectStore(AUDIO_STORE).clear();
+      const backing = tx.objectStore(BACKING_STORE);
+      backing.clear();
+      for (const [songId, blob] of audio) backing.put(blob, songId);
+    } catch (error) {
+      try { tx.abort(); } catch {}
+      reject(error);
+    }
   }));
 }
 

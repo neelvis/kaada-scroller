@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { chromium } from 'playwright';
+import { importPortableSet } from '../public/portable.js';
 
 const port = Number(process.env.LYRICS_SERVER_TEST_PORT || 8104);
 const apiPort = port + 1;
@@ -15,7 +16,7 @@ await writeFile(temporary + '/credentials.json', JSON.stringify({ salt: salt.toS
 const output = process.env.LYRICS_TEST_OUTPUT || 'test-results/server';
 await mkdir(output, { recursive: true });
 const env = { ...process.env, LYRICS_DATA_DIR: temporary + '/data', LYRICS_PASSWORD_FILE: temporary + '/credentials.json', LYRICS_ORIGIN: origin, LYRICS_COOKIE_PATH: '/', LYRICS_COOKIE_SECURE: 'false' };
-const api = spawn('backend/.venv/bin/python', ['-m', 'uvicorn', 'backend.app:app', '--host', '127.0.0.1', '--port', String(apiPort)], { env, stdio: 'pipe' });
+const api = spawn(process.env.LYRICS_TEST_PYTHON || 'backend/.venv/bin/python', ['-m', 'uvicorn', 'backend.app:app', '--host', '127.0.0.1', '--port', String(apiPort)], { env, stdio: 'pipe' });
 const server = spawn(process.execPath, ['tools/serve.mjs'], { env: { ...env, LYRICS_PORT: String(port), LYRICS_API_PORT: String(apiPort) }, stdio: 'pipe' });
 let logs = ''; api.stderr.on('data', data => { logs += data; }); server.stderr.on('data', data => { logs += data; });
 let browser;
@@ -41,7 +42,7 @@ async function apiCall(page, path, method = 'GET', body) {
 }
 async function openProject(page, name) {
   await page.locator('#projects').click(); const row = page.locator('#project-list .project-row').filter({ hasText: name }).filter({ hasNot: page.getByText('подготовлен для показа') });
-  await row.getByRole('button', { name: 'Открыть', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('#projects-dialog').open);
+  await row.getByRole('button', { name: 'Открыть', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click();
 }
 async function save(page) {
   await page.locator('#save-project').click(); await page.waitForFunction(() => document.querySelector('#remote-state').textContent === 'Сохранено на сервере');
@@ -67,7 +68,7 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('.song-item').length === 25);
   await page.evaluate(async bytes => { const storage = await import('./storage.js'); await storage.putAudio('legacy-0', new Blob([new Uint8Array(bytes)], { type: 'audio/wav' })); }, [...wave()]);
   await page.locator('#projects').click(); await page.locator('#migration-audio').check(); await page.locator('#migrate-legacy').click();
-  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open);
+  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click();
   assert.equal(await page.locator('.song-item').count(), 25);
   let projects = (await apiCall(page, 'projects')).data.projects;
   const id = projects.find(item => item.name === 'Концерт 25').id;
@@ -78,7 +79,7 @@ try {
   const uploadsAfterMigration = uploads;
   assert.equal(await page.evaluate(async () => (await (await import('./storage.js')).loadSet()).songs[0].id), 'legacy-0');
   await page.locator('#projects').click(); await page.locator('#migrate-legacy').click();
-  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open);
+  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click();
   assert.equal((await apiCall(page, 'projects')).data.projects.length, 1, 'migration retry creates no duplicate project');
   assert.equal((await apiCall(page, `projects/${id}`)).data.songs[0].audioId, audioId);
   assert.equal(uploads, uploadsAfterMigration, 'completed migration lookup avoids repeated audio upload/quota');
@@ -98,12 +99,12 @@ try {
   // Restore readiness after editing, then save an explicit immutable offline snapshot.
   await page.getByRole('button', { name: 'Подтвердить готовность', exact: true }).click(); await save(page);
   await page.waitForFunction(() => document.querySelector('#offline-state').textContent.includes('Готово'));
-  await page.getByRole('button', { name: 'Подготовить показ', exact: true }).click();
+  await page.getByRole('button', { name: 'Сохранить локально', exact: true }).click();
   await page.waitForFunction(async () => (await (await import('./offline-projects.js')).preparedProjects()).length === 1);
   await page.screenshot({ path: output + '/projects.png', fullPage: true });
-  await first.setOffline(true); await page.reload(); await page.locator('#projects').click();
+  await first.setOffline(true); await page.reload(); await page.locator('#offline-projects').click();
   await page.getByRole('button', { name: 'Открыть без сети', exact: true }).click();
-  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open);
+  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click();
   assert.equal(await page.getByLabel('Текст строки 1', { exact: true }).isDisabled(), true);
   assert.equal(await page.locator('.song-reorder:not(:disabled)').count(), 0);
   await page.getByRole('button', { name: 'Режим показа', exact: true }).click(); await page.locator('#event-start').click();
@@ -119,18 +120,31 @@ try {
   assert.equal(await page.evaluate(async () => (await (await import('./storage.js')).loadSet()).songs.length), 25);
   await login(page);
   await page.locator('#projects').click(); await page.locator('#new-project-name').fill('Новая загрузка'); await page.locator('#create-project').click();
-  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open);
+  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click();
   await page.locator('#add-song').click();
   await page.getByLabel('Название', { exact: true }).fill('Новая песня'); await page.getByLabel('Название', { exact: true }).blur();
-  await page.locator('#original-file').setInputFiles({ name: 'original.wav', mimeType: 'audio/x-wav', buffer: wave() });
-  await page.waitForFunction(() => document.querySelector('.file-name')?.textContent === 'original.wav');
-  await page.locator('textarea').first().fill('[00:00.15]Новая строка\n[00:02.00]Ещё строка');
+  // Seed a previously linked original through the API: recognition inputs are hidden.
+  await save(page);
+  await page.evaluate(async bytes => {
+    const remote = await import('./remote.js');
+    const id = (await remote.listProjects()).projects.find(item => item.name === 'Новая загрузка').id;
+    const snapshot = await remote.getProject(id);
+    const uploaded = await remote.uploadAudio(new File([new Uint8Array(bytes)], 'original.wav', { type: 'audio/wav' }));
+    snapshot.songs[0].audioId = uploaded.id;
+    snapshot.songs[0].song.source = { kind: 'audio', fileName: 'original.wav' };
+    await remote.saveProject(id, { revision: snapshot.revision, name: snapshot.name, songs: snapshot.songs });
+  }, [...wave()]);
+  await page.reload(); await openProject(page, 'Новая загрузка');
+  await page.waitForFunction(() => document.querySelector('#audio-player')?.readyState >= 1);
+  assert.equal(await page.locator('#original-file').count(), 0);
+  await page.getByRole('tab', { name: 'Свой LRC', exact: true }).click();
+  await page.getByLabel('LRC с таймкодами', { exact: true }).fill('[00:00.15]Новая строка\n[00:02.00]Ещё строка');
   await page.getByRole('button', { name: 'Заменить из LRC', exact: true }).click();
-  await page.getByLabel('Длительность, секунды', { exact: true }).fill('5'); await page.getByLabel('Длительность, секунды', { exact: true }).blur();
+  await page.getByLabel('Длительность, ММ:СС', { exact: true }).fill('00:05'); await page.getByLabel('Длительность, ММ:СС', { exact: true }).blur();
   await page.getByRole('button', { name: 'Подтвердить готовность', exact: true }).click(); await save(page);
   const newId = (await apiCall(page, 'projects')).data.projects.find(item => item.name === 'Новая загрузка').id;
   assert.ok((await apiCall(page, `projects/${newId}`)).data.songs[0].audioId);
-  await openProject(other, 'Новая загрузка'); assert.equal(await other.locator('#original-panel .file-name').textContent(), 'original.wav');
+  await openProject(other, 'Новая загрузка'); await other.waitForFunction(() => document.querySelector('#audio-player')?.readyState >= 1); assert.equal(await other.locator('#original-tab').count(), 0);
   assert.equal(await other.getByLabel('Текст строки 1', { exact: true }).inputValue(), 'Новая строка');
   // Backing is separate from the original, revision-pinned, and cached for the show.
   await page.locator('#backing-file').setInputFiles({ name: 'backing.wav', mimeType: 'audio/wav', buffer: wave(6) });
@@ -153,12 +167,17 @@ try {
   assert.equal((await apiCall(page, `projects/${backingPinned.id}`)).data.songs[0].backingAudioId, firstBacking);
   const offlineBackingId = withBacking.songs[0].backingAudioId;
   await page.evaluate(async id => (await import('./offline-projects.js')).removePrivateAudio(`backing:${id}`), offlineBackingId);
+  // Export resolves the private server track even after removing its browser cache.
+  const onlineDownload = page.waitForEvent('download'); await page.locator('#export-set').click();
+  const onlineArchive = await importPortableSet(new Blob([await readFile(await (await onlineDownload).path())]));
+  assert.equal(onlineArchive.backingAudio.size, 1);
+  assert.deepEqual(Buffer.from(await onlineArchive.backingAudio.values().next().value.arrayBuffer()), wave(7));
   await page.route(`**/api/audio/${offlineBackingId}`, route => route.abort());
-  await page.getByRole('button', { name: 'Подготовить показ', exact: true }).click();
+  await page.getByRole('button', { name: 'Сохранить локально', exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some(item => item.textContent.includes('Не удалось подготовить снимок')));
   assert.equal(await page.evaluate(async () => (await (await import('./offline-projects.js')).preparedProjects()).length), 0, 'failed backing download cannot report a prepared show');
   await page.unroute(`**/api/audio/${offlineBackingId}`);
-  await page.getByRole('button', { name: 'Подготовить показ', exact: true }).click();
+  await page.getByRole('button', { name: 'Сохранить локально', exact: true }).click();
   await page.waitForFunction(async () => (await (await import('./offline-projects.js')).preparedProjects()).length === 1);
   await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some(item => item.textContent.includes('Снимок проекта и минусовки подготовлены')));
   const stalled = await first.newPage();
@@ -166,21 +185,24 @@ try {
   const sessionGate = new Promise(resolve => { releaseSession = resolve; });
   await stalled.route('**/api/session', async route => { await sessionGate; await route.abort().catch(() => {}); });
   await stalled.goto(origin + '/lyrics/');
-  await stalled.locator('#projects').click({ timeout: 10000 });
+  await stalled.locator('#offline-projects').click({ timeout: 10000 });
   await stalled.getByRole('button', { name: 'Открыть без сети', exact: true }).click();
   await stalled.waitForFunction(() => !document.querySelector('#projects-dialog').open);
   await stalled.getByRole('button', { name: 'Режим показа', exact: true }).click(); await stalled.locator('#event-start').click();
   await stalled.waitForFunction(() => document.querySelector('#event-player')?.currentTime > .15);
   await stalled.close(); releaseSession();
-  await first.setOffline(true); await page.reload(); await page.locator('#projects').click();
+  await first.setOffline(true); await page.reload(); await page.locator('#offline-projects').click();
   await page.getByRole('button', { name: 'Открыть без сети', exact: true }).click();
-  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open);
+  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click();
+  const offlineDownload = page.waitForEvent('download'); await page.locator('#export-set').click();
+  const offlineArchive = await importPortableSet(new Blob([await readFile(await (await offlineDownload).path())]));
+  assert.deepEqual(Buffer.from(await offlineArchive.backingAudio.values().next().value.arrayBuffer()), wave(7));
   await page.getByRole('button', { name: 'Режим показа', exact: true }).click(); await page.locator('#event-start').click();
   await page.waitForFunction(() => document.querySelector('#event-player')?.currentTime > .15);
   assert.equal(await page.locator('#event-player').evaluate(audio => audio.duration), 7);
-  await page.locator('#event-menu-toggle').click(); await page.locator('#event-projects').click();
+  await page.locator('#event-menu-toggle').click(); await page.locator('#event-offline-projects').click();
   await page.getByRole('button', { name: 'Открыть без сети', exact: true }).click();
-  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open);
+  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click();
   assert.equal(await page.locator('#event-view').isVisible(), true);
   assert.equal(await page.locator('#event-player').count(), 0, 'offline project switch stops audio and awaits Start');
   await page.locator('#exit-event').click(); await first.setOffline(false); await page.reload();
@@ -189,7 +211,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#event-player')?.currentTime > .15);
   await page.locator('#event-menu-toggle').click(); await page.locator('#event-projects').click();
   await page.locator('#project-list .project-row').filter({ hasText: 'Минусовка закреплена' }).getByRole('button', { name: 'Открыть', exact: true }).click();
-  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open);
+  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click();
   assert.equal(await page.locator('#event-view').isVisible(), true);
   assert.equal(await page.locator('#event-player').count(), 0, 'online project switch stops audio and awaits Start');
   await page.locator('#event-start').click(); await page.waitForFunction(() => document.querySelector('#event-player')?.currentTime > .15);
@@ -218,7 +240,7 @@ try {
   await page.locator('#projects').click();
   await page.locator('#project-list .project-row').filter({ hasText: 'Концерт 25' }).getByRole('button', { name: 'Открыть', exact: true }).click(); await openReady;
   await page.locator('#project-list .project-row').filter({ hasText: 'Новая загрузка' }).getByRole('button', { name: 'Открыть', exact: true }).click();
-  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); releaseOpen(); await page.waitForTimeout(150); await page.unroute(`**/api/projects/${id}`);
+  await page.waitForFunction(() => !document.querySelector('#projects-dialog').open); if (await page.locator('.song-select').first().isVisible()) await page.locator('.song-select').first().click(); releaseOpen(); await page.waitForTimeout(150); await page.unroute(`**/api/projects/${id}`);
   assert.equal(await page.locator('#set-name').inputValue(), 'Новая загрузка');
   // An authenticated read already in flight cannot repopulate private lyrics after logout.
   let releasePrivate, privateFetched;
@@ -229,6 +251,8 @@ try {
   await page.locator('#projects-dialog').press('Escape'); await page.locator('#logout').click(); await page.waitForSelector('#login', { state: 'visible' });
   releasePrivate(); await page.waitForTimeout(150); await page.unroute(`**/api/projects/${newId}`);
   assert.equal(await page.locator('#set-name').inputValue(), 'Концерт 25');
+  assert.equal(await page.locator('#editor h1').textContent(), 'Выберите песню для редактирования');
+  await page.locator('.song-select').first().click();
   assert.equal(await page.getByLabel('Текст строки 1', { exact: true }).inputValue(), 'Первая строка', 'late private response cannot restore server data');
   await login(page);
   await openProject(page, 'Новая загрузка');

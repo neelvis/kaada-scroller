@@ -18,22 +18,26 @@
       <div class="topbar-actions">
         <span class="offline-state" id="offline-state" aria-live="polite">Проверка автономной работы…</span>
         <span class="remote-state" id="remote-state" aria-live="polite">Локальный набор</span>
-        <button class="button quiet" id="projects" type="button">Проекты</button>
+        <button class="button quiet" id="projects" type="button" hidden disabled>Проекты</button>
         <button class="button quiet" id="save-project" type="button" hidden>Сохранить</button>
         <button class="button quiet" id="login" type="button">Войти</button>
         <button class="button quiet" id="logout" type="button" hidden>Выйти</button>
         <button class="button quiet" id="clear-downloaded" type="button" hidden>Очистить загруженный проект</button>
         <button class="button quiet" id="import-set" type="button">Импорт</button>
         <button class="button quiet" id="export-set" type="button">Экспорт</button>
-        <input id="set-file" type="file" accept="application/json,.json" hidden>
+        <input id="set-file" type="file" accept="application/json,application/zip,.json,.zip" hidden>
       </div>
     </header>
 
     <section class="workspace" id="preparation-view">
       <aside class="song-list-panel" aria-label="Список песен">
         <div class="panel-heading"><div><p class="eyebrow">Набор</p><input id="set-name" class="set-name" aria-label="Название набора" value="Мой набор"></div><span class="song-count" id="song-count">0 песен</span></div>
+        <button class="button primary" id="show-mode" type="button" disabled>Режим показа</button>
         <div class="song-list" id="song-list"></div>
-        <button class="button add-song" id="add-song" type="button">+ Добавить песню</button>
+        <button class="button add-song" id="add-song" type="button">+ Новая песня</button>
+        <button class="button add-song" id="add-library-song" type="button" disabled>+ Из библиотеки</button>
+        <button class="button add-song" id="prepare-offline" type="button" disabled>Сохранить локально</button>
+        <button class="button add-song" id="offline-projects" type="button" hidden>Локальные проекты</button>
       </aside>
 
       <section class="editor" id="editor" aria-live="polite"></section>
@@ -60,14 +64,15 @@
         <div class="event-menu-content">
           <div class="event-menu-heading"><div><p class="eyebrow">Проект</p><h2 id="event-menu-title"><span id="event-project-name"></span></h2></div><button class="button quiet" id="event-menu-close" type="button" aria-label="Закрыть меню">×</button></div>
           <div class="event-menu-songs" id="event-menu-songs" aria-label="Песни проекта"></div>
-          <button class="button quiet event-projects" id="event-projects" type="button">Другой проект</button>
+          <button class="button quiet event-projects" id="event-projects" type="button" hidden disabled>Другой проект</button>
+          <button class="button quiet event-projects" id="event-offline-projects" type="button" hidden>Локальные проекты</button>
         </div>
       </dialog>
     </section>
   </main>
   <dialog id="confirm-dialog"><form method="dialog"><h2 id="confirm-title">Заменить текст?</h2><p id="confirm-text"></p><div class="dialog-actions"><button class="button quiet" value="cancel">Отмена</button><button class="button primary" id="confirm-ok" value="confirm">Заменить</button></div></form></dialog>
   <dialog id="login-dialog"><form id="login-form"><h2>Вход организатора</h2><p>Введите общий пароль школы. Он не сохраняется в браузере.</p><label class="field">Пароль<input id="login-password" type="password" autocomplete="current-password" required></label><p class="dialog-error" id="login-error" hidden></p><div class="dialog-actions"><button class="button quiet" value="cancel" formmethod="dialog">Отмена</button><button class="button primary" type="submit">Войти</button></div></form></dialog>
-  <dialog id="projects-dialog"><form method="dialog"><h2>Проекты</h2><p>Проекты сохраняются на сервере. Подготовленные снимки доступны для показа без сети.</p><div id="project-list" class="project-list"></div><label class="field">Новый проект<input id="new-project-name" maxlength="120" placeholder="Например, Осенний концерт"></label><label class="migration-choice"><input id="migration-audio" type="checkbox"> При переносе набора загрузить оригиналы и минусовки</label><div class="dialog-actions"><button class="button quiet" id="migrate-legacy" type="button">Перенести локальный набор</button><button class="button quiet" value="cancel">Закрыть</button><button class="button primary" id="create-project" type="button">Создать проект</button></div></form></dialog>
+  <dialog id="projects-dialog"><form method="dialog"><h2>Проекты</h2><p>Проекты сохраняются на сервере. Подготовленные снимки доступны для показа без сети.</p><div id="project-list" class="project-list"></div><label class="field" id="new-project-field">Новый проект<input id="new-project-name" maxlength="120" placeholder="Например, Осенний концерт"></label><label class="migration-choice"><input id="migration-audio" type="checkbox"> При переносе набора загрузить оригиналы и минусовки</label><div class="dialog-actions"><button class="button quiet" id="migrate-legacy" type="button">Перенести локальный набор</button><button class="button quiet" value="cancel">Закрыть</button><button class="button primary" id="create-project" type="button">Создать проект</button></div></form></dialog>
   <dialog id="library-dialog"><form method="dialog"><h2>Общая библиотека</h2><p>Добавьте уже сохранённую песню в проект. У проекта останется выбранная версия таймлайна.</p><label class="field">Поиск<input id="library-search" placeholder="Название или исполнитель"></label><div id="library-list" class="project-list"></div><div class="dialog-actions"><button class="button quiet" value="cancel">Закрыть</button></div></form></dialog>
   <template id="empty-state"><div class="empty-state"><span class="empty-note">♪</span><h1 data-empty-title></h1><p data-empty-copy></p><button class="button primary" type="button" data-add-song hidden>Добавить песню</button><button class="button primary" type="button" data-empty-login hidden>Войти организатору</button><button class="button quiet" type="button" data-empty-project hidden>Создать проект</button></div></template>
   <script type="module" src="./app.js"></script>

@@ -134,3 +134,24 @@ workflow. Verify the new `lrclib.js` is present in the offline-shell manifest,
 client identification/CORS, live search and safe LRC import, local reopening
 without internet and prepared-show independence from LRCLIB. Retain the preceding
 pair for rollback and close/reopen old browser tabs after publication.
+
+
+## Revision 6 release check
+
+Preparation redesign and portable ZIP backing transfer were published as paired
+release `20261013_193539` on 2026-10-13. Backend source and locked runtime match
+revision 5; no additional schema change is introduced. Use the established paired
+workflow and retain a previous pair for rollback. Verify `portable.js` is in the
+cached shell; check login gating, MM:SS duration, the three import tabs, disabled
+unavailable LRC, ZIP audio round trips, responsive layout and offline backing
+playback. Close and reopen existing tabs to adopt the new shell. Production smoke
+checks use synthetic local files in an isolated browser and do not mutate the
+school's private projects.
+
+## Navigation follow-up release
+
+Paired release `20261014_132817` on 2026-10-14 publishes sidebar display entry,
+explicit song selection, first-activation timeline confirmation and hidden
+Projects before login. Backend/runtime hashes are unchanged from revision 6.
+HTTPS and isolated production browser checks passed, including offline backing
+playback. The prior paired release `20261013_193539` remains available for rollback.

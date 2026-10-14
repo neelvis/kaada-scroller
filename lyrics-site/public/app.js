@@ -1,7 +1,8 @@
-import { createSong, cueAt, exportSet, formatTime, importSet, invalidateReview, parseLrc, parseTime, validateSong } from './core.js';
+import { createSong, cueAt, exportSet, formatTime, invalidateReview, parseLrc, parseTime, validateSong } from './core.js';
 import { deleteAudio, deleteBacking, getAudio, getBacking, loadSet, putAudio, putBacking, replaceStoredSet, saveSet } from './storage.js';
 import { Playback } from './playback.js';
-import { LrclibClient, prepareLrcImport } from './lrclib.js';
+import { exportPortableSet, importPortableSet } from './portable.js';
+import { hasSynchronizedLyrics, LrclibClient, prepareLrcImport } from './lrclib.js';
 import { recognizeFile } from './recognition.js';
 import * as remote from './remote.js';
 import { cacheProject, clearPrivateProjectCache, getDraft, getPrivateAudio, openCachedProject, preparedProjects, putPrivateAudio, removeDraft, removePreparedProject, removePrivateAudio, saveDraft } from './offline-projects.js';
@@ -36,8 +37,9 @@ const sourceGeneration = new Map();
 let workspaceGeneration = 0;
 const recognitionProfiles = new Map();
 const backingGeneration = new Map();
-let editorTab = 'text';
+let editorTab = 'lrclib';
 let editorTabSongId = null;
+const importDrafts = new Map();
 let backingPreviewId = null;
 let backingPreviewUrl = null;
 let backingPreviewGeneration = 0;
@@ -78,6 +80,10 @@ function changeSong(songId, change) {
 function markRemoteDirty() { remoteDirty = true; remoteFailed = false; editGeneration += 1; if (project) privateMutation(() => saveDraft(project, projectPayload())).catch(() => {}); updateRemoteState(); }
 function updateRemoteState() {
   els.clearDownloaded.hidden = !offlineProjectOpen;
+  const libraryButton = $('#add-library-song');
+  if (libraryButton) libraryButton.disabled = !project || !sessionActive || offlineProjectOpen;
+  const prepareButton = $('#prepare-offline');
+  if (prepareButton) prepareButton.disabled = !project || !sessionActive || offlineProjectOpen || remoteDirty;
   if (!project) { els.remote.textContent = legacySet.songs.length ? 'Локальный набор — перенесите на сервер' : 'Создайте серверный проект'; els.save.hidden = true; return; }
   els.save.hidden = false;
   els.remote.textContent = remoteFailed ? 'Сохранение не удалось — черновик сохранён' : remoteDirty ? 'Есть несохранённые изменения' : 'Сохранено на сервере';
@@ -117,7 +123,7 @@ function setBackingPreview(song) {
     backingPreviewUrl = URL.createObjectURL(blob); backingPreview.src = backingPreviewUrl;
   }).catch(error => { if (generation === backingPreviewGeneration) toast(`Не удалось открыть минусовку: ${error.message}`); });
 }
-function cancelRecognition() { cancelLrclib(); workspaceGeneration += 1; for (const job of recognition.values()) job.controller?.abort(); recognition.clear(); }
+function cancelRecognition({ preserveDrafts = false } = {}) { cancelLrclib(); if (!preserveDrafts) importDrafts.clear(); editorTabSongId = null; workspaceGeneration += 1; for (const job of recognition.values()) job.controller?.abort(); recognition.clear(); }
 function entryFor(song) { return projectEntries.get(song.id) || {}; }
 function projectPayload() {
   return {
@@ -125,12 +131,14 @@ function projectPayload() {
     songs: set.songs.map(song => ({ ...entryFor(song), song: structuredClone(song) })),
   };
 }
-function adoptProject(next) {
+function adoptProject(next, { preserveSelection = false } = {}) {
+  const previousSelection = preserveSelection && project?.id === next.id ? selectedId : null;
+  const selectedIndex = previousSelection ? set.songs.findIndex(song => song.id === previousSelection) : -1;
   cancelLrclib();
   project = next;
   projectEntries = new Map((next.songs || []).map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null }]));
   set = { schemaVersion: 1, id: next.id, name: next.name, songs: (next.songs || []).map(entry => entry.song) };
-  selectedId = set.songs[0]?.id || null;
+  selectedId = set.songs.some(song => song.id === previousSelection) ? previousSelection : (set.songs[selectedIndex]?.id || null);
   remoteDirty = false; remoteFailed = false; updateRemoteState(); render();
 }
 function rebaseSavedProjectMetadata(saved, sent) {
@@ -151,17 +159,17 @@ function rebaseSavedProjectMetadata(saved, sent) {
 async function saveRemoteProject() {
   if (!project || !sessionActive || !remoteDirty) return;
   const generation = editGeneration; const savingProjectId = project.id; const draft = projectPayload();
-  try { const saved = await remote.saveProject(savingProjectId, draft); if (!sessionActive || project?.id !== savingProjectId) return; if (generation !== editGeneration) { rebaseSavedProjectMetadata(saved, draft); remoteDirty = true; await privateMutation(() => saveDraft(project, projectPayload())); updateRemoteState(); toast('Сервер сохранил предыдущую версию. Новые правки остались в черновике.'); return; } await privateMutation(() => removeDraft(savingProjectId)); adoptProject(saved); toast('Проект сохранён на сервере.'); }
+  try { const saved = await remote.saveProject(savingProjectId, draft); if (!sessionActive || project?.id !== savingProjectId) return; if (generation !== editGeneration) { rebaseSavedProjectMetadata(saved, draft); remoteDirty = true; await privateMutation(() => saveDraft(project, projectPayload())); updateRemoteState(); toast('Сервер сохранил предыдущую версию. Новые правки остались в черновике.'); return; } await privateMutation(() => removeDraft(savingProjectId)); adoptProject(saved, { preserveSelection: true }); toast('Проект сохранён на сервере.'); }
   catch (error) { if (!sessionActive || project?.id !== savingProjectId) return; remoteFailed = true; updateRemoteState(); if (error.code === 'conflict') toast('На сервере есть более новая версия. Черновик оставлен; откройте проект заново или сохраните после сверки.'); else toast(error.message); }
 }
 async function openProject(id, { cached = false } = {}) {
   if (cached && localStorage.getItem('lyrics-v2-pending-logout')) return toast('Сначала завершите очистку данных выхода: откройте приложение заново.');
   if (remoteDirty && !confirm('Есть несохранённые изменения. Открыть другой проект без сохранения?')) return;
-  editorTab = 'text';
+  editorTab = 'lrclib';
   const fromDisplay = !els.event.hidden;
   if (fromDisplay) playback.stop();
   cancelRecognition(); const workspaceRun = workspaceGeneration; const sessionAtStart = sessionActive; clearAudioPreview();
-  try { const next = cached ? await openCachedProject(id) : await remote.getProject(id); if (workspaceGeneration !== workspaceRun || sessionActive !== sessionAtStart) return; if (!next) throw new Error('Подготовленный снимок не найден.'); offlineProjectOpen = cached; adoptProject(next); if (!cached) { const draft = await getDraft(id); if (workspaceGeneration !== workspaceRun || sessionActive !== sessionAtStart) return; if (draft && confirm('Для этого проекта есть несохранённый черновик на этом устройстве. Открыть его?')) { project = draft.project; projectEntries = new Map(draft.payload.songs.map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null }])); set = { ...set, name: draft.payload.name, songs: draft.payload.songs.map(entry => entry.song) }; selectedId = set.songs[0]?.id || null; remoteDirty = true; updateRemoteState(); render(); } } $('#projects-dialog').close(); toast(cached ? 'Открыт подготовленный автономный снимок.' : 'Проект открыт.'); }
+  try { const next = cached ? await openCachedProject(id) : await remote.getProject(id); if (workspaceGeneration !== workspaceRun || sessionActive !== sessionAtStart) return; if (!next) throw new Error('Подготовленный снимок не найден.'); offlineProjectOpen = cached; adoptProject(next); if (!cached) { const draft = await getDraft(id); if (workspaceGeneration !== workspaceRun || sessionActive !== sessionAtStart) return; if (draft && confirm('Для этого проекта есть несохранённый черновик на этом устройстве. Открыть его?')) { project = draft.project; projectEntries = new Map(draft.payload.songs.map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null }])); set = { ...set, name: draft.payload.name, songs: draft.payload.songs.map(entry => entry.song) }; selectedId = null; remoteDirty = true; updateRemoteState(); render(); } } $('#projects-dialog').close(); toast(cached ? 'Открыт подготовленный автономный снимок.' : 'Проект открыт.'); }
   catch (error) { toast(error.message); return; }
   if (fromDisplay) {
     const ready = set.songs.find(song => !validateSong(song).length);
@@ -181,9 +189,13 @@ async function refreshProjects() {
   try {
     const [result, cached] = await Promise.all([sessionActive ? remote.listProjects().catch(error => ({ projects: [], error })) : Promise.resolve({ projects: [] }), localStorage.getItem('lyrics-v2-pending-logout') ? Promise.resolve([]) : preparedProjects()]);
     if (workspaceGeneration !== workspaceRun || sessionActive !== sessionAtStart) return;
+    $('#new-project-field').hidden = !sessionActive;
+    $('.migration-choice').hidden = !sessionActive;
+    $('#migrate-legacy').hidden = !sessionActive;
+    $('#create-project').hidden = !sessionActive;
     list.replaceChildren();
     if (result.error) list.append(node('p', { className: 'hint', text: result.error.message }));
-    for (const item of result.projects || []) { const actions = node('span', { className: 'action-row' }, [button('Открыть', 'button quiet', () => openProject(item.id)), button('×', 'button danger', async () => { if (!confirm(`Удалить проект «${item.name}»? Песни останутся в библиотеке.`)) return; try { await remote.deleteProject(item.id, item.revision); if (project?.id === item.id) { project = null; projectEntries.clear(); remoteDirty = false; offlineProjectOpen = false; set = legacySet; selectedId = set.songs[0]?.id || null; updateRemoteState(); } await refreshProjects(); render(); } catch (error) { toast(error.code === 'conflict' ? 'Проект изменился на сервере. Обновите список и повторите.' : error.message); } })]); list.append(node('div', { className: 'project-row' }, [node('span', { text: `${item.name} · ${item.songCount} ${plural(item.songCount, 'песня', 'песни', 'песен')}` }), actions])); }
+    for (const item of result.projects || []) { const actions = node('span', { className: 'action-row' }, [button('Открыть', 'button quiet', () => openProject(item.id)), button('×', 'button danger', async () => { if (!confirm(`Удалить проект «${item.name}»? Песни останутся в библиотеке.`)) return; try { await remote.deleteProject(item.id, item.revision); if (project?.id === item.id) { project = null; projectEntries.clear(); remoteDirty = false; offlineProjectOpen = false; set = legacySet; selectedId = null; updateRemoteState(); } await refreshProjects(); render(); } catch (error) { toast(error.code === 'conflict' ? 'Проект изменился на сервере. Обновите список и повторите.' : error.message); } })]); list.append(node('div', { className: 'project-row' }, [node('span', { text: `${item.name} · ${item.songCount} ${plural(item.songCount, 'песня', 'песни', 'песен')}` }), actions])); }
     for (const item of cached) list.append(node('div', { className: 'project-row cached' }, [node('span', { text: `${item.name} · подготовлен для показа` }), button('Открыть без сети', 'button quiet', () => openProject(item.id, { cached: true }))]));
     if (!list.children.length) list.append(node('p', { className: 'hint', text: sessionActive ? 'Проектов пока нет.' : 'Войдите, чтобы открыть проекты, или подготовьте проект на этом устройстве.' }));
   } catch (error) { list.replaceChildren(node('p', { className: 'hint', text: error.message })); }
@@ -208,9 +220,15 @@ async function prepareOfflineProject() {
     }
     await privateMutation(() => { if (current()) return cacheProject(snapshot, backingAudio); });
     if (!current()) return;
+    refreshOfflineProjectEntry();
     toast('Снимок проекта и минусовки подготовлены для автономного показа.');
   }
   catch (error) { toast(`Не удалось подготовить снимок: ${error.message}`); }
+}
+async function refreshOfflineProjectEntry() {
+  const buttons = [$('#offline-projects'), $('#event-offline-projects')];
+  try { const hidden = Boolean(localStorage.getItem('lyrics-v2-pending-logout')) || !(await preparedProjects()).length; buttons.forEach(button => { if (button) button.hidden = hidden; }); }
+  catch { buttons.forEach(button => { if (button) button.hidden = true; }); }
 }
 async function verifyOfflineShell() {
   if (!navigator.serviceWorker?.ready) throw new Error('Автономный режим браузера недоступен.');
@@ -252,7 +270,7 @@ function renderList() {
   els.list.replaceChildren(); els.count.textContent = `${set.songs.length} ${plural(set.songs.length, 'песня', 'песни', 'песен')}`;
   set.songs.forEach((song, index) => {
     const ready = song.reviewed && !validateSong(song).length;
-    const select = node('button', { type: 'button', className: 'song-select', onclick: () => { selectedId = song.id; editorTab = 'text'; render(); } }, [
+    const select = node('button', { type: 'button', className: 'song-select', onclick: () => { selectedId = song.id; editorTab = 'lrclib'; render(); } }, [
       node('span', { className: `song-dot${ready ? ' ready' : ''}`, 'aria-hidden': true }),
       node('span', { className: 'song-item-copy' }, [node('span', { className: 'song-item-title', text: song.title || 'Без названия' }), node('span', { className: 'song-item-status', text: status(song) })])
     ]);
@@ -269,40 +287,57 @@ function input(value, type = 'text', attrs = {}) { const el = node('input', { ty
 function renderEditor() {
   if (lrclibState && lrclibState.context !== lrclibContext()) cancelLrclib();
   const song = currentSong(); els.editor.replaceChildren();
-  if (!song) { clearAudioPreview(); const template = $('#empty-state'); const copy = template.content.cloneNode(true); const title = $('[data-empty-title]', copy), copyText = $('[data-empty-copy]', copy); const add = $('[data-add-song]', copy); if (project) { title.textContent = 'Добавьте песню в проект'; copyText.textContent = 'Песня будет сохранена в проекте после нажатия «Сохранить». '; add.hidden = false; add.addEventListener('click', addSong); } else if (legacySet.songs.length) { title.textContent = 'Локальный набор'; copyText.textContent = 'Этот набор остался на устройстве. Перенесите его в серверный проект, когда будете готовы.'; $('[data-empty-project]', copy).hidden = false; $('[data-empty-project]', copy).addEventListener('click', () => $('#projects').click()); } else { title.textContent = 'Создайте общий проект'; copyText.textContent = 'Войдите организатором, создайте проект и добавляйте песни, доступные с других устройств.'; $('[data-empty-login]', copy).hidden = false; $('[data-empty-login]', copy).addEventListener('click', () => $('#login').click()); } els.editor.append(copy); return; }
+  if (!song) { clearAudioPreview(); const template = $('#empty-state'); const copy = template.content.cloneNode(true); const title = $('[data-empty-title]', copy), copyText = $('[data-empty-copy]', copy); const add = $('[data-add-song]', copy); if (set.songs.length) { title.textContent = 'Выберите песню для редактирования'; copyText.textContent = 'Нажмите на песню в левом меню.'; } else if (project) { title.textContent = 'Добавьте песню в проект'; copyText.textContent = 'Песня будет сохранена в проекте после нажатия «Сохранить». '; add.hidden = false; add.addEventListener('click', addSong); } else if (legacySet.songs.length) { title.textContent = 'Локальный набор'; copyText.textContent = 'Этот набор остался на устройстве. Перенесите его в серверный проект, когда будете готовы.'; $('[data-empty-project]', copy).hidden = false; $('[data-empty-project]', copy).addEventListener('click', () => $('#projects').click()); } else { title.textContent = 'Создайте общий проект'; copyText.textContent = 'Войдите организатором, создайте проект и добавляйте песни, доступные с других устройств.'; $('[data-empty-login]', copy).hidden = false; $('[data-empty-login]', copy).addEventListener('click', () => $('#login').click()); } els.editor.append(copy); return; }
   const validation = validateSong(song);
   const title = input(song.title, 'text', { required: true, autocomplete: 'off' });
   title.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { title: title.value })); render(); });
   const artist = input(song.artist, 'text', { autocomplete: 'off' }); artist.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { artist: artist.value })); render(); });
   const version = input(song.version, 'text', { placeholder: 'Например, студийная версия' }); version.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { version: version.value })); render(); });
-  const language = node('select'); [['ru','Русский'],['en','English']].forEach(([value, text]) => language.append(node('option', { value, text }))); language.value = song.language || 'ru'; language.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { language: language.value })); render(); });
-  const duration = input(song.duration || '', 'number', { min: 0, step: '.01', placeholder: 'сек.' }); duration.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { duration: Number(duration.value) || 0 })); render(); });
-  const delay = input(song.delayMs || '', 'number', { step: 50, placeholder: 'мс' }); delay.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { delayMs: Number(delay.value) || 0 })); render(); });
+  const duration = input(formatDurationInput(song.duration), 'text', { inputmode: 'numeric', placeholder: 'ММ:СС', pattern: '[0-9]+:[0-5][0-9]', 'aria-label': 'Длительность, ММ:СС' });
+  duration.addEventListener('change', () => {
+    const parsed = parseDurationInput(duration.value);
+    if (parsed == null) { toast('Введите длительность в формате ММ:СС; секунды должны быть от 00 до 59.'); render(); return; }
+    if (duration.value !== formatDurationInput(song.duration)) { changeSong(song.id, s => invalidateChanged(s, { duration: parsed })); render(); }
+  });
   const header = node('div', { className: 'editor-header' }, [node('div', {}, [node('h1', { className: 'editor-title', text: song.title || 'Новая песня' }), node('p', { className: 'editor-subtitle', text: 'Текст, таймлайн и музыка для выступления' })]), node('span', { className: `status-pill${song.reviewed && !validation.length ? ' ready' : ''}`, text: status(song) })]);
-  const details = node('section', { className: 'section-card' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Язык', language), field('Версия записи', version), field('Длительность, секунды', duration), field('Общая задержка, мс', delay)])]);
-  if (editorTabSongId !== song.id) { editorTabSongId = song.id; editorTab = 'text'; }
-  const textPanel = node('div', { id: 'text-panel', role: 'tabpanel', 'aria-labelledby': 'text-tab', className: 'editor-tab-panel' }, [renderLrclibCard(song), renderImportCard(song), renderCues(song, validation)]);
-  const originalPanel = node('div', { id: 'original-panel', role: 'tabpanel', 'aria-labelledby': 'original-tab', className: 'editor-tab-panel' }, [renderAudioCard(song)]);
+  const details = node('section', { className: 'section-card' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Версия записи', version), field('Длительность, ММ:СС', duration)])]);
+  if (editorTabSongId !== song.id) { editorTabSongId = song.id; editorTab = 'lrclib'; }
+  const drafts = importDrafts.get(song.id) || { lrc: '', plain: '' }; importDrafts.set(song.id, drafts);
+  const panels = {
+    lrclib: node('div', { id: 'lrclib-panel', role: 'tabpanel', 'aria-labelledby': 'lrclib-tab', className: 'editor-tab-panel' }, [renderLrclibCard(song)]),
+    lrc: node('div', { id: 'lrc-panel', role: 'tabpanel', 'aria-labelledby': 'lrc-tab', className: 'editor-tab-panel' }, [renderImportCard(song, 'lrc', drafts)]),
+    plain: node('div', { id: 'plain-panel', role: 'tabpanel', 'aria-labelledby': 'plain-tab', className: 'editor-tab-panel' }, [renderImportCard(song, 'plain', drafts)])
+  };
+  const timeline = node('div', { className: 'editor-tab-panel' }, [renderCues(song, validation)]);
   const tabs = node('div', { className: 'editor-tabs', role: 'tablist', 'aria-label': 'Подготовка песни' });
   const selectTab = (name, focus = false) => {
     editorTab = name;
-    textPanel.hidden = name !== 'text'; originalPanel.hidden = name !== 'original';
+    Object.entries(panels).forEach(([key, panel]) => { panel.hidden = name !== key; });
     [...tabs.children].forEach(tab => { const selected = tab.id === `${name}-tab`; tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1; if (selected && focus) tab.focus(); });
   };
-  for (const [name, label] of [['text', 'Текст и таймкоды'], ['original', 'Оригинальная запись']]) {
+  for (const [name, label] of [['lrclib', 'LRCLIB'], ['lrc', 'Свой LRC'], ['plain', 'Чистый текст']]) {
     const tab = button(label, 'button quiet', () => selectTab(name));
     tab.id = `${name}-tab`; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `${name}-panel`);
     tab.addEventListener('keydown', event => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault(); selectTab(event.key === 'Home' ? 'text' : event.key === 'End' ? 'original' : name === 'text' ? 'original' : 'text', true);
+      event.preventDefault(); const names = ['lrclib', 'lrc', 'plain']; const index = names.indexOf(name); selectTab(event.key === 'Home' ? names[0] : event.key === 'End' ? names.at(-1) : names[(index + (event.key === 'ArrowRight' ? 1 : names.length - 1)) % names.length], true);
     });
     tabs.append(tab);
   }
   selectTab(editorTab);
   // Keep the original player available while tapping in the text tab.
   const listen = node('div', { className: 'audio-preview text-reference', hidden: !song.source?.fileName }, [node('p', { className: 'hint', text: 'Оригинал для разметки' }), previewPlayer]);
-  els.editor.append(header, details, tabs, listen, textPanel, originalPanel, renderBackingCard(song), renderReview(song, validation), renderSongActions(song));
+  els.editor.append(header, details, tabs, ...Object.values(panels), timeline, listen, renderBackingCard(song), renderReview(song), renderSongActions(song));
   setAudioPreview(song); setBackingPreview(song);
+}
+function formatDurationInput(value) {
+  const seconds = Math.max(0, Math.floor(Number(value) || 0));
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+function parseDurationInput(value) {
+  const match = /^(\d+):([0-5]\d)$/.exec(value.trim());
+  const seconds = match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+  return Number.isFinite(seconds) ? seconds : null;
 }
 
 function renderBackingCard(song) {
@@ -340,7 +375,7 @@ function renderBackingCard(song) {
       clearBackingPreview(); changeSong(song.id, s => invalidateChanged(s, { backing: { fileName: selected.name } })); render();
     } catch (error) { if (current()) { toast(`Не удалось сохранить минусовку: ${error.message}`); render(); } }
   });
-  return node('section', { className: 'section-card backing-card' }, [node('h2', { text: 'Минусовка' }), node('p', { className: 'hint', text: 'Необязательно. Запускается вместе с текстом; проверьте, что версия и начало совпадают с таймлайном. MP3/WAV до 150 МиБ и 20 минут. JSON-экспорт не включает аудио.' }), node('div', { className: 'action-row' }, [choose, node('span', { className: 'file-name', text: song.backing?.fileName || 'Без минусовки' }), remove]), file, ...(song.backing?.fileName ? [backingPreview] : [])]);
+  return node('section', { className: 'section-card backing-card' }, [node('h2', { text: 'Минусовка' }), node('p', { className: 'hint', text: 'Необязательно. Запускается вместе с текстом; проверьте, что версия и начало совпадают с таймлайном. MP3/WAV до 150 МиБ и 20 минут. ZIP-экспорт включает минусовки; оригинальная запись исключена.' }), node('div', { className: 'action-row' }, [choose, node('span', { className: 'file-name', text: song.backing?.fileName || 'Без минусовки' }), remove]), file, ...(song.backing?.fileName ? [backingPreview] : [])]);
 }
 
 async function checkBackingFile(file) {
@@ -426,8 +461,8 @@ function renderLrclibCard(song) {
     search.textContent = state.loading ? 'Поиск…' : 'Найти LRC';
     cancel.hidden = !state.loading;
     results.replaceChildren(...state.results.map(record => {
-      const available = !record.instrumental && Boolean(record.syncedLyrics?.trim());
-      const select = button('Просмотреть LRC', 'button quiet', () => { state.selected = record; state.paint(); });
+      const available = hasSynchronizedLyrics(record);
+      const select = button(available ? 'Просмотреть LRC' : 'LRC недоступен', 'button quiet', () => { state.selected = record; state.paint(); });
       select.disabled = !available;
       const duration = Number.isFinite(record.duration) ? displayTime(record.duration) : 'длительность неизвестна';
       return node('div', { className: `lrclib-result${state.selected === record ? ' selected' : ''}` }, [
@@ -464,15 +499,16 @@ function renderLrclibCard(song) {
     finally { if (active() && token === state.token) { state.loading = false; state.paint(); } }
   });
   state.paint();
-  return node('section', { className: 'section-card lrclib-card' }, [node('h2', { text: 'Найти LRC в LRCLIB' }), node('p', { className: 'hint', text: 'Название и исполнитель из полей поиска отправляются в LRCLIB. Аудио и данные проекта остаются в приложении.' }), form, status, results, preview]);
+  return node('section', { className: 'section-card lrclib-card' }, [node('h2', { text: 'Найти LRC в LRCLIB' }), form, status, results, preview]);
 }
 
-function renderImportCard(song) {
-  const lrc = node('textarea', { placeholder: '[00:12.50] Первая строка\n[00:18.10] Вторая строка' });
-  const plain = node('textarea', { placeholder: 'Первая строка\nВторая строка\nПрипев' });
-  const loadLrc = button('Заменить из LRC', 'button quiet', async () => { try { const parsed = parseLrc(lrc.value); if (!parsed.cues.length) throw new Error('В LRC не найдено строк с таймкодами.'); await replaceCues(song, parsed.cues, {}, 'Импорт LRC заменит текущий текст и таймлайн.'); } catch (error) { toast(error.message); } });
-  const loadPlain = button('Вставить строки', 'button quiet', () => { const cues = plain.value.split(/\r?\n/).filter(Boolean).map((text, i) => ({ id: `paste-${Date.now()}-${i}`, start: null, text, type: 'lyric' })); if (cues.length) replaceCues(song, cues, {}, 'Вставка текста заменит текущие строки.'); else toast('Добавьте хотя бы одну строку.'); });
-  return node('section', { className: 'section-card' }, [node('h2', { text: 'Текст и таймкоды' }), node('p', { className: 'hint', text: 'Вставьте готовый LRC или обычный текст. Все повторения припева добавляйте отдельными строками.' }), node('div', { className: 'import-grid' }, [node('div', {}, [field('LRC с таймкодами', lrc), loadLrc]), node('div', {}, [field('Обычный текст', plain), loadPlain])])]);
+function renderImportCard(song, mode, drafts) {
+  const lrc = mode === 'lrc' ? node('textarea', { placeholder: '[00:12.50] Первая строка\n[00:18.10] Вторая строка' }) : null;
+  const plain = mode === 'plain' ? node('textarea', { placeholder: 'Первая строка\nВторая строка\nПрипев' }) : null;
+  const control = lrc || plain; control.value = drafts[mode]; control.addEventListener('input', () => { drafts[mode] = control.value; });
+  const loadLrc = lrc && button('Заменить из LRC', 'button quiet', async () => { try { const parsed = parseLrc(lrc.value); if (!parsed.cues.length) throw new Error('В LRC не найдено строк с таймкодами.'); await replaceCues(song, parsed.cues, {}, 'Импорт LRC заменит текущий текст и таймлайн.'); } catch (error) { toast(error.message); } });
+  const loadPlain = plain && button('Вставить строки', 'button quiet', () => { const cues = plain.value.split(/\r?\n/).filter(Boolean).map((text, i) => ({ id: `paste-${Date.now()}-${i}`, start: null, text, type: 'lyric' })); if (cues.length) replaceCues(song, cues, {}, 'Вставка текста заменит текущие строки.'); else toast('Добавьте хотя бы одну строку.'); });
+  return node('section', { className: 'section-card' }, [node('h2', { text: mode === 'lrc' ? 'Свой LRC' : 'Чистый текст' }), node('p', { className: 'hint', text: 'Вставьте готовый LRC или обычный текст. Все повторения припева добавляйте отдельными строками.' }), field(mode === 'lrc' ? 'LRC с таймкодами' : 'Обычный текст', control), loadLrc || loadPlain]);
 }
 async function replaceCues(song, cues, details, question, isCurrent = () => true) {
   if (song.cues.length && !(await confirmReplace(question))) return false;
@@ -495,10 +531,42 @@ function renderCues(song, validation) {
   }); card.append(table);
   if (validation.length) card.append(node('ul', { className: 'validation' }, validation.map((message) => node('li', { text: message })))); return card;
 }
-function renderReview(song, validation) { const card = node('section', { className: 'review-row' }); card.append(node('p', { text: song.reviewed ? 'Таймлайн был подтверждён, но последующие изменения отменяют подтверждение.' : 'Прослушайте запись, проверьте каждую строку и только затем отметьте песню готовой.' })); const confirm = button('Подтвердить готовность', 'button primary', () => { const trial = { ...song, reviewed: true }; const errors = validateSong(trial); if (errors.length) { toast('Сначала исправьте ошибки в таймлайне.'); return; } changeSong(song.id, () => trial); render(); }); confirm.disabled = validation.filter((e) => e !== 'Подтвердите, что таймлайн проверен.').length > 0; card.append(confirm); return card; }
-function renderSongActions(song) { const del = button(project ? 'Убрать из проекта' : 'Удалить песню', 'button danger', async () => { if (!confirm(project ? 'Убрать песню только из этого проекта?' : 'Удалить песню и локальную запись?')) return; recognition.get(song.id)?.controller?.abort(); if (!project) await Promise.all([deleteAudio(song.id), deleteBacking(song.id)]).catch(() => {}); projectEntries.delete(song.id); set = { ...set, songs: set.songs.filter((s) => s.id !== song.id) }; selectedId = set.songs[0]?.id || null; if (project) markRemoteDirty(); else persist(); render(); }); const controls = [button('Режим показа', 'button primary', () => launchEvent(song)), del]; if (project) { controls.push(button('Библиотека', 'button quiet', showLibrary), button('Обновить версию', 'button quiet', () => adoptLatest(song)), button('Подготовить показ', 'button quiet', prepareOfflineProject)); if (entryFor(song).songId) controls.push(button('Удалить из библиотеки', 'button danger', () => deleteSharedSong(song))); } return node('div', { className: 'action-row' }, controls); }
-function render() { renderList(); els.setName.value = set.name || 'Мой набор'; els.setName.disabled = offlineProjectOpen; $('#add-song').disabled = offlineProjectOpen; renderEditor(); if (offlineProjectOpen) { [...els.editor.querySelectorAll('input,textarea,select,button')].forEach(control => { if (control.textContent !== 'Режим показа') control.disabled = true; }); [...els.list.querySelectorAll('button')].forEach(control => control.disabled = true); } }
-function addSong() { editorTab = 'text'; const song = createSong({ language: 'ru' }); set = { ...set, songs: [...set.songs, song] }; selectedId = song.id; if (project) markRemoteDirty(); else persist(); render(); }
+function renderReview(song) {
+  const card = node('section', { className: 'review-row' });
+  card.append(node('p', { text: song.reviewed ? 'Таймлайн был подтверждён, но последующие изменения отменяют подтверждение.' : 'Прослушайте запись, проверьте каждую строку и только затем отметьте песню готовой.' }));
+  const confirm = button('Подтвердить готовность', 'button primary', () => {
+    // Commit the focused edit before validating; its change handler can rebuild the editor.
+    const focused = document.activeElement;
+    if (els.editor.contains(focused) && focused.matches('input,textarea,select')) focused.dispatchEvent(new Event('change', { bubbles: true }));
+    const latest = currentSong();
+    if (!latest || latest.id !== song.id) return;
+    const trial = { ...latest, reviewed: true };
+    if (validateSong(trial).length) { toast('Сначала исправьте ошибки в таймлайне.'); return; }
+    changeSong(song.id, () => trial); render();
+  });
+  // Keep focus until click so a blur-triggered render cannot remove the click target.
+  confirm.addEventListener('pointerdown', event => { if (event.button === 0) event.preventDefault(); });
+  card.append(confirm); return card;
+}
+
+function renderSongActions(song) {
+  const del = button(project ? 'Убрать из проекта' : 'Удалить песню', 'button danger', async () => { if (!confirm(project ? 'Убрать песню только из этого проекта?' : 'Удалить песню и локальную запись?')) return; recognition.get(song.id)?.controller?.abort(); if (!project) await Promise.all([deleteAudio(song.id), deleteBacking(song.id)]).catch(() => {}); projectEntries.delete(song.id); set = { ...set, songs: set.songs.filter((s) => s.id !== song.id) }; selectedId = null; if (project) markRemoteDirty(); else persist(); render(); });
+  const controls = [del];
+  if (project) {
+    const versionButton = button('Обновить версию', 'button quiet', () => adoptLatest(song));
+    versionButton.disabled = !entryFor(song).songId || !sessionActive || offlineProjectOpen;
+    controls.push(node('div', { className: 'version-action' }, [versionButton, node('p', { className: 'hint', text: 'Применит последнюю версию песни из библиотеки только в этом проекте: заменит текст, таймкоды и ссылки на аудио. Остальные проекты сохранят свои версии. После обновления нажмите «Сохранить».' })]));
+    if (entryFor(song).songId) controls.push(button('Удалить из библиотеки', 'button danger', () => deleteSharedSong(song)));
+  }
+  return node('div', { className: 'action-row' }, controls);
+}
+function render() { renderList(); els.setName.value = set.name || 'Мой набор'; els.setName.disabled = offlineProjectOpen; $('#add-song').disabled = offlineProjectOpen; $('#show-mode').disabled = !set.songs.length; renderEditor(); updateRemoteState(); if (offlineProjectOpen) { [...els.editor.querySelectorAll('input,textarea,select,button')].forEach(control => { control.disabled = true; }); [...els.list.querySelectorAll('.song-reorder')].forEach(control => control.disabled = true); } }
+function addSong() { editorTab = 'lrclib'; const song = createSong({ language: 'ru' }); set = { ...set, songs: [...set.songs, song] }; selectedId = song.id; if (project) markRemoteDirty(); else persist(); render(); }
+
+$('#show-mode').addEventListener('click', () => {
+  const song = currentSong() || set.songs.find(song => !validateSong(song).length) || set.songs[0];
+  if (song) launchEvent(song);
+});
 
 function launchEvent(song) {
   if (validateSong(song).length) { toast('Для показа песня должна быть подготовлена и подтверждена.'); return; }
@@ -590,14 +658,77 @@ function showEventMenu() {
   $('#event-menu-toggle').setAttribute('aria-expanded', 'true'); $('#event-menu').showModal();
 }
 function showProjects() {
+  if (!sessionActive) return;
   const dialog = $('#projects-dialog');
   if (!els.event.hidden) els.event.append(dialog);
   dialog.showModal(); return refreshProjects();
 }
-function downloadSet() { const blob = new Blob([exportSet(set)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = node('a', { href: url, download: `${(set.name || 'lyrics-set').replace(/[^\wа-яё-]+/gi, '-').toLowerCase()}.json` }); a.click(); setTimeout(() => URL.revokeObjectURL(url), 0); }
-async function importFile(file) { if (importing) { toast('Дождитесь завершения импорта.'); return; } if (project && !confirm('Импорт заменит только локальный набор. Текущий серверный проект останется без изменений и будет закрыт. Продолжить?')) return; importing = true; els.prep.inert = true; $('#import-set').disabled = true; $('#export-set').disabled = true; $('#set-file').disabled = true; try { const imported = importSet(await file.text()); cancelRecognition(); await persistChain; await replaceStoredSet(imported); tapHistory.clear(); clearAudioPreview(); legacySet = imported; set = imported; project = null; projectEntries.clear(); remoteDirty = false; selectedId = set.songs[0]?.id || null; updateRemoteState(); render(); toast('Набор импортирован. Аудиозаписи при необходимости выберите заново.'); } catch (error) { toast(error.message); } finally { importing = false; els.prep.inert = false; $('#import-set').disabled = false; $('#export-set').disabled = false; $('#set-file').disabled = false; } }
+async function showOfflineProjects() {
+  const dialog = $('#projects-dialog');
+  if (!els.event.hidden) els.event.append(dialog); else document.body.append(dialog);
+  dialog.showModal(); return refreshProjects();
+}
+function transferUi(busy) {
+  importing = busy;
+  els.prep.inert = busy;
+  $('.topbar').inert = busy;
+  $('#import-set').disabled = busy;
+  $('#export-set').disabled = busy;
+  $('#set-file').disabled = busy;
+}
+async function downloadSet() {
+  if (importing) return toast('Дождитесь завершения переноса файлов.');
+  const snapshot = structuredClone(set), owner = project && structuredClone(project);
+  const entries = new Map([...projectEntries].map(([id, entry]) => [id, { ...entry }]));
+  const offline = offlineProjectOpen, workspace = workspaceGeneration, session = sessionActive;
+  const current = () => workspaceGeneration === workspace && sessionActive === session;
+  transferUi(true);
+  try {
+    await persistChain;
+    const blob = await exportPortableSet(snapshot, async song => {
+      if (!current()) throw new Error('Рабочая область изменилась. Повторите экспорт.');
+      const entry = entries.get(song.id) || {};
+      const audio = await loadBacking(song, owner, entry, offline);
+      if (entry.backingAudioId && !audio) throw new Error(`Минусовка песни «${song.title}» недоступна.`);
+      return audio;
+    });
+    if (!current()) throw new Error('Рабочая область изменилась. Повторите экспорт.');
+    const url = URL.createObjectURL(blob);
+    const a = node('a', { href: url, download: `${(snapshot.name || 'lyrics-set').replace(/[^\wа-яё-]+/gi, '-').toLowerCase()}.zip` });
+    a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { toast(`Не удалось экспортировать набор: ${error.message}`); }
+  finally { transferUi(false); }
+}
+async function importFile(file) {
+  if (importing) return toast('Дождитесь завершения переноса файлов.');
+  if (project && !confirm('Импорт заменит только локальный набор. Текущий серверный проект останется без изменений и будет закрыт. Продолжить?')) return;
+  const workspace = workspaceGeneration, session = sessionActive;
+  transferUi(true);
+  try {
+    const { set: imported, backingAudio } = await importPortableSet(file);
+    if (workspaceGeneration !== workspace || sessionActive !== session) throw new Error('Рабочая область изменилась. Повторите импорт.');
+    // Invalidate pending audio replacements before the storage transaction, so a
+    // decoded old file cannot enqueue a write after the imported backing tracks.
+    cancelRecognition({ preserveDrafts: true });
+    const importWorkspace = workspaceGeneration;
+    await persistChain;
+    if (workspaceGeneration !== importWorkspace || sessionActive !== session) throw new Error('Рабочая область изменилась. Повторите импорт.');
+    await replaceStoredSet(imported, backingAudio);
+    tapHistory.clear(); importDrafts.clear(); clearAudioPreview();
+    legacySet = imported; set = imported; project = null; projectEntries.clear();
+    remoteDirty = false; remoteFailed = false; offlineProjectOpen = false;
+    selectedId = null; editorTabSongId = null;
+    updateRemoteState(); render();
+    toast(backingAudio.size ? 'Набор и минусовки импортированы.' : 'Набор импортирован.');
+  } catch (error) { toast(error.message); }
+  finally { transferUi(false); }
+}
 function initOffline() { if (!('serviceWorker' in navigator)) { els.offline.textContent = 'Автономный режим недоступен'; return; } navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {}); navigator.serviceWorker.addEventListener('message', ({ data }) => { if (data?.type === 'OFFLINE_READY') els.offline.textContent = data.ready ? 'Готово для автономной работы' : 'Автономный режим ещё готовится'; }); navigator.serviceWorker.ready.then((registration) => registration.active?.postMessage({ type: 'CHECK_OFFLINE' })).catch(() => { els.offline.textContent = 'Автономный режим ещё готовится'; }); }
-function updateSessionUi() { els.login.hidden = sessionActive; els.logout.hidden = !sessionActive; updateRemoteState(); }
+function updateSessionUi() {
+  els.login.hidden = sessionActive; els.logout.hidden = !sessionActive;
+  $('#projects').disabled = !sessionActive; $('#projects').hidden = !sessionActive; $('#event-projects').disabled = !sessionActive; $('#event-projects').hidden = !sessionActive;
+  updateRemoteState(); refreshOfflineProjectEntry();
+}
 async function signIn() {
   const password = $('#login-password').value; const error = $('#login-error'); error.hidden = true;
   try { if (localStorage.getItem('lyrics-v2-pending-logout')) { await privateMutation(() => clearPrivateProjectCache()); try { await remote.session(); await remote.logout(); } catch (problem) { if (problem.status !== 401) throw problem; } localStorage.removeItem('lyrics-v2-pending-logout'); } await remote.login(password); sessionActive = true; $('#login-dialog').close(); $('#login-password').value = ''; cancelLrclib(); updateSessionUi(); render(); toast('Вход выполнен.'); }
@@ -606,7 +737,7 @@ async function signIn() {
 async function signOut() {
   cancelRecognition(); clearAudioPreview();
   localStorage.setItem('lyrics-v2-pending-logout', '1');
-  sessionActive = false; project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = set.songs[0]?.id || null; updateSessionUi(); render(); els.login.disabled = true;
+  sessionActive = false; project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateSessionUi(); render(); els.login.disabled = true;
   let cleared = true; await privateMutation(() => clearPrivateProjectCache()).catch(() => { cleared = false; });
   let revoked = true; try { await remote.logout(); if (cleared) localStorage.removeItem('lyrics-v2-pending-logout'); } catch { revoked = false; }
   els.login.disabled = false;
@@ -614,7 +745,7 @@ async function signOut() {
 }
 async function clearDownloadedProjectData() {
   if (!offlineProjectOpen || !confirm('Очистить загруженный проект и его черновики с этого устройства?')) return;
-  cancelRecognition(); clearAudioPreview(); await privateMutation(() => clearPrivateProjectCache()).catch(error => toast(error.message)); project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = set.songs[0]?.id || null; updateRemoteState(); render(); toast('Загруженный проект очищен с этого устройства.');
+  cancelRecognition(); clearAudioPreview(); await privateMutation(() => clearPrivateProjectCache()).catch(error => toast(error.message)); project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateRemoteState(); render(); refreshOfflineProjectEntry(); toast('Загруженный проект очищен с этого устройства.');
 }
 async function createRemoteProject() {
   const name = $('#new-project-name').value.trim(); if (!name) return toast('Введите название проекта.');
@@ -642,13 +773,13 @@ async function migrateLegacy() {
   } catch (error) { if (workspaceGeneration === workspaceRun && sessionActive === sessionAtStart) toast(error.message); }
 }
 
-$('#add-song').addEventListener('click', addSong); $('#export-set').addEventListener('click', downloadSet); $('#import-set').addEventListener('click', () => $('#set-file').click()); $('#set-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project) markRemoteDirty(); else persist(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', () => els.event.requestFullscreen?.()); $('#font-up').addEventListener('click', () => { fontSize = Math.min(100, fontSize + 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); }); $('#font-down').addEventListener('click', () => { fontSize = Math.max(28, fontSize - 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); });
+$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#prepare-offline').addEventListener('click', prepareOfflineProject); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); $('#export-set').addEventListener('click', downloadSet); $('#import-set').addEventListener('click', () => $('#set-file').click()); $('#set-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project) markRemoteDirty(); else persist(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', () => els.event.requestFullscreen?.()); $('#font-up').addEventListener('click', () => { fontSize = Math.min(100, fontSize + 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); }); $('#font-down').addEventListener('click', () => { fontSize = Math.max(28, fontSize - 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); });
 $('#projects').addEventListener('click', showProjects);
 $('#event-menu-toggle').addEventListener('click', showEventMenu);
 $('#event-menu-close').addEventListener('click', () => $('#event-menu').close());
 $('#event-menu').addEventListener('close', () => { $('#event-menu-toggle').setAttribute('aria-expanded', 'false'); if (!els.event.hidden) $('#event-menu-toggle').focus(); });
 $('#event-menu').addEventListener('click', event => { const bounds = event.currentTarget.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) event.currentTarget.close(); });
-$('#event-projects').addEventListener('click', () => { $('#event-menu').close(); showProjects(); });
+$('#event-projects').addEventListener('click', () => { if (!sessionActive) return; $('#event-menu').close(); showProjects(); });
 $('#projects-dialog').addEventListener('close', () => document.body.append($('#projects-dialog')));
 $('#event-progress').addEventListener('input', event => { if (eventState.song) playback.seek(Number(event.target.value)); });
 $('#event-mute').addEventListener('click', () => playback.mute(!playback.muted));
@@ -667,10 +798,9 @@ document.addEventListener('keydown', event => {
 els.save.addEventListener('click', saveRemoteProject); els.login.addEventListener('click', () => $('#login-dialog').showModal()); els.logout.addEventListener('click', signOut); $('#login-form').addEventListener('submit', event => { event.preventDefault(); signIn(); }); $('#create-project').addEventListener('click', createRemoteProject); $('#migrate-legacy').addEventListener('click', migrateLegacy); $('#library-search').addEventListener('input', () => searchLibrary());
 els.clearDownloaded.addEventListener('click', clearDownloadedProjectData);
 
-$('#projects').disabled = true;
-try { const stored = await loadSet(); if (stored) { set = stored; legacySet = stored; selectedId = set.songs[0]?.id || null; } } catch (error) { toast(`Не удалось открыть сохранённый набор: ${error.message}`); }
-try { if (localStorage.getItem('lyrics-v2-pending-logout')) { await privateMutation(() => clearPrivateProjectCache()); try { await remote.session(); await remote.logout(); localStorage.removeItem('lyrics-v2-pending-logout'); } catch (error) { if (error.status === 401) localStorage.removeItem('lyrics-v2-pending-logout'); } } else { await remote.session(); sessionActive = true; } } catch {} updateSessionUi(); render(); initOffline();
-$('#projects').disabled = false;
+try { const stored = await loadSet(); if (stored) { set = stored; legacySet = stored; selectedId = null; } } catch (error) { toast(`Не удалось открыть сохранённый набор: ${error.message}`); }
+updateSessionUi(); render(); initOffline();
+try { if (localStorage.getItem('lyrics-v2-pending-logout')) { await privateMutation(() => clearPrivateProjectCache()); try { await remote.session(); await remote.logout(); localStorage.removeItem('lyrics-v2-pending-logout'); } catch (error) { if (error.status === 401) localStorage.removeItem('lyrics-v2-pending-logout'); } } else { await remote.session(); sessionActive = true; } } catch {} updateSessionUi(); render(); refreshOfflineProjectEntry();
 
 window.addEventListener('resize', () => { if (!els.event.hidden) centerAudience(eventState.lastIndex ?? -1); });
 window.addEventListener('online', () => lrclibState?.paint());

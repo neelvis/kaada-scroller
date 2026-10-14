@@ -34,6 +34,8 @@ async function load(page, path = '/lyrics/') {
   await page.goto(origin + path);
   await page.waitForSelector('#editor h1');
   await page.locator('#set-file').setInputFiles({ name: 'lrclib-fixture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture())) });
+  await page.waitForFunction(() => document.querySelector('#editor h1')?.textContent === 'Выберите песню для редактирования');
+  await page.locator('.song-select').first().click();
   await page.waitForSelector('#lrclib-search-form');
 }
 async function search(page, title = 'Тест & Test', artist = 'Автор') {
@@ -88,8 +90,8 @@ try {
   assert.match(requests[0].headers['lrclib-client'] || '', /KaadaScroller/);
   assert.ok(Object.values(requests[0].headers).every(value => !String(value).includes('private-original') && !String(value).includes('Существующая строка')), 'no private audio or lyrics leave the browser');
   assert.equal(await page.locator('.lrclib-result').count(), 3);
-  assert.equal(await page.locator('.lrclib-result').nth(1).getByRole('button', { name: 'Просмотреть LRC' }).isDisabled(), true);
-  assert.equal(await page.locator('.lrclib-result').nth(2).getByRole('button', { name: 'Просмотреть LRC' }).isDisabled(), true);
+  assert.equal(await page.locator('.lrclib-result').nth(1).getByRole('button', { name: 'LRC недоступен' }).isDisabled(), true);
+  assert.equal(await page.locator('.lrclib-result').nth(2).getByRole('button', { name: 'LRC недоступен' }).isDisabled(), true);
   const beforeSearch = fixture().songs[0];
   await expectSong(page, beforeSearch);
   await page.locator('.lrclib-result').first().getByRole('button', { name: 'Просмотреть LRC' }).click();
@@ -125,11 +127,14 @@ try {
   assert.match(await page.locator('#lrclib-status').textContent(), /123|длительност/i, 'duration mismatch remains visible for review');
 
   // Normal local persistence and portable export/import retain the imported timeline.
-  await page.reload(); await page.waitForSelector('#lrclib-search-form'); await page.waitForFunction(() => document.querySelectorAll('.cue-row').length === 3);
+  await page.reload(); await page.locator('.song-select').first().click(); await page.waitForSelector('#lrclib-search-form'); await page.waitForFunction(() => document.querySelectorAll('.cue-row').length === 3);
   assert.equal(await page.getByLabel('Текст строки 3', { exact: true }).inputValue(), 'Hello again');
+  await page.evaluate(async () => { const storage = await import('./storage.js'); for (const song of (await storage.loadSet()).songs) await storage.putBacking(song.id, new Blob(['backing fixture'], { type: 'audio/wav' })); });
   const exportDownload = page.waitForEvent('download'); await page.locator('#export-set').click();
   const exported = await readFile(await (await exportDownload).path());
-  await page.locator('#set-file').setInputFiles({ name: 'lrclib-export.json', mimeType: 'application/json', buffer: exported });
+  await page.locator('#set-file').setInputFiles({ name: 'lrclib-export.zip', mimeType: 'application/zip', buffer: exported });
+  await page.waitForFunction(() => document.querySelector('#editor h1')?.textContent === 'Выберите песню для редактирования');
+  await page.locator('.song-select').first().click();
   await page.waitForFunction(() => document.querySelectorAll('.cue-row').length === 3);
   assert.equal(await page.getByLabel('Текст строки 1', { exact: true }).inputValue(), 'Привет <b>мир</b>');
 
@@ -137,21 +142,27 @@ try {
   await page.locator('.song-select').filter({ hasText: 'Другая песня' }).click();
   await page.getByLabel('Название', { exact: true }).fill(''); await page.getByLabel('Название', { exact: true }).blur();
   await page.getByLabel('Исполнитель', { exact: true }).fill(''); await page.getByLabel('Исполнитель', { exact: true }).blur();
-  await page.getByLabel('Длительность, секунды', { exact: true }).fill('0'); await page.getByLabel('Длительность, секунды', { exact: true }).blur();
+  await page.getByLabel('Длительность, ММ:СС', { exact: true }).fill('00:00'); await page.getByLabel('Длительность, ММ:СС', { exact: true }).blur();
   await search(page); await page.waitForSelector('.lrclib-result'); await page.locator('.lrclib-result').first().getByRole('button', { name: 'Просмотреть LRC' }).click();
   await page.locator('#lrclib-import').click(); await page.locator('#confirm-dialog').waitFor({ state: 'visible' }); await page.locator('#confirm-ok').click();
   await page.waitForFunction(() => document.querySelectorAll('.cue-row').length === 3);
   assert.equal(await page.getByLabel('Название', { exact: true }).inputValue(), 'Тест & Test');
   assert.equal(await page.getByLabel('Исполнитель', { exact: true }).inputValue(), 'Автор');
-  assert.equal(await page.getByLabel('Длительность, секунды', { exact: true }).inputValue(), '123');
+  assert.equal(await page.getByLabel('Длительность, ММ:СС', { exact: true }).inputValue(), '02:03');
   assert.equal(await page.getByLabel('Версия записи', { exact: true }).inputValue(), 'Оригинальная запись');
 
-  // A syntactically bad LRC is rejected atomically after explicit selection.
+  // Successful empty searches must not inherit Retry-After as a rate limit.
+  response = { status: 200, contentType: 'application/json', headers: { 'Retry-After': '60' }, body: '[]' };
+  await search(page, 'no such song'); await page.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('Ничего не найдено'));
+  assert.equal(await page.locator('.lrclib-result').count(), 0);
+  response = records; await search(page); await page.waitForSelector('.lrclib-result');
+
+  // A syntactically bad LRC is unavailable and cannot change the song.
   const beforeInvalid = (await page.evaluate(async () => (await import('./storage.js')).loadSet())).songs.find(item => item.id === 'second');
   response = [{ ...records[0], id: 4, syncedLyrics: '[bad timestamp]broken' }];
   await page.locator('#lrclib-title').fill('bad lrc'); await search(page, 'bad lrc'); await page.waitForSelector('.lrclib-result');
-  await page.locator('.lrclib-result').first().getByRole('button', { name: 'Просмотреть LRC' }).click(); await page.locator('#lrclib-import').click();
-  await page.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('некорректен'));
+  assert.equal(await page.locator('.lrclib-result').first().getByRole('button', { name: 'LRC недоступен' }).isDisabled(), true);
+  assert.equal(await page.locator('#lrclib-import').count(), 0);
   await expectSong(page, beforeInvalid);
 
   // Same-song edits, query edits and song switches invalidate a late response.
