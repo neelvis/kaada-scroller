@@ -20,3 +20,5 @@
 @media(max-width:500px){#lrclib-search-form .field label{font-size:clamp(10px,3vw,13px)}}
 
 #show-mode{width:100%;margin-bottom:14px;flex-shrink:0}
+
+.audience-lines.uniform-scroll{transition:none}.ignore-timecodes{display:flex;align-items:center;gap:8px;margin-top:14px}.ignore-timecodes input{width:auto}

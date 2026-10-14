@@ -115,3 +115,43 @@ test('import rejects ambiguous empty and duplicate song and cue identifiers', ()
     /не может быть пустым/,
   );
 });
+
+test('ignore timecodes preserves text validation and bypasses all stored timing checks', () => {
+  const untimed = song({ ignoreTimecodes: true, cues: [
+    { id: 'a', start: null, text: 'Первая' }, { id: 'b', start: -1, text: 'Second' },
+    { id: 'c', start: 200, text: 'Third' }, { id: 'd', start: 0, text: 'Last' },
+  ] });
+  untimed.reviewed = true;
+  assert.deepEqual(validateSong(untimed), []);
+  assert.ok(validateSong({ ...untimed, ignoreTimecodes: false }).length >= 3);
+  assert.ok(validateSong({ ...untimed, duration: 0 }).length);
+  assert.ok(validateSong({ ...untimed, reviewed: false }).length);
+  assert.ok(validateSong({ ...untimed, cues: [{ ...untimed.cues[0], text: '' }] }).length);
+  assert.equal(invalidateReview(untimed).ignoreTimecodes, true);
+  assert.equal(cueAt(untimed, 50).index, -1);
+  assert.equal(cueAt(untimed, 120).ended, true);
+});
+
+test('ignore timecodes survives portable normalization and defaults off for legacy songs', () => {
+  const original = song({ ignoreTimecodes: true, cues: [{ id: 'a', start: null, text: 'Line' }] });
+  const set = { schemaVersion: 1, id: 'set', name: 'Test', songs: [original] };
+  const restored = importSet(exportSet(set)).songs[0];
+  assert.equal(restored.ignoreTimecodes, true);
+  assert.equal(restored.cues[0].start, null);
+  delete original.ignoreTimecodes;
+  assert.equal(importSet(exportSet(set)).songs[0].ignoreTimecodes, false);
+  original.ignoreTimecodes = 'true';
+  assert.throws(() => exportSet(set), /ignoreTimecodes/);
+});
+
+test('uniform scroll progress has fixed ten-second intro and follows elapsed time', async () => {
+  const { uniformScrollProgress } = await import('../public/core.js');
+  const value = { duration: 70, delayMs: 5000 };
+  for (const elapsed of [-1, 0, 9.9, 10]) assert.equal(uniformScrollProgress(value, elapsed), 0);
+  assert.equal(uniformScrollProgress(value, 40), .5);
+  assert.equal(uniformScrollProgress(value, 70), 1);
+  assert.equal(uniformScrollProgress(value, 100), 1);
+  assert.equal(uniformScrollProgress(value, 25), .25);
+  assert.equal(uniformScrollProgress({ duration: 10 }, 10), 0);
+  assert.equal(uniformScrollProgress({ duration: 5 }, 3), 0);
+});

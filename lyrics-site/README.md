@@ -20,7 +20,7 @@ adds the preparation redesign and portable backing archives; paired release
    recording version and duration in `MM:SS`. Language and global delay fields
    are hidden; previously saved values remain intact. Projects require login.
 3. Choose one of the upper preparation tabs: **LRCLIB** (initially selected),
-   **Own LRC**, or **Plain text**. Import line-timed LRC or paste lyrics, including
+   **Own LRC**, or **Own text** (`Свой текст`). Import line-timed LRC or paste lyrics, including
    every performed chorus occurrence as a separate line. Tab changes preserve
    import drafts; the editable timeline remains available below every tab.
    The original recording and recognition controls are temporarily hidden.
@@ -31,7 +31,10 @@ adds the preparation redesign and portable backing archives; paired release
    150 MiB and 20 minutes per file, with a configurable 1 GiB private library quota.
    Check the arrangement and start against the timeline; replacing or removing
    backing audio requires renewed readiness confirmation.
-5. Confirm duration and every cue, choose **Confirm readiness**, then **Save**.
+5. Confirm duration and every cue, or enable **ignore timecodes** above the
+   timeline rows for uniform scrolling without line timing. This keeps stored
+   times but bypasses their validation. Changing the mode requires renewed
+   readiness confirmation. Choose **Confirm readiness**, then **Save**.
    Server saving remains explicit. Failed saves retain drafts; conflicts preserve
    the other organizer's saved version.
 6. Repeat for up to 25 songs. **+ From library** is below **+ New song** and requires
@@ -63,9 +66,14 @@ are excluded. Search requires internet and can be cancelled.
 
 Compare each result's artist, album and duration with your original/backing
 recording. Preview the literal LRC, then choose **Import LRC**. Unsynchronized and
-instrumental or malformed results show a disabled **LRC unavailable** button. Replacing existing rows requires
+instrumental or malformed results show a disabled **LRC unavailable** button.
+When ordinary lyrics are available, the adjacent **Insert plain text**
+(`Вставить чистый текст`) button imports editable lines with empty timecodes and
+replaces duration with the selected record’s positive duration. Without a usable
+duration, the current duration is retained and a manual-entry notice appears.
+The button is disabled when ordinary lyrics are unavailable. Replacing existing rows requires
 confirmation; invalid LRC leaves the song unchanged. The original/backing audio,
-delay, recording-version description and existing metadata are preserved. Only
+delay, recording-version description and existing metadata are preserved. For synchronized LRC, only
 blank title/artist and missing duration are filled. A differing duration remains
 visible after import. Check every line and confirm readiness again; shared
 projects still require explicit **Save**. Prepared offline playback uses the
@@ -86,6 +94,14 @@ Audio errors offer retry or an explicit lyrics-only launch.
 While playback is running, **Start** becomes **Pause**. Press it to pause lyrics
 and backing audio at the current position; press **Start** again to resume there.
 This also works without backing audio. See [display pause requirements](../specs/features/timed-lyrics/revision-7.md).
+
+With **ignore timecodes** enabled, lyrics stay at their initial position for
+10 seconds, then scroll at constant spatial speed until the declared song end.
+Existing cue times and the stored global lyric delay do not affect this mode.
+Pause, resume, seek and reset control the same timeline with or without backing
+audio. Songs lasting at most 10 seconds and single-line songs stay stationary
+until the usual end state. The setting belongs to each song and survives normal
+saving and portable transfer.
 
 The bottom progress bar shows position and duration. Click/drag it to seek both
 lyrics and backing audio; ArrowUp moves five seconds backward, ArrowDown five
@@ -150,5 +166,6 @@ Requirements: [TL baseline](../specs/features/timed-lyrics/spec.md) and
 [revision 3](../specs/features/timed-lyrics/revision-3.md), extended by
 [revision 4](../specs/features/timed-lyrics/revision-4.md).
 LRCLIB search requirements: [revision 5](../specs/features/timed-lyrics/revision-5.md).
+Plain lyrics and uniform scrolling: [revision 8](../specs/features/timed-lyrics/revision-8.md).
 Research and evidence: [research](../docs/timed-lyrics-research.md).
 Release instructions: [deployment](deploy/README.md).

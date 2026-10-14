@@ -1,8 +1,8 @@
-import { createSong, cueAt, exportSet, formatTime, invalidateReview, parseLrc, parseTime, validateSong } from './core.js';
+import { createSong, cueAt, exportSet, formatTime, invalidateReview, parseLrc, parseTime, uniformScrollProgress, validateSong } from './core.js';
 import { deleteAudio, deleteBacking, getAudio, getBacking, loadSet, putAudio, putBacking, replaceStoredSet, saveSet } from './storage.js';
 import { Playback } from './playback.js';
 import { exportPortableSet, importPortableSet } from './portable.js';
-import { hasSynchronizedLyrics, LrclibClient, prepareLrcImport } from './lrclib.js';
+import { hasPlainLyrics, hasSynchronizedLyrics, LrclibClient, prepareLrcImport, preparePlainImport } from './lrclib.js';
 import { recognizeFile } from './recognition.js';
 import * as remote from './remote.js';
 import { cacheProject, clearPrivateProjectCache, getDraft, getPrivateAudio, openCachedProject, preparedProjects, putPrivateAudio, removeDraft, removePreparedProject, removePrivateAudio, saveDraft } from './offline-projects.js';
@@ -315,7 +315,7 @@ function renderEditor() {
     Object.entries(panels).forEach(([key, panel]) => { panel.hidden = name !== key; });
     [...tabs.children].forEach(tab => { const selected = tab.id === `${name}-tab`; tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1; if (selected && focus) tab.focus(); });
   };
-  for (const [name, label] of [['lrclib', 'LRCLIB'], ['lrc', 'Свой LRC'], ['plain', 'Чистый текст']]) {
+  for (const [name, label] of [['lrclib', 'LRCLIB'], ['lrc', 'Свой LRC'], ['plain', 'Свой текст']]) {
     const tab = button(label, 'button quiet', () => selectTab(name));
     tab.id = `${name}-tab`; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `${name}-panel`);
     tab.addEventListener('keydown', event => {
@@ -432,22 +432,24 @@ function renderLrclibCard(song) {
   const preview = node('div', { className: 'lrclib-preview-wrap' });
   const active = () => lrclibState === state && state.context === lrclibContext() && !offlineProjectOpen;
   const unchanged = () => active() && JSON.stringify(currentSong()) === state.snapshot;
-  const importRecord = async record => {
+  const importRecord = async (record, plain = false) => {
     if (!unchanged()) { state.message = 'Песня изменилась. Повторите поиск перед импортом.'; state.paint(); return; }
     const token = state.token;
     try {
       const latest = currentSong();
-      const prepared = prepareLrcImport(latest, record);
-      const isCurrent = () => unchanged() && state.token === token && state.selected === record;
+      const prepared = plain ? preparePlainImport(latest, record) : prepareLrcImport(latest, record);
+      const isCurrent = () => unchanged() && state.token === token && state.results.includes(record) && (plain || state.selected === record);
       const applied = await replaceCues(latest, prepared.cues, prepared.details, 'Импорт из LRCLIB заменит текущий текст и таймлайн.', isCurrent);
       if (!active()) return;
-      if (state.token !== token || state.selected !== record) return;
+      if (state.token !== token || !state.results.includes(record) || (!plain && state.selected !== record)) return;
       if (applied) {
         state.snapshot = JSON.stringify(currentSong());
         const duration = currentSong().duration;
         const mismatch = record.duration > 0 && duration > 0 && record.duration !== duration
           ? ` Длительность LRCLIB: ${record.duration} сек.; ваша песня: ${duration} сек. Проверьте совпадение версии.` : '';
-        state.message = `LRC импортирован. Проверьте текст и таймкоды по своей записи перед подтверждением готовности.${mismatch}`;
+        state.message = plain
+          ? `Текст импортирован с пустыми таймкодами. Проверьте строки и включите «игнорировать таймкоды» или разметьте время.${record.duration > 0 ? '' : ' Длительность LRCLIB отсутствует: укажите её вручную.'}`
+          : `LRC импортирован. Проверьте текст и таймкоды по своей записи перед подтверждением готовности.${mismatch}`;
       } else if (!unchanged()) state.message = 'Песня изменилась. Повторите поиск перед импортом.';
       state.paint();
     } catch (error) { if (active()) { state.message = error.message; state.paint(); } }
@@ -464,13 +466,15 @@ function renderLrclibCard(song) {
       const available = hasSynchronizedLyrics(record);
       const select = button(available ? 'Просмотреть LRC' : 'LRC недоступен', 'button quiet', () => { state.selected = record; state.paint(); });
       select.disabled = !available;
+      const plainImport = !available && button('Вставить чистый текст', 'button quiet', () => importRecord(record, true));
+      if (plainImport) { plainImport.disabled = !hasPlainLyrics(record); plainImport.title = plainImport.disabled ? 'У записи нет обычного текста.' : 'Вставить текст без таймкодов и длительность выбранной записи'; }
       const duration = Number.isFinite(record.duration) ? displayTime(record.duration) : 'длительность неизвестна';
       return node('div', { className: `lrclib-result${state.selected === record ? ' selected' : ''}` }, [
-        node('div', { className: 'lrclib-record' }, [node('strong', { text: record.trackName }), node('span', { text: record.artistName || 'Исполнитель не указан' }), node('span', { className: 'hint', text: `${record.albumName || 'Альбом не указан'} · ${duration} · ${available ? 'Есть LRC' : record.instrumental ? 'Инструментальная запись' : 'Без таймкодов'}` })]), select,
+        node('div', { className: 'lrclib-record' }, [node('strong', { text: record.trackName }), node('span', { text: record.artistName || 'Исполнитель не указан' }), node('span', { className: 'hint', text: `${record.albumName || 'Альбом не указан'} · ${duration} · ${available ? 'Есть LRC' : record.instrumental ? 'Инструментальная запись' : 'Без таймкодов'}` })]), node('div', { className: 'action-row' }, [select, plainImport]),
       ]);
     }));
     preview.replaceChildren();
-    if (state.selected) {
+    if (state.selected && hasSynchronizedLyrics(state.selected)) {
       const lrc = node('textarea', { id: 'lrclib-preview', readonly: true, 'aria-label': 'Предпросмотр LRC' });
       lrc.value = state.selected.syncedLyrics;
       const apply = button('Импортировать LRC', 'button primary', () => importRecord(state.selected)); apply.id = 'lrclib-import';
@@ -508,7 +512,7 @@ function renderImportCard(song, mode, drafts) {
   const control = lrc || plain; control.value = drafts[mode]; control.addEventListener('input', () => { drafts[mode] = control.value; });
   const loadLrc = lrc && button('Заменить из LRC', 'button quiet', async () => { try { const parsed = parseLrc(lrc.value); if (!parsed.cues.length) throw new Error('В LRC не найдено строк с таймкодами.'); await replaceCues(song, parsed.cues, {}, 'Импорт LRC заменит текущий текст и таймлайн.'); } catch (error) { toast(error.message); } });
   const loadPlain = plain && button('Вставить строки', 'button quiet', () => { const cues = plain.value.split(/\r?\n/).filter(Boolean).map((text, i) => ({ id: `paste-${Date.now()}-${i}`, start: null, text, type: 'lyric' })); if (cues.length) replaceCues(song, cues, {}, 'Вставка текста заменит текущие строки.'); else toast('Добавьте хотя бы одну строку.'); });
-  return node('section', { className: 'section-card' }, [node('h2', { text: mode === 'lrc' ? 'Свой LRC' : 'Чистый текст' }), node('p', { className: 'hint', text: 'Вставьте готовый LRC или обычный текст. Все повторения припева добавляйте отдельными строками.' }), field(mode === 'lrc' ? 'LRC с таймкодами' : 'Обычный текст', control), loadLrc || loadPlain]);
+  return node('section', { className: 'section-card' }, [node('h2', { text: mode === 'lrc' ? 'Свой LRC' : 'Свой текст' }), node('p', { className: 'hint', text: 'Вставьте готовый LRC или обычный текст. Все повторения припева добавляйте отдельными строками.' }), field(mode === 'lrc' ? 'LRC с таймкодами' : 'Обычный текст', control), loadLrc || loadPlain]);
 }
 async function replaceCues(song, cues, details, question, isCurrent = () => true) {
   if (song.cues.length && !(await confirmReplace(question))) return false;
@@ -524,6 +528,10 @@ function renderCues(song, validation) {
   const tapNext = () => { const index = currentSong()?.cues.findIndex((cue) => cue.start == null) ?? -1; if (index < 0) { toast('Нет неотмеченных строк. Для повторной отметки используйте кнопку часов у строки.'); return; } tapCue(index); };
   const undoTap = () => { const history = tapHistory.get(song.id) || []; const last = history.pop(); if (!last) { toast('Нет последней отметки для отмены.'); return; } tapHistory.set(song.id, history); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((cue) => cue.id === last.cueId ? { ...cue, start: last.before } : cue) })); render(); };
   card.append(node('div', { className: 'cue-toolbar' }, [node('div', {}, [node('h2', { text: 'Строки таймлайна' }), node('p', { className: 'hint', text: 'Время — начало строки. Кнопка «Отметить следующую» или пробел отмечает начало. Отмечайте строки по очереди или переотмечайте конкретную строку кнопкой часов.' })]), node('div', { className: 'action-row' }, [button('+ Строка', 'button quiet', () => addCue()), button('Отметить следующую', 'button quiet', tapNext), button('Отменить отметку', 'button quiet', undoTap)])]));
+  const ignore = input('', 'checkbox', { id: 'ignore-timecodes' });
+  ignore.checked = song.ignoreTimecodes === true;
+  ignore.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { ignoreTimecodes: ignore.checked })); render(); });
+  card.append(node('label', { className: 'ignore-timecodes' }, [ignore, node('span', { text: 'игнорировать таймкоды' })]), node('p', { className: 'hint', text: 'Без таймкодов текст прокручивается равномерно: с 10-й секунды до конца песни.' }));
   song.cues.forEach((cue, index) => { const time = input(cue.start == null ? '' : formatTime(cue.start), 'text', { 'aria-label': `Время строки ${index + 1}` }); const text = input(cue.text, 'text', { 'aria-label': `Текст строки ${index + 1}` }); const type = node('select', { 'aria-label': `Тип строки ${index + 1}` }); type.append(node('option', { value: 'lyric', text: 'Текст' }), node('option', { value: 'rest', text: 'Пауза' })); type.value = cue.type;
     const update = () => { const start = parseTime(time.value); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((item, i) => i === index ? { ...item, start, text: text.value, type: type.value } : item) })); render(); }; time.addEventListener('change', update); text.addEventListener('change', update); type.addEventListener('change', update);
     const retap = button('◷', 'button quiet', () => tapCue(index)); retap.setAttribute('aria-label', `Отметить строку ${index + 1} по текущему времени записи`);
@@ -585,14 +593,25 @@ function launchEvent(song) {
   applyHighlight(); renderAudience(-1, false); updateEvent();
 }
 function buildAudience() {
+  els.audienceLines.classList.toggle('uniform-scroll', eventState.song.ignoreTimecodes === true);
   els.audienceLines.replaceChildren(...eventState.song.cues.map(cue => node('div', {
     className: `audience-line${cue.type === 'rest' ? ' rest' : ''}`,
     text: cue.type === 'rest' ? `— ${cue.text} —` : cue.text,
   })));
 }
 function centerAudience(index) {
+  if (eventState.song?.ignoreTimecodes && !eventState.ended) { positionUniformAudience(); return; }
   const line = els.audienceLines.children[Math.max(0, index)];
   if (line) els.audienceLines.style.transform = `translateY(-${line.offsetTop + line.offsetHeight / 2}px)`;
+}
+function positionUniformAudience() {
+  const lines = els.audienceLines.children;
+  const first = lines[0], last = lines[lines.length - 1];
+  if (!first || !last) return;
+  const start = first.offsetTop + first.offsetHeight / 2;
+  const end = last.offsetTop + last.offsetHeight / 2;
+  const progress = uniformScrollProgress(eventState.song, playback.elapsed());
+  els.audienceLines.style.transform = `translateY(-${start + (end - start) * progress}px)`;
 }
 function renderAudience(index, ended) {
   if (ended) {
@@ -622,6 +641,7 @@ function updateEvent() {
   if (current.index !== eventState.lastIndex || current.ended !== eventState.ended) {
     eventState.lastIndex = current.index; eventState.ended = current.ended; renderAudience(current.index, current.ended);
   }
+  if (song.ignoreTimecodes && !current.ended) positionUniformAudience();
   $('#event-progress').max = String(song.duration); $('#event-progress').value = String(elapsed);
   $('#event-progress').setAttribute('aria-valuetext', `${displayTime(elapsed)} из ${displayTime(song.duration)}`);
   $('#event-elapsed').textContent = displayTime(elapsed); $('#event-duration').textContent = displayTime(song.duration);

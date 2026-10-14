@@ -72,6 +72,8 @@ try {
   await page.waitForFunction(()=>document.querySelector('.audience-line.active')?.textContent==='Первая строка');
   await page.screenshot({path:output+'/audience.png'});
   await page.locator('#event-start').click();
+  assert.equal(await page.locator('#event-start').textContent(), 'Старт');
+  await page.locator('#event-start').click();
   await page.waitForFunction(()=>document.querySelector('.audience-line.active')?.textContent==='Вторая строка');
   await page.evaluate(()=>{const until=performance.now()+450;while(performance.now()<until){};});
   await page.waitForFunction(()=>document.querySelector('.audience-line.active')?.textContent==='Припев повторяется');
@@ -134,7 +136,7 @@ try {
   await page.getByLabel('Длительность, ММ:СС', {exact:true}).fill('02:60');
   await page.getByLabel('Название', {exact:true}).focus();
   assert.equal(await page.getByLabel('Длительность, ММ:СС', {exact:true}).inputValue(), '02:05', 'invalid duration leaves the prior value intact');
-  await page.getByRole('tab', {name:'Чистый текст',exact:true}).click();
+  await page.getByRole('tab', {name:'Свой текст',exact:true}).click();
   await page.getByLabel('Обычный текст', {exact:true}).fill('Одна строка\nПовтор припева\nПовтор припева');
   await page.getByRole('button', {name:'Вставить строки', exact:true}).click();
   await page.getByRole('button', {name:'Режим показа', exact:true}).click();

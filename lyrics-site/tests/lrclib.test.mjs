@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasSynchronizedLyrics, LrclibClient, prepareLrcImport } from '../public/lrclib.js';
+import { hasPlainLyrics, hasSynchronizedLyrics, LrclibClient, prepareLrcImport, preparePlainImport } from '../public/lrclib.js';
 
 const record = (overrides = {}) => ({ id: 7, trackName: 'Песня & Song', artistName: 'Исполнитель', albumName: 'Album', duration: 123, instrumental: false, syncedLyrics: '[00:01.00]Припев\n[00:03.00][00:08.00]Again <tag>', ...overrides });
 const response = (body, { status = 200, headers = {} } = {}) => new Response(body, { status, headers });
@@ -11,6 +11,12 @@ test('LRC availability excludes plain, malformed, empty and instrumental lyrics'
     assert.equal(hasSynchronizedLyrics(record({ syncedLyrics })), false);
   }
   assert.equal(hasSynchronizedLyrics(record({ instrumental: true })), false);
+});
+
+test('plain-text availability requires usable ordinary lyrics and excludes instrumentals', () => {
+  assert.equal(hasPlainLyrics({ plainLyrics: 'Первая строка\nSecond line' }), true);
+  for (const plainLyrics of [null, '', ' \n\t ']) assert.equal(hasPlainLyrics({ plainLyrics }), false);
+  assert.equal(hasPlainLyrics({ plainLyrics: 'Текст', instrumental: true }), false);
 });
 
 test('search encodes only title and artist and uses privacy-limited request options', async () => {
@@ -80,6 +86,23 @@ test('LRC import preserves literal repeated occurrences and fills only missing m
   assert.throws(() => prepareLrcImport(song, record({ syncedLyrics: '' })), /нет синхронизированного/);
 });
 
+test('plain-text import preserves lines and repeats, leaves times empty, and applies positive duration', () => {
+  const song = { title: '  ', artist: '', duration: 90, reviewed: true, cues: [{ text: 'old' }] };
+  const snapshot = structuredClone(song);
+  const imported = preparePlainImport(song, record({ plainLyrics: 'Куплет\r\n\r\nAgain <tag>\nAgain <tag>\n' }));
+  assert.deepEqual(imported.cues.map(({ start, text, type }) => ({ start, text, type })), [
+    { start: null, text: 'Куплет', type: 'lyric' },
+    { start: null, text: 'Again <tag>', type: 'lyric' },
+    { start: null, text: 'Again <tag>', type: 'lyric' },
+  ]);
+  assert.deepEqual(imported.details, { title: 'Песня & Song', artist: 'Исполнитель', duration: 123 });
+  assert.deepEqual(song, snapshot);
+  assert.deepEqual(preparePlainImport({ title: 'Own', artist: 'Own artist', duration: 90 }, record({ plainLyrics: 'line', duration: null })).details, {});
+  assert.deepEqual(preparePlainImport({ title: 'Own', artist: 'Own artist', duration: 90 }, record({ plainLyrics: 'line', duration: -1 })).details, {});
+  assert.throws(() => preparePlainImport(song, record({ plainLyrics: ' \n\t ' })), /нет обычного текста/);
+  assert.throws(() => preparePlainImport(song, record({ plainLyrics: 'Текст', instrumental: true })), /Инструментальную/);
+});
+
 test('successful empty search stays empty even with Retry-After, and permits another search', async () => {
   for (const headers of [{}, { 'Retry-After': '60' }]) {
     let requests = 0;
@@ -113,7 +136,7 @@ test('cancellation while reading a slow body releases the client for a new searc
 });
 
 test('invalid records and service errors fail without exposing a partial result', async () => {
-  for (const invalid of [{}, { ...record(), duration: '123' }, { ...record(), syncedLyrics: {} }]) {
+  for (const invalid of [{}, { ...record(), duration: '123' }, { ...record(), syncedLyrics: {} }, { ...record(), plainLyrics: {} }]) {
     const client = new LrclibClient({ fetch: async () => response(JSON.stringify([record(), invalid])) });
     await assert.rejects(client.search({ title: 'x' }), /LRCLIB вернул/);
   }
@@ -127,5 +150,13 @@ test('imports exceeding portable storage limits are rejected before any song mut
   assert.throws(() => prepareLrcImport(song, record({ trackName: 'x'.repeat(1001) })), /нельзя сохранить/);
   assert.throws(() => prepareLrcImport(song, record({ syncedLyrics: '[00:01]' + 'x'.repeat(20001) })), /нельзя сохранить/);
   assert.throws(() => prepareLrcImport(song, record({ syncedLyrics: '[00:01]line\n'.repeat(5001) })), /нельзя сохранить/);
+  assert.deepEqual(song, snapshot);
+});
+
+test('plain-text imports reject oversized text and line counts before any song mutation', () => {
+  const song = { title: '', artist: '', duration: 0 };
+  const snapshot = structuredClone(song);
+  assert.throws(() => preparePlainImport(song, record({ plainLyrics: 'x'.repeat(20_001) })), /нельзя сохранить/);
+  assert.throws(() => preparePlainImport(song, record({ plainLyrics: 'line\n'.repeat(5001) })), /нельзя сохранить/);
   assert.deepEqual(song, snapshot);
 });

@@ -68,7 +68,7 @@ try {
   assert.equal(await page.getByText('Название и исполнитель из полей поиска отправляются в LRCLIB.', { exact: false }).count(), 0);
   await page.getByRole('tab', { name: 'Свой LRC', exact: true }).click();
   await page.getByLabel('LRC с таймкодами', { exact: true }).fill('[00:03]Draft');
-  await page.getByRole('tab', { name: 'Чистый текст', exact: true }).click();
+  await page.getByRole('tab', { name: 'Свой текст', exact: true }).click();
   await page.getByLabel('Обычный текст', { exact: true }).fill('plain draft');
   await page.getByRole('tab', { name: 'Свой LRC', exact: true }).click();
   assert.equal(await page.getByLabel('LRC с таймкодами', { exact: true }).inputValue(), '[00:03]Draft');

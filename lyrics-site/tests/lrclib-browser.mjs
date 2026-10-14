@@ -16,7 +16,7 @@ const records = [
 ];
 const song = (id, title, artist = 'Исходный артист', extras = {}) => ({
   schemaVersion: 1, id, title, artist, version: 'Оригинальная запись', language: 'ru', duration: 77, delayMs: 240,
-  reviewed: true, source: { kind: 'audio', fileName: 'private-original.wav' }, backing: { fileName: 'private-backing.wav' },
+  reviewed: true, ignoreTimecodes: false, source: { kind: 'audio', fileName: 'private-original.wav' }, backing: { fileName: 'private-backing.wav' },
   cues: [{ id: `${id}-cue`, start: .5, text: 'Существующая строка', type: 'lyric' }], ...extras,
 });
 const fixture = () => ({ schemaVersion: 1, id: 'lrclib-fixture', name: 'LRCLIB fixture', songs: [song('first', 'Тест & Test'), song('second', 'Другая песня')] });

@@ -57,6 +57,12 @@ function normalizeRecord(raw) {
   if (typeof raw.syncedLyrics === 'string' && raw.syncedLyrics.length > MAX_LRC_LENGTH) {
     throw problem('LRCLIB вернул слишком большой синхронизированный текст. Выберите другую запись.');
   }
+  if (raw.plainLyrics !== null && raw.plainLyrics !== undefined && typeof raw.plainLyrics !== 'string') {
+    throw problem('LRCLIB вернул некорректный обычный текст. Повторите поиск позже.');
+  }
+  if (typeof raw.plainLyrics === 'string' && raw.plainLyrics.length > MAX_LRC_LENGTH) {
+    throw problem('LRCLIB вернул слишком большой обычный текст. Выберите другую запись.');
+  }
   return {
     id: raw.id,
     trackName: nonEmptyText(raw.trackName, 'trackName'),
@@ -65,6 +71,7 @@ function normalizeRecord(raw) {
     duration: raw.duration ?? null,
     instrumental: raw.instrumental,
     syncedLyrics: raw.syncedLyrics || '',
+    plainLyrics: raw.plainLyrics || '',
   };
 }
 
@@ -186,6 +193,12 @@ export function hasSynchronizedLyrics(record) {
   try { return parseLrc(record.syncedLyrics).cues.length > 0; } catch { return false; }
 }
 
+/** An ordinary-text result must contain at least one nonblank line. */
+export function hasPlainLyrics(record) {
+  if (record?.instrumental || typeof record?.plainLyrics !== 'string') return false;
+  return record.plainLyrics.split(/\r?\n/).some((line) => line.trim().length > 0);
+}
+
 /** Convert an explicitly selected LRCLIB record into a normal LRC replacement. */
 export function prepareLrcImport(song, record) {
   if (!record || typeof record !== 'object') throw problem('Выберите запись LRCLIB перед импортом.');
@@ -209,4 +222,30 @@ export function prepareLrcImport(song, record) {
     importSet(exportSet({ schemaVersion: 1, id: 'lrclib-import-check', name: '', songs: [candidate] }));
   } catch (error) { throw problem(`LRC нельзя сохранить в приложении: ${error.message}`); }
   return { cues: parsed.cues, details };
+}
+
+/** Convert an explicitly selected LRCLIB record into editable untimed lines. */
+export function preparePlainImport(song, record) {
+  if (!record || typeof record !== 'object') throw problem('Выберите запись LRCLIB перед импортом.');
+  if (record.instrumental) throw problem('Инструментальную запись нельзя импортировать как текст.');
+  if (typeof record.plainLyrics !== 'string' || !record.plainLyrics.trim()) {
+    throw problem('У выбранной записи нет обычного текста. Выберите другую версию или вставьте текст вручную.');
+  }
+  if (record.plainLyrics.length > MAX_LRC_LENGTH) throw problem('LRCLIB вернул слишком большой обычный текст. Выберите другую запись.');
+  const cues = record.plainLyrics.split(/\r?\n/).filter(Boolean).map((text, index) => ({
+    id: `lrclib-plain-${Date.now()}-${index}`,
+    start: null,
+    text,
+    type: 'lyric',
+  }));
+  if (!cues.length) throw problem('В обычном тексте не найдено строк.');
+  const details = {};
+  if (!String(song?.title || '').trim() && typeof record.trackName === 'string' && record.trackName.trim()) details.title = record.trackName.trim();
+  if (!String(song?.artist || '').trim() && typeof record.artistName === 'string' && record.artistName.trim()) details.artist = record.artistName.trim();
+  if (typeof record.duration === 'number' && Number.isFinite(record.duration) && record.duration > 0) details.duration = record.duration;
+  try {
+    const candidate = createSong({ ...song, ...details, cues });
+    importSet(exportSet({ schemaVersion: 1, id: 'lrclib-import-check', name: '', songs: [candidate] }));
+  } catch (error) { throw problem(`Текст нельзя сохранить в приложении: ${error.message}`); }
+  return { cues, details };
 }

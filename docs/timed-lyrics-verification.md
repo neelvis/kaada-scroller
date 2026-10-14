@@ -470,3 +470,32 @@ login, display entry above songs, placeholder before selection, confirmation of
 a focused lyric edit with one click, ZIP backing round trip, narrow layout and
 offline backing playback after reopening. No private server projects were changed.
 Close and reopen existing lyrics tabs to adopt the new cached shell.
+
+
+## Revision 8: plain text and uniform scrolling
+
+Locally verified on 2026-10-14. The user approved revision 8 with `подтверждаю`
+after the draft was presented. No commit, push or deployment was requested.
+
+Passing checks in `lyrics-site/`:
+
+- `node --test tests/*.test.mjs`: 61 tests passed.
+- `node tools/build.mjs`: portable artifact built.
+- `node tests/plain-scroll-browser.mjs`: imported ordinary text and duration, null
+  timestamps, replacement cancellation/stale edits, label/checkbox/readiness, local
+  persistence, fixed 10-second intro, continuous spatial positions, wrapping/font/
+  viewport changes, pause/resume/seek/reset/end, short/single-line songs, backing
+  and lyrics-only playback; root and `/lyrics/`; narrow import layout.
+- `LYRICS_TEST_PYTHON=<isolated-test-runtime> node tests/plain-scroll-server-browser.mjs`:
+  explicit shared Save/reopen, library reuse, portable archive round trip, offline
+  reopening and Start without a lyric-service request. All data was synthetic in
+  an isolated temporary server; no private organizer projects were modified.
+- `node tests/lrclib-browser.mjs`, `node tests/live-display-browser.mjs`,
+  `node tests/redesign-browser.mjs`, and `node tests/browser.mjs`: passed.
+  The base browser fixture now accounts for revision 7's Pause button on a second
+  activation instead of expecting the timeline to continue after that click.
+- `git diff --check`: passed. Independent review found no material defects.
+
+Mobile screenshots of ordinary-text import and wrapped uniform display were
+inspected. Actual LRCLIB catalog responses and projector/event rehearsal remain
+manual checks. Existing timed-mode validation and cue playback retain their rules.

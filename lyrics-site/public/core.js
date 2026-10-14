@@ -94,6 +94,7 @@ function sanitizeSong(raw, songNumber) {
     throw importError(`песня ${songNumber}: задержка должна быть конечным числом.`);
   }
   if (typeof raw.reviewed !== 'boolean') throw importError(`песня ${songNumber}: reviewed должен быть true или false.`);
+  if (raw.ignoreTimecodes !== undefined && typeof raw.ignoreTimecodes !== 'boolean') throw importError(`песня ${songNumber}: ignoreTimecodes должен быть true или false.`);
   if (raw.backing !== undefined && !plainObject(raw.backing)) throw importError(`песня ${songNumber}: некорректная минусовка.`);
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -104,6 +105,7 @@ function sanitizeSong(raw, songNumber) {
     language: text(raw.language, `язык песни ${songNumber}`, { optional: true, max: 100 }),
     duration,
     delayMs: raw.delayMs,
+    ignoreTimecodes: raw.ignoreTimecodes === true,
     cues: raw.cues.map((cue, index) => sanitizeCue(cue, songNumber, index + 1)),
     reviewed: raw.reviewed,
     source: { kind: sourceKind, fileName: sourceFileName },
@@ -224,6 +226,7 @@ export function validateSong(song) {
     if (!plainObject(cue)) { errors.push(`${label}: неверная структура.`); continue; }
     if (cue.type !== 'lyric' && cue.type !== 'rest') errors.push(`${label}: неизвестный тип.`);
     if (typeof cue.text !== 'string' || !cue.text.trim()) errors.push(`${label}: введите текст.`);
+    if (song.ignoreTimecodes === true) continue;
     if (cue.start === null || cue.start === undefined) { errors.push(`${label}: не задано время начала.`); continue; }
     if (!Number.isFinite(cue.start)) { errors.push(`${label}: время должно быть конечным числом.`); continue; }
     if (cue.start < 0) errors.push(`${label}: время не может быть отрицательным.`);
@@ -241,6 +244,7 @@ export function cueAt(song, elapsedSeconds) {
   const effectiveTime = elapsed - delay;
   const duration = finiteNumber(song?.duration, Infinity);
   if (elapsed >= duration) return { index: -1, effectiveTime, ended: true };
+  if (song?.ignoreTimecodes === true) return { index: -1, effectiveTime: elapsed, ended: false };
   let index = -1;
   for (let cueIndex = 0; cueIndex < (song?.cues?.length || 0); cueIndex += 1) {
     const start = song.cues[cueIndex]?.start;
@@ -249,6 +253,14 @@ export function cueAt(song, elapsedSeconds) {
     index = cueIndex;
   }
   return { index, effectiveTime, ended: false };
+}
+
+/** Spatial progress for the untimed display; independent of stored cues/delay. */
+export function uniformScrollProgress(song, elapsedSeconds) {
+  const duration = finiteNumber(song?.duration, 0);
+  const elapsed = finiteNumber(elapsedSeconds, 0);
+  if (duration <= 10) return 0;
+  return Math.max(0, Math.min(1, (elapsed - 10) / (duration - 10)));
 }
 
 export function createSong(partial = {}) {
@@ -262,6 +274,7 @@ export function createSong(partial = {}) {
     language: typeof partial.language === 'string' ? partial.language : '',
     duration: finiteNumber(partial.duration, 0),
     delayMs: finiteNumber(partial.delayMs, 0),
+    ignoreTimecodes: partial.ignoreTimecodes === true,
     cues: rawCues.map((cue, index) => ({
       id: typeof cue?.id === 'string' && cue.id ? cue.id : id(`cue-${index + 1}`),
       start: finiteNumber(cue?.start, null),

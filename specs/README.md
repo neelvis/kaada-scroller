@@ -6,3 +6,4 @@
 | TL revision 4 | Backing tracks and live display controls | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-4.md) |
 | TL revision 5 | LRCLIB search and safe LRC import | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-5.md) |
 | TL revision 6 | Preparation redesign and portable backing tracks | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-6.md) |
+| TL revision 8 | Plain lyrics and uniform scrolling | Implemented and locally verified; not deployed | [Requirements](features/timed-lyrics/revision-8.md) |

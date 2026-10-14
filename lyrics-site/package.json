@@ -9,6 +9,8 @@
     "serve": "node tools/serve.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:redesign": "node tests/redesign-browser.mjs",
+    "test:plain": "node tests/plain-scroll-browser.mjs",
+    "test:plain:server": "node tests/plain-scroll-server-browser.mjs",
     "test:display": "node tests/live-display-browser.mjs",
     "test:server": "node tests/server-browser.mjs",
     "test:lrclib": "node tests/lrclib-browser.mjs",
