@@ -1,7 +1,7 @@
 # Timed lyrics revision 8: plain lyrics and uniform scrolling
 
 Feature ID: TL (extension)
-Status: Implemented and locally verified — not deployed; event rehearsal pending
+Status: Implemented, verified and deployed — event rehearsal pending
 Revision: 8, 2026-10-14
 Baseline: [specification](spec.md), [LRCLIB import](revision-5.md),
 [preparation](revision-6.md), [pause and resume](revision-7.md)
@@ -85,7 +85,9 @@ LRCLIB results, replacement guards, timeline rows and audience positioning;
 `lyrics-site/public/lrclib.js` currently drops ordinary lyrics during normalization;
 `lyrics-site/public/core.js` controls validation and portable song normalization.
 Approved draft SHA-256: `18d2f9babdbd2a26ee647b6e423f9caa2ca57828ca69f48fc657853722163a81`.
-Production implementation is complete locally; no deployment was requested.
+The user subsequently requested `commit + push + deploy`. Application commit
+`7d57cea` was pushed to `main`; paired release `20261014_142714` was activated
+on 2026-10-14. Previous pair `20261014_141246` remains available for rollback.
 
 ## Verification
 
@@ -103,3 +105,8 @@ and redesign browser checks passed on 2026-10-14. Independent scoped review foun
 no material defects. Mobile import and uniform-display screenshots were inspected.
 Actual LRCLIB catalog coverage and event/projector rehearsal remain manual checks.
 See [verification report](../../../docs/timed-lyrics-verification.md#revision-8-plain-text-and-uniform-scrolling).
+
+Production verification passed: live asset hashes, HTTPS health, anonymous
+private-data rejection and JS/MJS/WASM MIME; the plain-scroll browser scenarios
+also passed against the live site with mocked search results and synthetic local
+songs/audio in an isolated browser. Private school projects were not modified.

@@ -166,3 +166,15 @@ MIME passed. The display browser suite passed against production with synthetic
 browser-local fixtures, including backing and lyrics-only pause/resume. Private
 school projects were not modified. The previous pair `20261014_132817` remains
 available for rollback. Close and reopen existing tabs to adopt the new shell.
+
+
+## Plain lyrics and uniform scrolling release
+
+Paired release `20261014_142714` on 2026-10-14 publishes the Own text label,
+LRCLIB ordinary-text/duration import and the per-song ignore-timecodes mode with
+uniform scrolling after a 10-second intro. Backend/runtime hashes match the
+previous pair `20261014_141246`, retained for rollback. Independent manifest
+review, HTTPS asset/health/privacy/MIME checks and isolated production browser
+scenarios passed. Synthetic browser-local songs/audio and mocked search results
+were used; private school projects were not modified. Close and reopen existing
+tabs to adopt the new cached shell.

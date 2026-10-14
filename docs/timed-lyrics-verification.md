@@ -475,7 +475,8 @@ Close and reopen existing lyrics tabs to adopt the new cached shell.
 ## Revision 8: plain text and uniform scrolling
 
 Locally verified on 2026-10-14. The user approved revision 8 with `подтверждаю`
-after the draft was presented. No commit, push or deployment was requested.
+after the draft was presented. The subsequent explicit `commit + push + deploy`
+request authorized publication.
 
 Passing checks in `lyrics-site/`:
 
@@ -499,3 +500,14 @@ Passing checks in `lyrics-site/`:
 Mobile screenshots of ordinary-text import and wrapped uniform display were
 inspected. Actual LRCLIB catalog responses and projector/event rehearsal remain
 manual checks. Existing timed-mode validation and cue playback retain their rules.
+
+Paired release `20261014_142714` was activated on 2026-10-14 from application
+commit `7d57cea`, pushed to `main`. Independent deployment review accepted all 46
+manifest entries; only five frontend files differ from the previous release and
+all 22 service/runtime files are unchanged. The previous pair `20261014_141246`
+is retained for rollback. HTTPS checks verified live asset hashes, health,
+anonymous project/audio rejection and JS/MJS/WASM MIME. The plain-scroll browser
+scenarios passed against production using mocked LRCLIB results and synthetic
+browser-local songs/audio, including import, uniform timing, backing playback,
+pause/resume/seek/reset, short songs and local persistence. No private school
+projects were modified. Close and reopen existing tabs to adopt the new shell.
