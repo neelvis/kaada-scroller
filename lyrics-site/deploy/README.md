@@ -155,3 +155,14 @@ explicit song selection, first-activation timeline confirmation and hidden
 Projects before login. Backend/runtime hashes are unchanged from revision 6.
 HTTPS and isolated production browser checks passed, including offline backing
 playback. The prior paired release `20261013_193539` remains available for rollback.
+
+## Display pause and layout follow-up
+
+Paired release `20261014_141246` on 2026-10-14 publishes functional display
+pause/resume, single-line LRCLIB artist labels and an aligned preparation action
+row with the version explanation below the buttons. Backend/runtime hashes are
+unchanged. HTTPS asset hashes, health, anonymous project/audio rejection and asset
+MIME passed. The display browser suite passed against production with synthetic
+browser-local fixtures, including backing and lyrics-only pause/resume. Private
+school projects were not modified. The previous pair `20261014_132817` remains
+available for rollback. Close and reopen existing tabs to adopt the new shell.

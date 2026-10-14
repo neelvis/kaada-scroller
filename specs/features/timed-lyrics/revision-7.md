@@ -1,7 +1,7 @@
 # Timed lyrics revision 7: display pause
 
 Feature ID: TL (extension)
-Status: Implemented and locally verified
+Status: Implemented, verified and deployed — event rehearsal pending
 Revision: 7, 2026-10-14
 Baseline: [live display controls](revision-4.md)
 
@@ -41,4 +41,10 @@ The display browser suite, redesign browser suite, six playback unit tests and
 portable build passed locally on 2026-10-14. Layout inspection verified single-line
 LRCLIB labels at widths 320–1440 and action-row alignment at 1070/1440 with
 responsive wrapping at 375, using a mocked server project for presentation.
-Production deployment and event rehearsal were not performed in this change.
+Paired release `20261014_141246` was deployed on 2026-10-14 after the user
+explicitly requested commit, push and deployment. Production HTTPS asset hashes,
+health, anonymous project/audio rejection and JS/MJS/WASM MIME passed. The display
+browser suite also passed against the live site using synthetic browser-local
+fixtures, including backing and lyrics-only pause/resume. No private school
+projects were changed. Previous pair `20261014_132817` remains available for
+rollback. Event rehearsal remains an organizer check.
