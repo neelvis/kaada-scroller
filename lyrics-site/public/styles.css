@@ -20,7 +20,7 @@
 
 #show-mode{width:100%;margin-bottom:14px;flex-shrink:0}
 
-.audience-lines.uniform-scroll{transition:none}.ignore-timecodes{display:flex;align-items:center;gap:8px;margin-top:14px}.ignore-timecodes input{width:auto}
+.audience-lines.uniform-scroll{transition:none}.ignore-timecodes{display:flex;align-items:center;gap:8px;margin-top:14px}.ignore-timecodes input{width:auto}.auto-scroll-settings{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}.auto-scroll-settings[hidden],.auto-scroll-settings input[hidden]{display:none}.auto-scroll-label{margin:0}.auto-scroll-settings input.auto-scroll-delay{width:7ch;padding:7px 8px}
 
 /* Revision 10: one control row, dimmed in fullscreen while idle. */
 .event-view{position:relative}
@@ -49,3 +49,24 @@
 @media(max-width:780px){.event-controls{padding:10px}.event-control-row{gap:10px}.event-actions{gap:5px}}
 @media(max-width:500px){.event-controls{padding:8px}.event-control-row{gap:8px}.event-actions{gap:3px}.event-icon-button{width:32px;height:34px;padding:5px}.event-icon{width:20px;height:20px}.event-progress-row{grid-template-columns:30px minmax(0,1fr) 30px;gap:3px;font-size:10px}}
 @media(prefers-reduced-motion:reduce){.event-controls{transition:none}}
+
+/* Preparation refinements: set-name marquee, icon actions and consistent tooltips. */
+.action-icon-definitions{position:absolute;pointer-events:none}
+.topbar-actions .action-icon-button{width:38px;height:38px;padding:7px}
+.set-name-clip{position:relative;display:block;width:175px;max-width:100%}
+.set-name-clip .set-name{display:block;width:100%;max-width:none;text-overflow:clip}
+.set-name-measure{position:absolute;top:0;left:0;visibility:hidden;white-space:pre;pointer-events:none}
+.set-name-marquee{display:none;position:absolute;inset:0;overflow:hidden;align-items:center;pointer-events:none;color:var(--text);font-size:17px;font-weight:700;letter-spacing:normal}
+.set-name-clip.is-overflowing:not(:focus-within) .set-name-marquee{display:flex}
+.set-name-clip.is-overflowing:not(:focus-within) .set-name{color:transparent;text-shadow:none}
+.set-name-marquee-copy{display:block;flex:none;white-space:pre;padding-right:28px}
+.set-name-marquee-track{display:flex;width:max-content;animation:set-name-marquee var(--marquee-duration,10s) linear infinite}
+@keyframes set-name-marquee{to{transform:translateX(-50%)}}
+.has-tooltip{position:relative}
+.has-tooltip::after{content:attr(data-tooltip);position:absolute;top:calc(100% + 8px);right:auto;bottom:auto;left:50%;transform:translateX(-50%);z-index:30;width:max-content;max-width:min(340px,calc(100vw - 24px));padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);color:var(--text);font-size:12px;font-weight:500;line-height:1.4;white-space:normal;text-align:left;pointer-events:none;opacity:0;visibility:hidden}
+.has-tooltip:hover::after,.has-tooltip:focus-visible::after{opacity:1;visibility:visible}
+.event-controls .has-tooltip::after{top:auto;bottom:calc(100% + 8px)}
+.event-menu-toggle.has-tooltip::after{left:0;transform:none}
+.event-menu-toggle[aria-expanded=true]::after{visibility:hidden}
+.visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+@media(max-width:500px){.topbar-actions .action-icon-button{width:34px;height:34px;padding:5px}.set-name-clip{width:min(175px,calc(100vw - 160px))}}

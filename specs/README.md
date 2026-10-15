@@ -9,3 +9,5 @@
 | TL revision 8 | Plain lyrics and uniform scrolling | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-8.md) |
 | TL revision 9 | Adjustable untimed scrolling speed | Draft — awaiting approval | [Requirements](features/timed-lyrics/revision-9.md) |
 | TL revision 10 | Compact display controls | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-10.md) |
+| TL revision 11 | Preparation refinements | Implemented and deployed — UI verification pending | [Requirements](features/timed-lyrics/revision-11.md) |
+| TL revision 12 | Display keyboard and optional uniform scrolling | Implemented and deployed — UI verification pending | [Requirements](features/timed-lyrics/revision-12.md) |

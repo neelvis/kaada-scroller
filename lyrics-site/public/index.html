@@ -16,22 +16,30 @@
     <header class="topbar">
       <a class="brand" href="./" aria-label="Тексты песен — к списку песен"><span class="brand-mark" aria-hidden="true">♪</span><span>Тексты песен</span></a>
       <div class="topbar-actions">
+        <svg class="action-icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0">
+          <symbol id="action-icon-library" viewBox="0 0 24 24"><path d="M4 4v16M8 4v16M12 6v14M16 4l4 15M15 8l4-1M17 17l4-1"/></symbol>
+          <symbol id="action-icon-save" viewBox="0 0 24 24"><path d="M4 3h13l3 3v15H4zM8 3v6h8V3M8 21v-8h8v8"/></symbol>
+          <symbol id="action-icon-sign-in" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M16 12H5m5-5-5 5 5 5"/></symbol>
+          <symbol id="action-icon-sign-out" viewBox="0 0 24 24"><path d="M10 4H5v16h5M8 12h11m-5-5 5 5-5 5"/></symbol>
+          <symbol id="action-icon-import" viewBox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 20h16"/></symbol>
+          <symbol id="action-icon-export" viewBox="0 0 24 24"><path d="M12 17V4m-5 5 5-5 5 5M4 20h16"/></symbol>
+        </svg>
         <span class="offline-state" id="offline-state" aria-live="polite">Проверка автономной работы…</span>
         <span class="remote-state" id="remote-state" aria-live="polite">Локальный набор</span>
-        <button class="button quiet" id="projects" type="button" hidden disabled>Проекты</button>
-        <button class="button quiet" id="save-project" type="button" hidden>Сохранить</button>
-        <button class="button quiet" id="login" type="button">Войти</button>
-        <button class="button quiet" id="logout" type="button" hidden>Выйти</button>
+        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="projects" type="button" aria-label="Проекты" data-tooltip="Проекты" hidden disabled><svg class="event-icon" aria-hidden="true"><use href="#action-icon-library"/></svg></button>
+        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="save-project" type="button" aria-label="Сохранить" data-tooltip="Сохранить" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-save"/></svg></button>
+        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="login" type="button" aria-label="Войти" data-tooltip="Войти"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-sign-in"/></svg></button>
+        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="logout" type="button" aria-label="Выйти" data-tooltip="Выйти" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-sign-out"/></svg></button>
         <button class="button quiet" id="clear-downloaded" type="button" hidden>Очистить загруженный проект</button>
-        <button class="button quiet" id="import-set" type="button">Импорт</button>
-        <button class="button quiet" id="export-set" type="button">Экспорт</button>
+        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="import-set" type="button" aria-label="Импорт" data-tooltip="Импорт"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-import"/></svg></button>
+        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="export-set" type="button" aria-label="Экспорт" data-tooltip="Экспорт"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-export"/></svg></button>
         <input id="set-file" type="file" accept="application/json,application/zip,.json,.zip" hidden>
       </div>
     </header>
 
     <section class="workspace" id="preparation-view">
       <aside class="song-list-panel" aria-label="Список песен">
-        <div class="panel-heading"><div><p class="eyebrow">Набор</p><input id="set-name" class="set-name" aria-label="Название набора" value="Мой набор"></div><span class="song-count" id="song-count">0 песен</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">Набор</p><div class="set-name-clip" id="set-name-clip"><input id="set-name" class="set-name" aria-label="Название набора" value="Мой набор"><div class="set-name-marquee" id="set-name-marquee" aria-hidden="true"><div class="set-name-marquee-track"><span class="set-name-marquee-copy"></span><span class="set-name-marquee-copy"></span></div></div><span class="set-name-measure" id="set-name-measure" aria-hidden="true"></span></div></div><span class="song-count" id="song-count">0 песен</span></div>
         <button class="button primary" id="show-mode" type="button" disabled>Режим показа</button>
         <div class="song-list" id="song-list"></div>
         <button class="button add-song" id="add-song" type="button">+ Новая песня</button>
@@ -80,7 +88,7 @@
       </div>
       <dialog class="event-menu" id="event-menu" tabindex="-1" aria-labelledby="event-menu-title">
         <div class="event-menu-content">
-          <div class="event-menu-heading"><div><p class="eyebrow">Проект</p><h2 id="event-menu-title"><span id="event-project-name"></span></h2></div><button class="button quiet" id="event-menu-close" type="button" aria-label="Закрыть меню">×</button></div>
+        <div class="event-menu-heading"><div><p class="eyebrow">Проект</p><h2 id="event-menu-title"><span id="event-project-name"></span></h2></div><button class="button quiet event-icon-button has-tooltip" id="event-menu-close" type="button" aria-label="Закрыть меню" data-tooltip="Закрыть меню">×</button></div>
           <div class="event-menu-songs" id="event-menu-songs" aria-label="Песни проекта"></div>
           <button class="button quiet event-projects" id="event-projects" type="button" hidden disabled>Другой проект</button>
           <button class="button quiet event-projects" id="event-offline-projects" type="button" hidden>Локальные проекты</button>

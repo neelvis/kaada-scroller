@@ -221,3 +221,31 @@ as an unimplemented draft. Unit/display/LRCLIB checks, independent exact-package
 review, HTTPS checks, and isolated live keyboard scenarios passed. API/runtime
 and deploy scripts are unchanged; prior pair `20261015_085345` is retained.
 Close and reopen existing lyrics tabs to adopt the new shell.
+
+### Preparation refinements
+
+Paired release `20261015_114534` on 2026-10-15 publishes revision 11: a marquee
+for overflowing set names, a per-song uniform-scroll start time, streamlined
+library actions, and icon-only global actions with tooltips. The API source,
+runtime and deploy scripts are unchanged; no data migration was needed. HTTPS
+checks from the server returned 200 for the site, API health and JavaScript
+assets, and 401 for anonymous project and audio requests. The active frontend
+and API both point to `20261015_114534`; prior pair `20261015_090722` remains
+available for rollback. Automated and browser UI suites, authenticated
+save/reopen and offline display checks were not run. Close and reopen existing
+lyrics tabs to adopt the new shell.
+
+### Optional uniform scrolling and Space behavior
+
+Paired release `20261015_115537` on 2026-10-15 publishes revision 12. Display
+mode captures Space before focused controls and uses it only for start/pause.
+For songs that ignore timecodes, a checked-by-default option enables uniform
+scrolling after the configured delay; unchecking it keeps lyrics stationary.
+Legacy songs default to enabled with a 10-second delay. The API source, runtime
+and deploy scripts are unchanged; no data migration was needed. HTTPS checks
+from the server returned 200 for the site, API health and JavaScript assets,
+and 401 for anonymous project and audio requests. The active frontend and API
+both point to `20261015_115537`; prior pair `20261015_114534` remains available
+for rollback. Automated and browser UI suites, authenticated save/reopen and
+offline display checks were not run. Close and reopen existing lyrics tabs to
+adopt the new shell.

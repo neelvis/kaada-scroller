@@ -70,6 +70,12 @@ function node(tag, props = {}, children = []) {
   return el;
 }
 function button(text, className = 'button', click) { return node('button', { type: 'button', className, text, onclick: click }); }
+function iconTextButton(text, label, className, click) {
+  const control = button(text, `${className} has-tooltip`, click);
+  control.setAttribute('aria-label', label);
+  control.setAttribute('data-tooltip', label);
+  return control;
+}
 function toast(message) { const item = node('div', { className: 'toast', role: 'status', text: message }); document.body.append(item); setTimeout(() => item.remove(), 4200); }
 function currentSong() { return set.songs.find((song) => song.id === selectedId) || null; }
 function status(song) { if (song.reviewed && !validateSong(song).length) return 'Готова'; if (song.cues.length) return 'Нужно проверить'; return 'Не подготовлена'; }
@@ -200,6 +206,7 @@ async function refreshProjects() {
     if (result.error) list.append(node('p', { className: 'hint', text: result.error.message }));
     for (const item of result.projects || []) { const actions = node('span', { className: 'action-row' }, [button('Открыть', 'button quiet', () => openProject(item.id)), button('×', 'button danger', async () => { if (!confirm(`Удалить проект «${item.name}»? Песни останутся в библиотеке.`)) return; try { await remote.deleteProject(item.id, item.revision); if (project?.id === item.id) { project = null; projectEntries.clear(); remoteDirty = false; offlineProjectOpen = false; set = legacySet; selectedId = null; updateRemoteState(); } await refreshProjects(); render(); } catch (error) { toast(error.code === 'conflict' ? 'Проект изменился на сервере. Обновите список и повторите.' : error.message); } })]); list.append(node('div', { className: 'project-row' }, [node('span', { text: `${item.name} · ${item.songCount} ${plural(item.songCount, 'песня', 'песни', 'песен')}` }), actions])); }
     for (const item of cached) list.append(node('div', { className: 'project-row cached' }, [node('span', { text: `${item.name} · подготовлен для показа` }), button('Открыть без сети', 'button quiet', () => openProject(item.id, { cached: true }))]));
+    list.querySelectorAll('button').forEach(control => { if (control.textContent.trim() === '×') { control.classList.add('has-tooltip'); control.setAttribute('aria-label', 'Удалить проект'); control.setAttribute('data-tooltip', 'Удалить проект'); } });
     if (!list.children.length) list.append(node('p', { className: 'hint', text: sessionActive ? 'Проектов пока нет.' : 'Войдите, чтобы открыть проекты, или подготовьте проект на этом устройстве.' }));
   } catch (error) { list.replaceChildren(node('p', { className: 'hint', text: error.message })); }
 }
@@ -254,11 +261,6 @@ async function adoptLatest(song) {
   if (!confirm('Применить последнюю версию из библиотеки к этому проекту? Текущий закреплённый таймлайн сменится только здесь.')) return;
   try { const latest = await remote.getSong(current.songId); set = { ...set, songs: set.songs.map(item => item.id === song.id ? latest.song : item) }; projectEntries.delete(song.id); projectEntries.set(latest.song.id, { songId: latest.songId, revisionId: latest.revisionId, audioId: latest.audioId, backingAudioId: latest.backingAudioId ?? null }); selectedId = latest.song.id; markRemoteDirty(); render(); } catch (error) { toast(error.message); }
 }
-async function deleteSharedSong(song) {
-  const current = entryFor(song); if (!current.songId || !sessionActive) return;
-  if (!confirm('Удалить эту песню из общей библиотеки? Сервер откажет, если она используется в проектах.')) return;
-  try { await remote.deleteSong(current.songId); toast('Песня удалена из общей библиотеки.'); } catch (error) { toast(error.code === 'conflict' ? 'Нельзя удалить: песня ещё используется в проекте.' : error.message); }
-}
 function setAudioPreview(song) {
   if (audioSongId === song.id) return;
   clearAudioPreview(); audioSongId = song.id;
@@ -278,8 +280,8 @@ function renderList() {
       node('span', { className: 'song-item-copy' }, [node('span', { className: 'song-item-title', text: song.title || 'Без названия' }), node('span', { className: 'song-item-status', text: status(song) })])
     ]);
     const move = (direction) => { const target = index + direction; if (target < 0 || target >= set.songs.length) return; const songs = [...set.songs]; [songs[index], songs[target]] = [songs[target], songs[index]]; set = { ...set, songs }; if (project) markRemoteDirty(); else persist(); render(); };
-    const up = button('↑', 'song-reorder', () => move(-1)); up.disabled = index === 0; up.setAttribute('aria-label', 'Переместить песню выше');
-    const down = button('↓', 'song-reorder', () => move(1)); down.disabled = index === set.songs.length - 1; down.setAttribute('aria-label', 'Переместить песню ниже');
+    const up = iconTextButton('↑', 'Переместить песню выше', 'song-reorder', () => move(-1)); up.disabled = index === 0;
+    const down = iconTextButton('↓', 'Переместить песню ниже', 'song-reorder', () => move(1)); down.disabled = index === set.songs.length - 1;
     els.list.append(node('div', { className: `song-item${song.id === selectedId ? ' active' : ''}` }, [select, node('div', { className: 'song-reorder-wrap' }, [up, down])]));
   });
 }
@@ -534,11 +536,37 @@ function renderCues(song, validation) {
   const ignore = input('', 'checkbox', { id: 'ignore-timecodes' });
   ignore.checked = song.ignoreTimecodes === true;
   ignore.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { ignoreTimecodes: ignore.checked })); render(); });
-  card.append(node('label', { className: 'ignore-timecodes' }, [ignore, node('span', { text: 'игнорировать таймкоды' })]), node('p', { className: 'hint', text: 'Без таймкодов текст прокручивается равномерно: с 10-й секунды до конца песни.' }));
+  const autoScroll = input('', 'checkbox', { id: 'auto-scroll-enabled' });
+  autoScroll.checked = song.autoScrollEnabled !== false;
+  autoScroll.addEventListener('change', () => {
+    changeSong(song.id, current => ({ ...current, autoScrollEnabled: autoScroll.checked }));
+    updateAutoScrollVisibility();
+  });
+  const autoScrollLabel = node('label', { className: 'ignore-timecodes auto-scroll-label' }, [autoScroll, node('span', { text: 'начинать автоскролл через, сек' })]);
+  const autoScrollStart = input(song.autoScrollStartSeconds ?? 10, 'number', { min: '0', step: '1', className: 'auto-scroll-delay', 'aria-label': 'начинать автоскролл через, сек' });
+  autoScrollStart.addEventListener('change', () => {
+    const value = Number(autoScrollStart.value);
+    if (!Number.isSafeInteger(value) || value < 0) { autoScrollStart.value = String(song.autoScrollStartSeconds ?? 10); return; }
+    if (value === (song.autoScrollStartSeconds ?? 10)) return;
+    changeSong(song.id, current => ({ ...current, autoScrollStartSeconds: value }));
+    render();
+  });
+  const scrollStart = song.autoScrollStartSeconds ?? 10;
+  const scrollStartHint = node('p', { className: 'hint', text: `Без таймкодов текст прокручивается равномерно: с ${scrollStart}-й секунды до конца песни.` });
+  const autoScrollSettings = node('div', { className: 'auto-scroll-settings' }, [autoScrollLabel, autoScrollStart]);
+  const updateAutoScrollVisibility = () => {
+    autoScrollSettings.hidden = !ignore.checked;
+    autoScrollStart.hidden = !ignore.checked || !autoScroll.checked;
+    scrollStartHint.hidden = !ignore.checked || !autoScroll.checked;
+  };
+  updateAutoScrollVisibility();
+  card.append(node('label', { className: 'ignore-timecodes' }, [ignore, node('span', { text: 'игнорировать таймкоды' })]), autoScrollSettings, scrollStartHint);
   song.cues.forEach((cue, index) => { const time = input(cue.start == null ? '' : formatTime(cue.start), 'text', { 'aria-label': `Время строки ${index + 1}` }); const text = input(cue.text, 'text', { 'aria-label': `Текст строки ${index + 1}` }); const type = node('select', { 'aria-label': `Тип строки ${index + 1}` }); type.append(node('option', { value: 'lyric', text: 'Текст' }), node('option', { value: 'rest', text: 'Пауза' })); type.value = cue.type;
     const update = () => { const start = parseTime(time.value); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((item, i) => i === index ? { ...item, start, text: text.value, type: type.value } : item) })); render(); }; time.addEventListener('change', update); text.addEventListener('change', update); type.addEventListener('change', update);
-    const retap = button('◷', 'button quiet', () => tapCue(index)); retap.setAttribute('aria-label', `Отметить строку ${index + 1} по текущему времени записи`);
-    const remove = button('×', 'button quiet', () => { changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.filter((_, i) => i !== index) })); render(); }); remove.setAttribute('aria-label', `Удалить строку ${index + 1}`); table.append(node('div', { className: `cue-row${cue.type === 'rest' ? ' rest' : ''}` }, [time, text, type, retap, remove]));
+    const retapLabel = `Отметить строку ${index + 1} по текущему времени записи`;
+    const retap = button('◷', 'button quiet has-tooltip', () => tapCue(index)); retap.setAttribute('aria-label', retapLabel); retap.setAttribute('data-tooltip', retapLabel);
+    const removeLabel = `Удалить строку ${index + 1}`;
+    const remove = button('×', 'button quiet has-tooltip', () => { changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.filter((_, i) => i !== index) })); render(); }); remove.setAttribute('aria-label', removeLabel); remove.setAttribute('data-tooltip', removeLabel); table.append(node('div', { className: `cue-row${cue.type === 'rest' ? ' rest' : ''}` }, [time, text, type, retap, remove]));
   }); card.append(table);
   if (validation.length) card.append(node('ul', { className: 'validation' }, validation.map((message) => node('li', { text: message })))); return card;
 }
@@ -565,16 +593,31 @@ function renderSongActions(song) {
   const controls = [del];
   let versionHint;
   if (project) {
-    const versionButton = button('Обновить версию', 'button quiet', () => adoptLatest(song));
+    const explanation = 'Применит последнюю версию песни из библиотеки только в этом проекте: заменит текст, таймкоды и ссылки на аудио. Остальные проекты сохранят свои версии. После обновления нажмите «Сохранить».';
+    const versionButton = button('Обновить из библиотеки', 'button quiet has-tooltip', () => adoptLatest(song));
     versionButton.disabled = !entryFor(song).songId || !sessionActive || offlineProjectOpen;
     versionButton.setAttribute('aria-describedby', 'version-action-hint');
+    versionButton.setAttribute('data-tooltip', explanation);
     controls.push(versionButton);
-    versionHint = node('p', { id: 'version-action-hint', className: 'hint', text: 'Применит последнюю версию песни из библиотеки только в этом проекте: заменит текст, таймкоды и ссылки на аудио. Остальные проекты сохранят свои версии. После обновления нажмите «Сохранить».' });
-    if (entryFor(song).songId) controls.push(button('Удалить из библиотеки', 'button danger', () => deleteSharedSong(song)));
+    versionHint = node('span', { id: 'version-action-hint', className: 'visually-hidden', text: explanation });
   }
   return node('div', { className: 'song-actions' }, [node('div', { className: 'action-row' }, controls), ...(versionHint ? [versionHint] : [])]);
 }
-function render() { renderList(); els.setName.value = set.name || 'Мой набор'; els.setName.disabled = offlineProjectOpen; $('#add-song').disabled = offlineProjectOpen; $('#show-mode').disabled = !set.songs.length; renderEditor(); updateRemoteState(); if (offlineProjectOpen) { [...els.editor.querySelectorAll('input,textarea,select,button')].forEach(control => { control.disabled = true; }); [...els.list.querySelectorAll('.song-reorder')].forEach(control => control.disabled = true); } }
+function updateSetNameMarquee() {
+  const clip = $('#set-name-clip');
+  const measure = $('#set-name-measure');
+  const marquee = $('#set-name-marquee');
+  if (!clip || !measure || !marquee) return;
+  const value = els.setName.value || 'Мой набор';
+  measure.textContent = value;
+  measure.style.font = getComputedStyle(els.setName).font;
+  marquee.querySelectorAll('.set-name-marquee-copy').forEach(copy => { copy.textContent = value; });
+  const textWidth = measure.getBoundingClientRect().width;
+  const overflowing = textWidth > els.setName.clientWidth + 1;
+  clip.classList.toggle('is-overflowing', overflowing);
+  if (overflowing) marquee.style.setProperty('--marquee-duration', `${Math.max(8, textWidth / 24)}s`);
+}
+function render() { renderList(); els.setName.value = set.name || 'Мой набор'; els.setName.disabled = offlineProjectOpen; updateSetNameMarquee(); $('#add-song').disabled = offlineProjectOpen; $('#show-mode').disabled = !set.songs.length; renderEditor(); updateRemoteState(); if (offlineProjectOpen) { [...els.editor.querySelectorAll('input,textarea,select,button')].forEach(control => { control.disabled = true; }); [...els.list.querySelectorAll('.song-reorder')].forEach(control => control.disabled = true); } }
 function addSong() { editorTab = 'lrclib'; const song = createSong({ language: 'ru' }); set = { ...set, songs: [...set.songs, song] }; selectedId = song.id; if (project) markRemoteDirty(); else persist(); render(); }
 
 $('#show-mode').addEventListener('click', () => {
@@ -892,7 +935,12 @@ $('#highlight-current').addEventListener('click', toggleHighlight);
 document.addEventListener('keydown', event => {
   if (els.event.hidden) return;
   const space = event.code === 'Space' || event.key === ' ';
-  if (space && $('#event-menu').open) { event.preventDefault(); return; }
+  if (space) {
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (event.repeat) return;
+    if (eventState.song && !$('#event-start').disabled) startEvent();
+    return;
+  }
   if (event.key === 'Escape' && $('#event-menu').open) { event.preventDefault(); $('#event-menu').close(); return; }
   if (document.querySelector('dialog[open]') || event.ctrlKey || event.altKey || event.metaKey) return;
   const target = event.target instanceof Element ? event.target : document.body;
@@ -911,19 +959,19 @@ document.addEventListener('keydown', event => {
   const fullscreen = key === 'f' || event.code === 'KeyF';
   const fontUp = ['+', '='].includes(event.key) || event.code === 'NumpadAdd';
   const fontDown = ['-', '−'].includes(event.key) || event.code === 'NumpadSubtract';
-  if (!space && !mute && !highlight && !fullscreen && !library && !fontUp && !fontDown) return;
+  if (!mute && !highlight && !fullscreen && !library && !fontUp && !fontDown) return;
   event.preventDefault();
   if (event.repeat) return;
-  if (space) { if (!$('#event-start').disabled) startEvent(); }
-  else if (mute) toggleMute();
+  if (mute) toggleMute();
   else if (fullscreen) toggleFullscreen();
   else if (library) showEventMenu();
   else if (fontUp || fontDown) changeAudienceFont(fontUp ? 4 : -4);
   else toggleHighlight();
-});
+}, true);
 document.addEventListener('keyup', event => {
-  if (!els.event.hidden && $('#event-menu').open && (event.code === 'Space' || event.key === ' ')) event.preventDefault();
-});
+  if (els.event.hidden || (event.code !== 'Space' && event.key !== ' ')) return;
+  event.preventDefault(); event.stopImmediatePropagation();
+}, true);
 eventControls.addEventListener('pointerenter', event => {
   // Touch can leave CSS :hover sticky; only an actual hovering pointer pins the panel.
   controlsVisibility.hovered = event.pointerType !== 'touch';
@@ -947,6 +995,8 @@ updateSessionUi(); render(); initOffline();
 try { if (localStorage.getItem('lyrics-v2-pending-logout')) { await privateMutation(() => clearPrivateProjectCache()); try { await remote.session(); await remote.logout(); localStorage.removeItem('lyrics-v2-pending-logout'); } catch (error) { if (error.status === 401) localStorage.removeItem('lyrics-v2-pending-logout'); } } else { await remote.session(); sessionActive = true; } } catch {} updateSessionUi(); render(); refreshOfflineProjectEntry();
 
 window.addEventListener('resize', () => { if (!els.event.hidden) { centerAudience(eventState.lastIndex ?? -1); positionEventMenu(); } });
+els.setName.addEventListener('input', updateSetNameMarquee);
+window.addEventListener('resize', updateSetNameMarquee);
 window.addEventListener('online', () => lrclibState?.paint());
 window.addEventListener('offline', () => lrclibState?.paint());
 

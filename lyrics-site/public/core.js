@@ -95,6 +95,10 @@ function sanitizeSong(raw, songNumber) {
   }
   if (typeof raw.reviewed !== 'boolean') throw importError(`песня ${songNumber}: reviewed должен быть true или false.`);
   if (raw.ignoreTimecodes !== undefined && typeof raw.ignoreTimecodes !== 'boolean') throw importError(`песня ${songNumber}: ignoreTimecodes должен быть true или false.`);
+  if (raw.autoScrollEnabled !== undefined && typeof raw.autoScrollEnabled !== 'boolean') throw importError(`песня ${songNumber}: autoScrollEnabled должен быть true или false.`);
+  if (raw.autoScrollStartSeconds !== undefined && (!Number.isSafeInteger(raw.autoScrollStartSeconds) || raw.autoScrollStartSeconds < 0)) {
+    throw importError(`песня ${songNumber}: время начала автоскролла должно быть неотрицательным целым числом.`);
+  }
   if (raw.backing !== undefined && !plainObject(raw.backing)) throw importError(`песня ${songNumber}: некорректная минусовка.`);
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -106,6 +110,8 @@ function sanitizeSong(raw, songNumber) {
     duration,
     delayMs: raw.delayMs,
     ignoreTimecodes: raw.ignoreTimecodes === true,
+    autoScrollEnabled: raw.autoScrollEnabled !== false,
+    autoScrollStartSeconds: raw.autoScrollStartSeconds === undefined ? 10 : raw.autoScrollStartSeconds,
     cues: raw.cues.map((cue, index) => sanitizeCue(cue, songNumber, index + 1)),
     reviewed: raw.reviewed,
     source: { kind: sourceKind, fileName: sourceFileName },
@@ -257,10 +263,14 @@ export function cueAt(song, elapsedSeconds) {
 
 /** Spatial progress for the untimed display; independent of stored cues/delay. */
 export function uniformScrollProgress(song, elapsedSeconds) {
+  if (song?.autoScrollEnabled === false) return 0;
   const duration = finiteNumber(song?.duration, 0);
   const elapsed = finiteNumber(elapsedSeconds, 0);
-  if (duration <= 10) return 0;
-  return Math.max(0, Math.min(1, (elapsed - 10) / (duration - 10)));
+  const start = Number.isSafeInteger(song?.autoScrollStartSeconds) && song.autoScrollStartSeconds >= 0
+    ? song.autoScrollStartSeconds
+    : 10;
+  if (duration <= start) return 0;
+  return Math.max(0, Math.min(1, (elapsed - start) / (duration - start)));
 }
 
 export function createSong(partial = {}) {
@@ -275,6 +285,10 @@ export function createSong(partial = {}) {
     duration: finiteNumber(partial.duration, 0),
     delayMs: finiteNumber(partial.delayMs, 0),
     ignoreTimecodes: partial.ignoreTimecodes === true,
+    autoScrollEnabled: partial.autoScrollEnabled !== false,
+    autoScrollStartSeconds: Number.isSafeInteger(partial.autoScrollStartSeconds) && partial.autoScrollStartSeconds >= 0
+      ? partial.autoScrollStartSeconds
+      : 10,
     cues: rawCues.map((cue, index) => ({
       id: typeof cue?.id === 'string' && cue.id ? cue.id : id(`cue-${index + 1}`),
       start: finiteNumber(cue?.start, null),
