@@ -580,3 +580,14 @@ step and bounds, shortcut guards, measured two-second dimming, disabled crossed
 speaker visibility and exact hover tooltip, backing/no-backing switching, and
 existing playback, fullscreen, focus/touch and error behavior. No production data
 was used in the local checks.
+
+Application commit `ddae475` was pushed to `main` and deployed as paired release
+`20261015_085345` on 2026-10-15. Final source/package review accepted all 51 exact
+stage hashes and unchanged backend/runtime/deploy scripts. The intermediate
+candidates were never activated; prior active pair `20261015_084025` is retained
+for rollback. HTTPS asset hashes, health, anonymous private-data rejection and
+JS/MJS/WASM MIME passed. The isolated live keyboard smoke verified Space after
+Escape/close/outside menu dismissal, button focus/Enter behavior, main and numeric
+font keys and limits, paused-position preservation, two-second opacity change,
+and the visible disabled crossed-speaker state with the exact no-backing tooltip.
+Only synthetic local browser data was used; no private project was modified.

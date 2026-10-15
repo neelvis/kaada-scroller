@@ -1,7 +1,7 @@
 # Timed lyrics revision 10: compact display controls
 
 Feature ID: TL (extension)
-Status: Prior display releases deployed; bounded keyboard/audio refinement locally verified
+Status: Implemented, verified and deployed — event rehearsal pending
 Revision: 10, 2026-10-15
 Baseline: [live display controls](revision-4.md), [pause and resume](revision-7.md),
 [plain lyrics and uniform scrolling](revision-8.md)
@@ -207,4 +207,14 @@ The opacity test confirms no dimming before 1.7 seconds and dimming within the
 next 0.9 seconds; the configured timer is exactly 2000 ms. No-backing songs show
 the disabled crossed-speaker control and its exact hover tooltip; backed songs
 retain enabled sound controls. Independent source/package review found no
-material findings. Publication evidence follows after activation.
+material findings.
+
+Application commit `ddae475` was pushed to `main` and published as paired release
+`20261015_085345` on 2026-10-15. Final V3 package review accepted all 51 hashes;
+only app/index/cache changed, with backend/runtime and deploy scripts unchanged.
+Prior pair `20261015_084025` is retained for rollback. HTTPS asset hashes, health,
+anonymous private-data rejection and MIME checks passed. An isolated production
+browser verified actual Space after all menu-dismissal routes, focused buttons
+and Enter, main/keypad font steps and bounds, preserved paused position, measured
+two-second dimming, and the visible disabled crossed speaker with the exact
+no-backing tooltip. No private school projects were modified.

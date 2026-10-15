@@ -199,3 +199,14 @@ Hover, keyboard focus, or touch restores full opacity. Source/package review,
 local display suites, HTTPS checks, and the live supplemental controls suite
 passed. Backend/runtime and deployment scripts are unchanged; prior pair
 `20261015_082900` remains available for rollback. Close and reopen existing tabs.
+
+### Keyboard and unavailable-audio follow-up
+
+Paired release `20261015_085345` on 2026-10-15 (application commit `ddae475`)
+prioritizes Space playback over focused display-button activation, adds +/− font
+shortcuts, shortens idle opacity to two seconds, and keeps a disabled crossed
+speaker with the exact no-backing tooltip visible for songs without accompaniment.
+Local display suites, independent source/package review, HTTPS checks and isolated
+live keyboard/audio/timer smoke passed. Backend/runtime and deploy scripts are
+unchanged; prior pair `20261015_084025` is retained for rollback. Intermediate
+prepared candidates were not activated. Close and reopen existing lyrics tabs.
