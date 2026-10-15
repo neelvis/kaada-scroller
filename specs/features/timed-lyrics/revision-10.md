@@ -1,7 +1,7 @@
 # Timed lyrics revision 10: compact display controls
 
 Feature ID: TL (extension)
-Status: Implemented, verified and deployed — event rehearsal pending
+Status: Prior display releases deployed; library-key refinement locally verified
 Revision: 10, 2026-10-15
 Baseline: [live display controls](revision-4.md), [pause and resume](revision-7.md),
 [plain lyrics and uniform scrolling](revision-8.md)
@@ -62,7 +62,8 @@ audio synchronization, and project persistence retain their approved behavior.
   its explanation and recovery controls fully opaque. Leaving fullscreen or
   display cancels pending dimming and restores full opacity on next entry.
 - **TL-R61 — Display shortcuts:** Space toggles Start/Pause, M toggles backing
-  mute, C toggles current-line emphasis, F toggles fullscreen, and +/− increase
+  mute, C toggles current-line emphasis, F toggles fullscreen, L opens the library
+  popup, and +/− increase
   or decrease the audience font in display mode. Font shortcuts share the
   buttons' four-pixel step and 28–100 pixel limits; accept main-keyboard + or =,
   minus, and numeric-keypad Add/Subtract. They invoke the
@@ -75,6 +76,11 @@ audio synchronization, and project persistence retain their approved behavior.
   ArrowUp/ArrowDown seeking and preparation-space tapping remain intact. Show
   the new shortcuts in the corresponding tooltips. Shortcut handling does not
   require the bottom panel to be fully opaque.
+  While the library popup is open, suppress both Space keydown and keyup default
+  activation: Space must not activate any focused song/control, close the popup,
+  reset/seek/switch the selected song, or change running/paused state. L while
+  already open leaves the popup open. Existing Enter/mouse selection and Escape
+  dismissal remain available.
 
 TL-R56 supersedes the hamburger presentation and centered popup in TL-R38.
 TL-R59 supersedes the checkbox presentation in TL-R36. TL-R58 supersedes
@@ -106,7 +112,7 @@ All other applicable approved behavior remains in force.
   Check a fresh delay on departure, touch restoration, error/recovery opacity,
   fullscreen exit/reentry, and display exit. Compare lyric position and playback
   state before and after visibility changes; no jump, pause, reset, or seek occurs.
-- **TL-AC49 (R61):** Exercise Space, M, C, F, +, and − with the panel fully opaque and dimmed,
+- **TL-AC49 (R61):** Exercise Space, M, C, F, L, +, and − with the panel fully opaque and dimmed,
   with and without backing audio, while running/paused, during startup, and at
   song end. Check that editable fields, open menus/dialogs, modifier combinations,
   repeated keydown, and Space on focused buttons cause no accidental or duplicate
@@ -117,6 +123,10 @@ All other applicable approved behavior remains in force.
   four-pixel step and 28–100 bounds as buttons, preserve playback position, and
   respect input/menu/modifier/repeat guards. Repeat existing five-second seek and
   preparation-tapping scenarios.
+  With nonzero playback position, open the library via L and physically press
+  Space on current/other song and menu-control buttons. Keep the popup, selection,
+  and running/paused state unchanged; running time continues and paused time stays
+  fixed. Test L guards and repeated L while open, and retain Enter/mouse selection.
 
 On 2026-10-15, after publication, the user requested F for fullscreen and full-size
 30% panel opacity instead of minimization. This bounded local UI refinement
@@ -131,6 +141,10 @@ accessible focus; the display shortcut now takes precedence on focused buttons.
 The user then explicitly shortened the idle-opacity delay to two seconds.
 The user also requested a visible, disabled crossed-speaker button with the exact
 no-backing tooltip above, superseding the original hidden mute-button rule.
+The user later requested L to open the popup and complete suppression of native
+Space activation inside it. These small explicit corrections extend TL-R61;
+simply ignoring playback shortcuts is insufficient because focused buttons have
+their own native Space action.
 
 ## Sources, decisions, and handoff
 
@@ -218,3 +232,15 @@ browser verified actual Space after all menu-dismissal routes, focused buttons
 and Enter, main/keypad font steps and bounds, preserved paused position, measured
 two-second dimming, and the visible disabled crossed speaker with the exact
 no-backing tooltip. No private school projects were modified.
+
+## Library-key refinement verification
+
+On 2026-10-15, syntax/build, 64 unit tests, full display, supplemental controls,
+and LRCLIB browser checks passed. Physical L opens the popup and leaves an already
+open popup intact. Physical Space on current/other ready-song buttons, close and
+trigger buttons leaves the popup open and selection unchanged. Paused position
+stays fixed; running audio/time continue without reset or pause. Closed-popup
+Space, Enter/mouse selection, modifier/editing/dialog guards, and library access
+without an armed song remain functional. Independent review found and verified
+the correction of the no-armed-song guard ordering. The user explicitly requested
+committing all working-tree changes; revision 9 is included as a draft only.

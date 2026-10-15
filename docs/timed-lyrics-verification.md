@@ -591,3 +591,20 @@ Escape/close/outside menu dismissal, button focus/Enter behavior, main and numer
 font keys and limits, paused-position preservation, two-second opacity change,
 and the visible disabled crossed-speaker state with the exact no-backing tooltip.
 Only synthetic local browser data was used; no private project was modified.
+
+## Revision 10 follow-up: L and inactive Space in the library
+
+L opens the display library popup. Space keydown and keyup default actions are
+suppressed while it is open, preventing native song/button activation as well as
+playback changes. Closed-popup Space retains normal global playback behavior.
+
+Syntax, portable build, 64 unit tests, full display browser, supplemental controls
+browser, and LRCLIB browser passed. Physical keyboard checks cover current/other
+ready songs at nonzero paused/running positions, close and trigger buttons,
+L guards/idempotence, and access before a song is armed. Paused position remains
+fixed and running time/audio continue without reset, switching, or pause.
+Independent source/package review closed the empty-song guard ordering finding.
+The package also includes existing commit `5e71324` explaining LRCLIB HTTP/browser
+errors; its unit and browser checks passed. The user requested committing the
+entire tree, including the separate unapproved revision-9 draft and its links;
+that draft remains unimplemented.

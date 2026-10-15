@@ -125,6 +125,9 @@ four-pixel steps, within 28–100 pixels; numeric keypad +/− also work. Shortc
 leave editable fields and open menus/dialogs alone. After closing the library,
 Space starts/pauses even when focus remains on its trigger. Space also controls
 playback on other focused display buttons; use Enter to activate that button.
+L opens the library popup. While that popup is open, Space does nothing: it cannot
+select/restart a song or pause/resume playback. Use Enter or the mouse to select
+a song, or Escape to close the popup.
 Arrow seeking remains available.
 
 Toggle **Highlight current line** off for equal emphasis across lyric lines.

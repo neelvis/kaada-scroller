@@ -890,32 +890,39 @@ try { highlightEnabled = localStorage.getItem('lyrics-highlight-current') !== 'f
 applyHighlight();
 $('#highlight-current').addEventListener('click', toggleHighlight);
 document.addEventListener('keydown', event => {
-  if (els.event.hidden || !eventState.song) return;
+  if (els.event.hidden) return;
+  const space = event.code === 'Space' || event.key === ' ';
+  if (space && $('#event-menu').open) { event.preventDefault(); return; }
   if (event.key === 'Escape' && $('#event-menu').open) { event.preventDefault(); $('#event-menu').close(); return; }
   if (document.querySelector('dialog[open]') || event.ctrlKey || event.altKey || event.metaKey) return;
   const target = event.target instanceof Element ? event.target : document.body;
   const editable = target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])');
+  const key = event.key.toLowerCase();
+  const library = key === 'l' || event.code === 'KeyL';
+  if (!eventState.song && !library) return;
   if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
     if (editable && target.id !== 'event-progress') return;
     event.preventDefault(); playback.seek(playback.elapsed() + (event.key === 'ArrowUp' ? -5 : 5));
     return;
   }
   if (editable) return;
-  const space = event.code === 'Space' || event.key === ' ';
-  const key = event.key.toLowerCase();
   const mute = key === 'm' || event.code === 'KeyM';
   const highlight = key === 'c' || event.code === 'KeyC';
   const fullscreen = key === 'f' || event.code === 'KeyF';
   const fontUp = ['+', '='].includes(event.key) || event.code === 'NumpadAdd';
   const fontDown = ['-', '−'].includes(event.key) || event.code === 'NumpadSubtract';
-  if (!space && !mute && !highlight && !fullscreen && !fontUp && !fontDown) return;
+  if (!space && !mute && !highlight && !fullscreen && !library && !fontUp && !fontDown) return;
   event.preventDefault();
   if (event.repeat) return;
   if (space) { if (!$('#event-start').disabled) startEvent(); }
   else if (mute) toggleMute();
   else if (fullscreen) toggleFullscreen();
+  else if (library) showEventMenu();
   else if (fontUp || fontDown) changeAudienceFont(fontUp ? 4 : -4);
   else toggleHighlight();
+});
+document.addEventListener('keyup', event => {
+  if (!els.event.hidden && $('#event-menu').open && (event.code === 'Space' || event.key === ' ')) event.preventDefault();
 });
 eventControls.addEventListener('pointerenter', event => {
   // Touch can leave CSS :hover sticky; only an actual hovering pointer pins the panel.

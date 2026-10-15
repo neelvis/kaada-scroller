@@ -229,6 +229,61 @@ try {
   assert.equal(await page.locator('#event-menu-songs button').count(), 3);
   assert.equal(await page.getByRole('button', { name: /Черновик.*нужна подготовка/ }).isDisabled(), true);
   assert.ok(await page.locator('#event-player').evaluate(player => !player.paused), 'opening menu does not pause playback');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('#event-menu').open);
+  await page.locator('#event-start').click();
+  assert.equal(await page.locator('#event-player').count(), 0, 'test pauses and releases audio before reopening the library');
+  await page.locator('#event-progress').evaluate(input => {
+    input.value = '5'; input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForFunction(() => Number(document.querySelector('#event-progress').value) === 5);
+  await page.keyboard.press('l');
+  await page.waitForFunction(() => document.querySelector('#event-menu').open);
+  await page.keyboard.press('l');
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true, 'L opens the library popup and a repeated L leaves it open');
+  assert.equal(await page.locator('#event-song-name').textContent(), 'Открытие', 'opening the library does not change the selected song');
+
+  // Space must be wholly inert while the popup is open, including native button activation.
+  const menuSong = name => page.getByRole('button', { name, exact: true });
+  const selectedWhileMenuOpen = await page.locator('#event-song-name').textContent();
+  const player = page.locator('#event-player');
+  assert.equal(await player.count(), 0, 'paused Space case starts with released audio at a nonzero position');
+  const pausedPosition = await page.locator('#event-progress').inputValue();
+  await menuSong('Открытие').focus();
+  await page.keyboard.press('Space');
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true, 'Space on the current ready song does not close the popup');
+  assert.equal(await page.locator('#event-song-name').textContent(), selectedWhileMenuOpen, 'Space does not activate the current song button');
+  assert.equal(await page.locator('#event-progress').inputValue(), pausedPosition, 'Space leaves a paused nonzero timeline exactly unchanged');
+  assert.equal(await player.count(), 0, 'Space does not resume paused playback');
+  await menuSong('Финал').focus();
+  await page.keyboard.press('Space');
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true, 'Space on another ready song does not close the popup');
+  assert.equal(await page.locator('#event-song-name').textContent(), selectedWhileMenuOpen, 'Space does not select another ready song');
+  assert.equal(await page.locator('#event-progress').inputValue(), pausedPosition, 'Space does not reset the paused timeline');
+
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('#event-menu').open);
+  await page.locator('#event-start').click();
+  await page.waitForFunction(() => Number(document.querySelector('#event-progress').value) > 5.1);
+  await page.keyboard.press('l');
+  await page.waitForFunction(() => document.querySelector('#event-menu').open);
+  const runningPosition = Number(await page.locator('#event-progress').inputValue());
+  await menuSong('Финал').focus();
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(250);
+  const runningAfterSpace = Number(await page.locator('#event-progress').inputValue());
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true, 'Space does not close the popup while playback runs');
+  assert.equal(await page.locator('#event-song-name').textContent(), selectedWhileMenuOpen, 'Space does not select another song while playback runs');
+  assert.equal(await player.evaluate(audio => audio.paused), false, 'Space does not pause running playback');
+  assert.ok(runningAfterSpace > runningPosition && runningAfterSpace < runningPosition + 2, `Space does not reset or restart the running timeline: ${runningPosition} -> ${runningAfterSpace}`);
+
+  for (const selector of ['#event-menu-close', '#event-menu-toggle']) {
+    await page.locator(selector).focus();
+    await page.keyboard.press('Space');
+    assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true, `Space does not activate ${selector} while the library is open`);
+    assert.equal(await page.locator('#event-song-name').textContent(), selectedWhileMenuOpen);
+    assert.equal(await player.evaluate(audio => audio.paused), false, `Space on ${selector} does not pause playback`);
+  }
   const muteBeforeMenuShortcut = await page.locator('#event-mute').getAttribute('aria-pressed');
   await page.keyboard.press('m');
   assert.equal(await page.locator('#event-mute').getAttribute('aria-pressed'), muteBeforeMenuShortcut, 'shortcuts are ignored while the library popup is open');

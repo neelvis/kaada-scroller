@@ -41,8 +41,23 @@ try {
 
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
+  await page.goto(`${origin}/lyrics/`);
+  await page.waitForSelector('#editor h1');
+  await page.evaluate(() => {
+    document.querySelector('#event-view').hidden = false;
+    document.querySelector('#preparation-view').hidden = true;
+  });
+  await page.keyboard.press('l');
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true, 'L opens library navigation even without an armed song');
+  await page.keyboard.press('Space');
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true, 'Space does not activate the focused close control without an armed song');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('#event-menu-toggle').getAttribute('aria-expanded') === 'false');
   await ready(page, [song('ready-no-backing', 'Без минусовки')]);
 
+  assert.equal(await page.locator('#event-menu-toggle').getAttribute('aria-keyshortcuts'), 'L');
+  assert.match(await page.locator('#event-menu-toggle').getAttribute('data-tooltip'), /\bL\b/, 'library tooltip advertises L');
+  assert.ok(await page.locator('#event-menu-toggle').getAttribute('aria-label'), 'library trigger keeps an accessible name');
   assert.equal(await page.locator('#fullscreen').getAttribute('aria-keyshortcuts'), 'F');
   assert.match(await page.locator('#fullscreen').getAttribute('data-tooltip'), /\bF\b/);
   assert.equal(await page.locator('#event-mute').isVisible(), true);
@@ -121,8 +136,9 @@ try {
   assert.equal(await page.evaluate(() => Boolean(document.fullscreenElement)), false, 'synthetic F keydown on an editable field does not toggle fullscreen');
   assert.equal(await fontSize(), beforeEditableShortcuts, 'font shortcuts do not trigger while editing text');
   const beforeInput = await states();
-  await page.keyboard.press('Space'); await page.keyboard.press('m'); await page.keyboard.press('c'); await page.keyboard.press('f');
-  assert.deepEqual(await states(), beforeInput, 'Space, M, C, and F do not trigger while editing text');
+  await page.keyboard.press('Space'); await page.keyboard.press('m'); await page.keyboard.press('c'); await page.keyboard.press('f'); await page.keyboard.press('l');
+  assert.deepEqual(await states(), beforeInput, 'Space, M, C, F, and L do not trigger while editing text');
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false, 'L does not open the library while editing text');
   await page.locator('#shortcut-guard-input').evaluate(input => input.remove());
 
   const fullscreenBeforeGuards = await page.evaluate(() => Boolean(document.fullscreenElement));
@@ -132,9 +148,18 @@ try {
     audience.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true, repeat: true }));
     audience.dispatchEvent(new KeyboardEvent('keydown', { key: '+', code: 'Equal', bubbles: true, ctrlKey: true }));
     audience.dispatchEvent(new KeyboardEvent('keydown', { key: '+', code: 'Equal', bubbles: true, repeat: true }));
+    audience.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', code: 'KeyL', bubbles: true, ctrlKey: true }));
+    audience.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', code: 'KeyL', bubbles: true, repeat: true }));
   });
   assert.equal(await page.evaluate(() => Boolean(document.fullscreenElement)), fullscreenBeforeGuards, 'modifier and repeated F keydowns do not toggle fullscreen');
   assert.equal(await fontSize(), 28, 'modifier and repeated font shortcut keydowns are ignored');
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false, 'modifier and repeated L keydowns do not open the library');
+
+  await page.locator('#confirm-dialog').evaluate(dialog => dialog.showModal());
+  await page.keyboard.press('l');
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false, 'L does not open the library while another dialog is open');
+  assert.equal(await page.locator('#confirm-dialog').evaluate(dialog => dialog.open), true, 'L leaves the other dialog open');
+  await page.locator('#confirm-dialog').evaluate(dialog => dialog.close());
 
   await page.locator('#event-menu-toggle').click();
   assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true);
