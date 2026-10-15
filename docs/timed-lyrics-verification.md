@@ -608,3 +608,14 @@ The package also includes existing commit `5e71324` explaining LRCLIB HTTP/brows
 errors; its unit and browser checks passed. The user requested committing the
 entire tree, including the separate unapproved revision-9 draft and its links;
 that draft remains unimplemented.
+
+All current tree changes were committed in `e9c659e` and pushed together with the
+previous local LRCLIB commit. Paired release `20261015_090722` was activated on
+2026-10-15 after corrected-source and exact-package acceptance. The prior pair
+`20261015_085345` is retained; the initial candidate was not activated. All 51
+package hashes were reviewed; backend/runtime and deployment scripts are unchanged.
+HTTPS asset hashes, site/API health, anonymous private-data rejection and MIME
+passed. Isolated live keyboard checks passed L opening/idempotence, physical Space
+on current/other songs and close/trigger controls without selection/reset/pause,
+and closed-popup playback/font/timer/unavailable-audio regressions. Synthetic local
+browser fixtures only were used; no private school project was modified.

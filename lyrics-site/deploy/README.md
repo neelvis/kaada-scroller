@@ -210,3 +210,14 @@ Local display suites, independent source/package review, HTTPS checks and isolat
 live keyboard/audio/timer smoke passed. Backend/runtime and deploy scripts are
 unchanged; prior pair `20261015_084025` is retained for rollback. Intermediate
 prepared candidates were not activated. Close and reopen existing lyrics tabs.
+
+### Library L and inactive popup Space
+
+Paired release `20261015_090722` on 2026-10-15 (application commit `e9c659e`)
+adds L for library navigation and suppresses native Space down/up activation while
+the popup is open. It also publishes the existing LRCLIB error-explanation commit.
+The user requested all-tree commit, so the revision-9 specification is committed
+as an unimplemented draft. Unit/display/LRCLIB checks, independent exact-package
+review, HTTPS checks, and isolated live keyboard scenarios passed. API/runtime
+and deploy scripts are unchanged; prior pair `20261015_085345` is retained.
+Close and reopen existing lyrics tabs to adopt the new shell.

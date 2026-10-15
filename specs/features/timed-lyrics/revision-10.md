@@ -1,7 +1,7 @@
 # Timed lyrics revision 10: compact display controls
 
 Feature ID: TL (extension)
-Status: Prior display releases deployed; library-key refinement locally verified
+Status: Implemented, verified and deployed — event rehearsal pending
 Revision: 10, 2026-10-15
 Baseline: [live display controls](revision-4.md), [pause and resume](revision-7.md),
 [plain lyrics and uniform scrolling](revision-8.md)
@@ -244,3 +244,12 @@ Space, Enter/mouse selection, modifier/editing/dialog guards, and library access
 without an armed song remain functional. Independent review found and verified
 the correction of the no-armed-song guard ordering. The user explicitly requested
 committing all working-tree changes; revision 9 is included as a draft only.
+
+Commit `e9c659e` includes all requested tree changes and was pushed with the
+previous local LRCLIB commit. Paired release `20261015_090722` was activated on
+2026-10-15 after independent source/package acceptance; prior pair
+`20261015_085345` is retained. HTTPS hashes, health, anonymous private-data
+rejection and MIME passed. An isolated live browser verified L/idempotence and
+physical Space suppression on current/other songs, close and trigger buttons,
+plus closed-popup playback and font/timer/audio regressions. No private projects
+were modified. The working tree was clean after the all-tree application commit.
