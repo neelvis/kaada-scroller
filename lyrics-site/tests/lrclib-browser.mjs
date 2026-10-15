@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import { createServer } from 'node:http';
 
 const port = Number(process.env.LYRICS_LRCLIB_TEST_PORT || 8107);
 const origin = `http://127.0.0.1:${port}`;
@@ -23,6 +24,7 @@ const fixture = () => ({ schemaVersion: 1, id: 'lrclib-fixture', name: 'LRCLIB f
 
 const server = spawn(process.execPath, ['tools/serve.mjs'], { env: { ...process.env, LYRICS_PORT: String(port) }, stdio: 'pipe' });
 let browser;
+let preflightServer;
 async function waitForServer() {
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(origin + '/lyrics/')).ok) return; } catch {}
@@ -178,14 +180,18 @@ try {
 
   response = { status: 503, contentType: 'text/plain', body: 'service unavailable' };
   await search(page, 'service failure'); await page.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('503'));
+  assert.match(await page.locator('#lrclib-status').textContent(), /временно недоступен на стороне сервиса/);
+  response = { status: 400, contentType: 'text/plain', body: 'bad request' };
+  await search(page, 'invalid query'); await page.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('HTTP 400'));
+  assert.match(await page.locator('#lrclib-status').textContent(), /Проверьте название песни и исполнителя/);
   response = new Error('network offline');
-  await search(page, 'network failure'); await page.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('Не удалось связаться'));
+  await search(page, 'network failure'); await page.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('Браузер не предоставил код ошибки'));
   stall(); await search(page, 'timeout'); await page.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('15 секунд'), null, { timeout: 17000 }); releaseHold();
   response = { status: 429, headers: { 'Retry-After': '60' }, body: 'slow down' };
   await search(page); await page.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('временно ограничил'));
   const rateLimitedCount = requests.length; await search(page); await page.waitForTimeout(80);
   assert.equal(requests.length, rateLimitedCount, 'retry cooldown prevents another request');
-  assert.match(await page.locator('#lrclib-status').textContent(), /попросил подождать/i);
+  assert.match(await page.locator('#lrclib-status').textContent(), /слишком много запросов.*HTTP 429.*Повторите поиск после/);
 
   // The same controls are usable at the root route and at a narrow keyboard viewport.
   const narrow = await context.newPage(); await narrow.setViewportSize({ width: 375, height: 740 }); await load(narrow, '/');
@@ -199,8 +205,32 @@ try {
   await narrow.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('подключении'));
   assert.equal(requests.length, beforeOfflineRequest, 'offline search does not contact LRCLIB'); await narrow.context().setOffline(false);
   await narrow.close();
+
+  // A real preflight rejection hides HTTP 429 from fetch, as on LRCLIB's edge.
+  const preflightMethods = [];
+  preflightServer = createServer((request, reply) => {
+    preflightMethods.push(request.method);
+    reply.writeHead(429, { 'Retry-After': '1', 'Content-Type': 'application/json' });
+    reply.end(JSON.stringify({ message: 'Too many requests', statusCode: 429 }));
+  });
+  await new Promise(resolve => preflightServer.listen(0, '127.0.0.1', resolve));
+  const preflightOrigin = `http://127.0.0.1:${preflightServer.address().port}`;
+  const corsContext = await browser.newContext();
+  await corsContext.addInitScript(apiOrigin => {
+    const originalFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = (url, init) => originalFetch(typeof url === 'string' && url.startsWith('https://lrclib.net/api/search')
+      ? apiOrigin + new URL(url).search : url, init);
+  }, preflightOrigin);
+  const corsPage = await corsContext.newPage();
+  await load(corsPage); await search(corsPage, 'preflight failure');
+  await corsPage.waitForFunction(() => document.querySelector('#lrclib-status').textContent.includes('Браузер не предоставил код ошибки'));
+  assert.deepEqual(preflightMethods, ['OPTIONS'], 'failed preflight prevents the GET and hides its status');
+  assert.doesNotMatch(await corsPage.locator('#lrclib-status').textContent(), /HTTP 429|Проверьте подключение/);
+  await expectSong(corsPage, fixture().songs[0]);
+  await corsContext.close();
   assert.deepEqual(errors, [], `page errors: ${errors.join('\n')}`);
   console.log('LRCLIB browser: explicit, private, safe import, failure/race, and narrow-route flows passed.');
 } finally {
   await browser?.close(); server.kill('SIGTERM');
+  if (preflightServer) await new Promise(resolve => preflightServer.close(resolve));
 }

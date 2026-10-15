@@ -62,12 +62,75 @@ test('search serializes requests, enforces pause, and preserves a rate-limit coo
   await client.search({ title: 'two' });
   assert.deepEqual(waits, [350]);
   const limited = new LrclibClient({ clock: () => now, fetch: async () => response('not json', { status: 503, headers: { 'Retry-After': '2' } }) });
-  await assert.rejects(limited.search({ title: 'x' }), /ограничил/);
+  await assert.rejects(limited.search({ title: 'x' }), /временно недоступен.*HTTP 503.*Повторите поиск после/);
   assert.equal(limited.retryAt, now + 2_000);
-  await assert.rejects(limited.search({ title: 'x' }), /попросил подождать/);
+  await assert.rejects(limited.search({ title: 'x' }), /временно недоступен.*HTTP 503.*Повторите поиск после/);
   const noHeader = new LrclibClient({ clock: () => now, fetch: async () => response('not json', { status: 429 }) });
   await assert.rejects(noHeader.search({ title: 'x' }), /ограничил/);
   assert.equal(noHeader.retryAt, now + 60_000);
+});
+
+test('HTTP failures explain the status without reading an untrusted error body', async () => {
+  const cases = [
+    [400, /параметры поиска.*HTTP 400.*Проверьте название/],
+    [401, /требует авторизацию.*HTTP 401/],
+    [403, /запретил доступ.*HTTP 403/],
+    [404, /Адрес поиска.*недоступен.*HTTP 404/],
+    [408, /не успел обработать.*HTTP 408/],
+    [422, /параметры поиска.*HTTP 422.*Проверьте название/],
+    [429, /слишком много запросов.*HTTP 429.*Повторите поиск после/],
+    [500, /Внутренняя ошибка сервера.*HTTP 500/],
+    [502, /корректный ответ.*HTTP 502/],
+    [503, /недоступен на стороне сервиса.*HTTP 503/],
+    [504, /не ответил вовремя.*HTTP 504/],
+    [507, /Ошибка на стороне сервиса.*HTTP 507/],
+    [418, /не смог выполнить поиск.*HTTP 418/],
+  ];
+  for (const [status, message] of cases) {
+    const client = new LrclibClient({ fetch: async () => ({
+      status, ok: false, headers: new Headers(),
+      text: () => { throw new Error('HTTP errors must not parse their body'); },
+    }) });
+    await assert.rejects(client.search({ title: 'x' }), message, `status ${status}`);
+    assert.equal(client.pending, false);
+  }
+});
+
+test('inaccessible HTTP status reports uncertainty instead of diagnosing the connection or guessing 429', async () => {
+  for (const fetch of [async () => { throw new TypeError('Failed to fetch'); }, async () => Response.error()]) {
+    const client = new LrclibClient({ fetch, minRequestIntervalMs: 0 });
+    await assert.rejects(client.search({ title: 'x' }), error => {
+      assert.match(error.message, /Браузер не предоставил код ошибки/);
+      assert.doesNotMatch(error.message, /HTTP|слишком много запросов|Проверьте подключение/);
+      return true;
+    });
+    assert.equal(client.retryAt, 0, 'an unreadable response does not invent a service cooldown');
+    client.fetch = async () => response('[]');
+    assert.deepEqual(await client.search({ title: 'retry' }), []);
+  }
+});
+
+test('HTTP 429 honors seconds and HTTP-date retry intervals and retains the explanation on early retry', async () => {
+  for (const [header, delay] of [['2', 2_000], ['Thu, 15 Oct 2026 09:01:00 GMT', 60_000], ['invalid', 60_000]]) {
+    let now = Date.parse('2026-10-15T09:00:00Z');
+    let calls = 0;
+    const client = new LrclibClient({ clock: () => now, minRequestIntervalMs: 0, fetch: async () => {
+      calls += 1;
+      return calls === 1 ? response('slow down', { status: 429, headers: { 'Retry-After': header } }) : response('[]');
+    } });
+    let firstMessage;
+    await assert.rejects(client.search({ title: 'x' }), error => {
+      firstMessage = error.message;
+      assert.match(firstMessage, /слишком много запросов.*HTTP 429.*Повторите поиск после/);
+      return true;
+    });
+    assert.equal(client.retryAt, now + delay);
+    await assert.rejects(client.search({ title: 'x' }), error => error.message === firstMessage);
+    assert.equal(calls, 1, 'early retry makes no network request');
+    now += delay;
+    assert.deepEqual(await client.search({ title: 'x' }), []);
+    assert.equal(calls, 2);
+  }
 });
 
 test('LRC import preserves literal repeated occurrences and fills only missing metadata', () => {
@@ -141,7 +204,7 @@ test('invalid records and service errors fail without exposing a partial result'
     await assert.rejects(client.search({ title: 'x' }), /LRCLIB вернул/);
   }
   const client = new LrclibClient({ fetch: async () => response('upstream error', { status: 500 }) });
-  await assert.rejects(client.search({ title: 'x' }), /ошибку 500/);
+  await assert.rejects(client.search({ title: 'x' }), /Внутренняя ошибка сервера LRCLIB \(HTTP 500\)/);
 });
 
 test('imports exceeding portable storage limits are rejected before any song mutation', () => {

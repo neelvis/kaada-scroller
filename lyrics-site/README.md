@@ -81,6 +81,10 @@ saved timeline and does not contact LRCLIB.
 
 Network/service errors retain your work. After a rate limit, the client honors
 the service's requested waiting interval; there are no automatic retry loops.
+When available, HTTP codes are shown with an explanation and a suggested next
+step. A service-unavailable response keeps its own explanation even when it
+requests a waiting interval. If a network or browser access failure hides the
+response, the notice explains that the status and exact cause are unavailable.
 Manual LRC/text import remains available in editable local sets without internet.
 Revision 5 is published in paired release `20261012_202705`.
 

@@ -8,6 +8,7 @@ const DEFAULT_RATE_LIMIT_MS = 60_000;
 const MAX_RESPONSE_BYTES = 1_000_000;
 const MAX_RESULTS = 100;
 const MAX_LRC_LENGTH = 200_000;
+const UNREADABLE_RESPONSE_MESSAGE = 'Не удалось получить ответ LRCLIB. Возможен сбой сети или блокировка ответа со стороны сервиса. Браузер не предоставил код ошибки, поэтому точную причину определить нельзя. Повторите поиск позже.';
 
 function problem(message, name) {
   const error = new Error(message);
@@ -25,6 +26,27 @@ function retryAfterMs(value, now) {
   if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
   const date = Date.parse(value);
   return Number.isFinite(date) ? Math.max(0, date - now) : null;
+}
+
+function httpProblem(status, retryAt = null) {
+  const messages = {
+    400: ['LRCLIB отклонил параметры поиска', 'Проверьте название песни и исполнителя.'],
+    401: ['LRCLIB требует авторизацию для этого запроса', 'Повторите поиск позже или вставьте текст вручную.'],
+    403: ['LRCLIB запретил доступ к поиску', 'Повторите поиск позже или вставьте текст вручную.'],
+    404: ['Адрес поиска LRCLIB недоступен', 'Повторите поиск позже или вставьте текст вручную.'],
+    408: ['LRCLIB не успел обработать запрос', 'Повторите поиск позже.'],
+    422: ['LRCLIB не смог обработать параметры поиска', 'Проверьте название песни и исполнителя.'],
+    429: ['LRCLIB временно ограничил поиск: слишком много запросов', 'Подождите перед повторным поиском.'],
+    500: ['Внутренняя ошибка сервера LRCLIB', 'Повторите поиск позже.'],
+    502: ['Не удалось получить корректный ответ от сервера LRCLIB', 'Повторите поиск позже.'],
+    503: ['Поиск LRCLIB временно недоступен на стороне сервиса', 'Повторите поиск позже.'],
+    504: ['Сервер LRCLIB не ответил вовремя', 'Повторите поиск позже.'],
+  };
+  const [reason, action] = messages[status] ?? (status >= 500 && status <= 599
+    ? ['Ошибка на стороне сервиса LRCLIB', 'Повторите поиск позже.']
+    : ['LRCLIB не смог выполнить поиск', 'Повторите поиск позже или вставьте текст вручную.']);
+  const retry = retryAt === null ? action : `Повторите поиск после ${new Date(retryAt).toLocaleTimeString()}.`;
+  return problem(`${reason} (HTTP ${status}). ${retry}`);
 }
 
 function nonEmptyText(value, field) {
@@ -99,6 +121,7 @@ export class LrclibClient {
     this.lastCompletedAt = -Infinity;
     this.pending = false;
     this.retryAt = 0;
+    this.retryStatus = null;
   }
 
   async search({ title, artist, signal } = {}) {
@@ -118,7 +141,7 @@ export class LrclibClient {
     try {
       const now = this.clock();
       if (this.retryAt > now) {
-        throw problem(`LRCLIB попросил подождать до ${new Date(this.retryAt).toLocaleTimeString()}. Повторите поиск позже.`);
+        throw httpProblem(this.retryStatus, this.retryAt);
       }
       const pause = Math.max(0, this.lastCompletedAt + this.minRequestIntervalMs - now);
       if (pause) await this.waitFor(pause, signal);
@@ -137,15 +160,17 @@ export class LrclibClient {
       } catch (error) {
         if (timedOut) throw problem('LRCLIB не ответил за 15 секунд. Проверьте соединение и повторите поиск.');
         if (signal?.aborted || error?.name === 'AbortError') throw abortProblem('Поиск LRCLIB отменён. Данные песни не изменены.');
-        throw problem('Не удалось связаться с LRCLIB. Проверьте подключение к интернету и повторите поиск.');
+        throw problem(UNREADABLE_RESPONSE_MESSAGE);
       }
+      if (response.status === 0) throw problem(UNREADABLE_RESPONSE_MESSAGE);
       const retryDelay = retryAfterMs(response.headers?.get?.('Retry-After'), this.clock());
       if (response.status === 429 || (!response.ok && retryDelay !== null)) {
         const delay = retryDelay ?? this.fallbackRetryMs;
         this.retryAt = Math.max(this.retryAt, this.clock() + delay);
-        throw problem(`LRCLIB временно ограничил поиск. Повторите после ${new Date(this.retryAt).toLocaleTimeString()}.`);
+        this.retryStatus = response.status;
+        throw httpProblem(response.status, this.retryAt);
       }
-      if (!response.ok) throw problem(`LRCLIB вернул ошибку ${response.status}. Повторите поиск позже.`);
+      if (!response.ok) throw httpProblem(response.status);
       const declaredLength = Number(response.headers?.get?.('content-length'));
       if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
         throw problem('LRCLIB вернул слишком большой ответ. Уточните название песни и повторите поиск.');

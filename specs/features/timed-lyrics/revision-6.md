@@ -69,6 +69,9 @@ continue to apply. Hidden language and delay values must survive unchanged.
   preserve service retry instructions. Do not infer an empty result from a
   transport failure or a genuine HTTP 429. Inspect actual responses before
   deciding the fix; preserve song data in every failure case.
+  Explain available HTTP error codes with an appropriate next step; a retry
+  interval alone does not establish rate limiting. If the browser hides the
+  status, explain that the exact cause is unavailable rather than guessing it.
 
 ## Acceptance criteria
 
