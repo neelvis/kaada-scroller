@@ -11,3 +11,4 @@
 | TL revision 10 | Compact display controls | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-10.md) |
 | TL revision 11 | Preparation refinements | Implemented and deployed — UI verification pending | [Requirements](features/timed-lyrics/revision-11.md) |
 | TL revision 12 | Display keyboard and optional uniform scrolling | Implemented and deployed — UI verification pending | [Requirements](features/timed-lyrics/revision-12.md) |
+| TL revision 13 | Manual scrolling in display mode | Implemented; browser verification pending | [Requirements](features/timed-lyrics/revision-13.md) |

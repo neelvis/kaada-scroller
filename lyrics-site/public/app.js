@@ -553,14 +553,16 @@ function renderCues(song, validation) {
   });
   const scrollStart = song.autoScrollStartSeconds ?? 10;
   const scrollStartHint = node('p', { className: 'hint', text: `Без таймкодов текст прокручивается равномерно: с ${scrollStart}-й секунды до конца песни.` });
+  const manualScrollHint = node('p', { className: 'hint', text: 'Автоскролл выключен — в режиме показа текст прокручивается только вручную.' });
   const autoScrollSettings = node('div', { className: 'auto-scroll-settings' }, [autoScrollLabel, autoScrollStart]);
   const updateAutoScrollVisibility = () => {
     autoScrollSettings.hidden = !ignore.checked;
     autoScrollStart.hidden = !ignore.checked || !autoScroll.checked;
     scrollStartHint.hidden = !ignore.checked || !autoScroll.checked;
+    manualScrollHint.hidden = !ignore.checked || autoScroll.checked;
   };
   updateAutoScrollVisibility();
-  card.append(node('label', { className: 'ignore-timecodes' }, [ignore, node('span', { text: 'игнорировать таймкоды' })]), autoScrollSettings, scrollStartHint);
+  card.append(node('label', { className: 'ignore-timecodes' }, [ignore, node('span', { text: 'игнорировать таймкоды' })]), autoScrollSettings, scrollStartHint, manualScrollHint);
   song.cues.forEach((cue, index) => { const time = input(cue.start == null ? '' : formatTime(cue.start), 'text', { 'aria-label': `Время строки ${index + 1}` }); const text = input(cue.text, 'text', { 'aria-label': `Текст строки ${index + 1}` }); const type = node('select', { 'aria-label': `Тип строки ${index + 1}` }); type.append(node('option', { value: 'lyric', text: 'Текст' }), node('option', { value: 'rest', text: 'Пауза' })); type.value = cue.type;
     const update = () => { const start = parseTime(time.value); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((item, i) => i === index ? { ...item, start, text: text.value, type: type.value } : item) })); render(); }; time.addEventListener('change', update); text.addEventListener('change', update); type.addEventListener('change', update);
     const retapLabel = `Отметить строку ${index + 1} по текущему времени записи`;
@@ -629,7 +631,7 @@ function launchEvent(song) {
   if (validateSong(song).length) { toast('Для показа песня должна быть подготовлена и подтверждена.'); return; }
   playback.dispose(); previewPlayer.pause(); backingPreview.pause(); document.querySelectorAll('.toast').forEach(item => item.remove());
   $('.topbar').hidden = true; els.prep.hidden = true; els.event.hidden = false; els.eventName.textContent = song.title;
-  eventState = { song: structuredClone(song), frame: 0, lastIndex: null, ended: false };
+  eventState = { song: structuredClone(song), frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0 };
   $('#event-progress').disabled = false;
   const owner = project, entry = { ...entryFor(song) }, offline = offlineProjectOpen;
   let loaded = null;
@@ -640,14 +642,20 @@ function launchEvent(song) {
   restoreEventControls();
 }
 function buildAudience() {
-  els.audienceLines.classList.toggle('uniform-scroll', eventState.song.ignoreTimecodes === true);
+  const untimed = eventState.song.ignoreTimecodes === true;
+  els.audienceLines.classList.toggle('uniform-scroll', untimed && eventState.song.autoScrollEnabled !== false);
+  els.audienceLines.classList.toggle('manual-scroll', untimed && eventState.song.autoScrollEnabled === false);
   els.audienceLines.replaceChildren(...eventState.song.cues.map(cue => node('div', {
     className: `audience-line${cue.type === 'rest' ? ' rest' : ''}`,
     text: cue.type === 'rest' ? `— ${cue.text} —` : cue.text,
   })));
 }
 function centerAudience(index) {
-  if (eventState.song?.ignoreTimecodes && !eventState.ended) { positionUniformAudience(); return; }
+  if (eventState.song?.ignoreTimecodes && !eventState.ended) {
+    if (eventState.song.autoScrollEnabled === false) positionManualAudience(eventState.manualScrollIndex);
+    else positionUniformAudience();
+    return;
+  }
   const line = els.audienceLines.children[Math.max(0, index)];
   if (line) els.audienceLines.style.transform = `translateY(-${line.offsetTop + line.offsetHeight / 2}px)`;
 }
@@ -664,6 +672,18 @@ function positionUniformAudience() {
   const end = last.offsetTop + last.offsetHeight / 2;
   const progress = uniformScrollProgress(eventState.song, playback.elapsed());
   els.audienceLines.style.transform = `translateY(-${start + (end - start) * progress}px)`;
+}
+function positionManualAudience(index) {
+  const lines = els.audienceLines.children;
+  if (!lines.length) return;
+  eventState.manualScrollIndex = Math.max(0, Math.min(lines.length - 1, index));
+  const line = lines[eventState.manualScrollIndex];
+  els.audienceLines.style.transform = `translateY(-${line.offsetTop + line.offsetHeight / 2}px)`;
+}
+function scrollManualAudience(lines) {
+  if (!eventState.song?.ignoreTimecodes || eventState.song.autoScrollEnabled !== false || eventState.ended) return false;
+  positionManualAudience(eventState.manualScrollIndex + lines);
+  return true;
 }
 function renderAudience(index, ended) {
   if (ended) {
@@ -730,7 +750,7 @@ function updateEvent() {
   if (current.index !== eventState.lastIndex || current.ended !== eventState.ended) {
     eventState.lastIndex = current.index; eventState.ended = current.ended; renderAudience(current.index, current.ended);
   }
-  if (song.ignoreTimecodes && !current.ended) positionUniformAudience();
+  if (song.ignoreTimecodes && song.autoScrollEnabled !== false && !current.ended) positionUniformAudience();
   $('#event-progress').max = String(song.duration); $('#event-progress').value = String(elapsed);
   $('#event-progress').setAttribute('aria-valuetext', `${displayTime(elapsed)} из ${displayTime(song.duration)}`);
   $('#event-elapsed').textContent = displayTime(elapsed); $('#event-duration').textContent = displayTime(song.duration);
@@ -950,6 +970,7 @@ document.addEventListener('keydown', event => {
   if (!eventState.song && !library) return;
   if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
     if (editable && target.id !== 'event-progress') return;
+    if (event.key === 'ArrowDown' && target.id !== 'event-progress' && scrollManualAudience(5)) { event.preventDefault(); return; }
     event.preventDefault(); playback.seek(playback.elapsed() + (event.key === 'ArrowUp' ? -5 : 5));
     return;
   }
@@ -968,6 +989,11 @@ document.addEventListener('keydown', event => {
   else if (fontUp || fontDown) changeAudienceFont(fontUp ? 4 : -4);
   else toggleHighlight();
 }, true);
+els.audience.addEventListener('wheel', event => {
+  if (!event.deltaY || !eventState.song?.ignoreTimecodes || eventState.song.autoScrollEnabled !== false || eventState.ended) return;
+  event.preventDefault();
+  scrollManualAudience(event.deltaY > 0 ? 5 : -5);
+}, { passive: false });
 document.addEventListener('keyup', event => {
   if (els.event.hidden || (event.code !== 'Space' && event.key !== ' ')) return;
   event.preventDefault(); event.stopImmediatePropagation();

@@ -249,3 +249,16 @@ both point to `20261015_115537`; prior pair `20261015_114534` remains available
 for rollback. Automated and browser UI suites, authenticated save/reopen and
 offline display checks were not run. Close and reopen existing lyrics tabs to
 adopt the new shell.
+
+### Manual lyric scrolling
+
+Paired release `20261015_134546` on 2026-10-15 publishes revision 13. When
+uniform auto-scroll is disabled for ignored-timecode lyrics, ArrowDown and
+mouse-wheel input move the text by five lines without changing backing playback;
+preparation displays a manual-scrolling notice. Backend source and locked
+dependencies are unchanged, with no data migration. Production smoke checks
+returned 200 for the page and API health, 401 for anonymous projects, and 200
+with JavaScript MIME for the application bundle. Both live links point to
+`20261015_134546`; previous pair `20261015_115537` remains available for
+rollback. Browser UI and authenticated/offline workflows were not exercised.
+Close and reopen existing lyrics tabs to adopt the new shell.

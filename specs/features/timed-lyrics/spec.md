@@ -19,6 +19,12 @@ Draft extension: [revision 9 — adjustable untimed scrolling speed](revision-9.
 (awaiting explicit user approval).
 Accepted extension: [revision 10 — compact display controls](revision-10.md)
 (implemented, verified and deployed).
+Accepted extension: [revision 11 — preparation refinements](revision-11.md)
+(implemented and deployed — UI verification pending).
+Accepted extension: [revision 12 — display keyboard and optional uniform scrolling](revision-12.md)
+(implemented and deployed — UI verification pending).
+Accepted extension: [revision 13 — manual scrolling in display mode](revision-13.md)
+(implemented; browser verification pending).
 Read the applicable extensions before using a superseded baseline rule.
 
 ## Purpose
