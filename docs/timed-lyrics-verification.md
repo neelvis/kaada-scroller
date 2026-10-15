@@ -512,11 +512,11 @@ browser-local songs/audio, including import, uniform timing, backing playback,
 pause/resume/seek/reset, short songs and local persistence. No private school
 projects were modified. Close and reopen existing tabs to adopt the new shell.
 
-## Revision 10: compact display controls (local verification)
+## Revision 10: compact display controls
 
 On 2026-10-15, [revision 10](../specs/features/timed-lyrics/revision-10.md)
-TL-R56–TL-R61 was implemented locally after explicit approval. No commit, push,
-or deployment was requested or performed for this revision.
+TL-R56–TL-R61 was implemented after explicit approval. The user subsequently
+authorized commit, push, and deployment.
 
 The portable build, 61 unit tests, base browser suite, plain-scroll browser suite,
 and live-display browser suite passed. Display checks cover the anchored library
@@ -533,3 +533,14 @@ actual pointer state; the correction passed both the supplemental suite and the
 full display suite. Independent source review and correction rereview found no
 material production findings. Actual projector/event-device rehearsal remains
 an organizer check.
+
+Application commit `66e2bc3` was pushed to `main` and paired release
+`20261015_082900` activated on 2026-10-15. Independent preactivation review verified
+all 51 package hashes and 46 server-manifest entries. Only `app.js`, `index.html`,
+`styles.css`, and the generated cache manifest differ from the prior pair
+`20261014_142714`; all 22 service/runtime files and activation/preparation scripts
+are unchanged. The previous pair remains available for rollback. HTTPS checks
+passed live asset hashes, site/API health, anonymous private-data rejection, and
+JS/MJS/WASM MIME. The full display and supplemental controls browser suites passed against the live origin
+using synthetic browser-local songs/audio. Private school projects were not
+modified. Close and reopen existing lyrics tabs to adopt the new shell.

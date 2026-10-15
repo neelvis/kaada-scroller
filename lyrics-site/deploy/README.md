@@ -178,3 +178,14 @@ review, HTTPS asset/health/privacy/MIME checks and isolated production browser
 scenarios passed. Synthetic browser-local songs/audio and mocked search results
 were used; private school projects were not modified. Close and reopen existing
 tabs to adopt the new cached shell.
+
+## Compact display controls release
+
+Paired release `20261015_082900` on 2026-10-15 publishes revision 10: anchored
+media-library navigation, the icon row after the timeline, current-line emphasis
+toggle, fullscreen preparation-button hiding and panel reveal, and Space/M/C
+shortcuts. Application commit `66e2bc3` was pushed to `main`. Independent package
+review, HTTPS asset/health/privacy/MIME checks, and isolated live display browser
+scenarios passed. All 22 backend/runtime files and deployment scripts match the
+previous pair `20261014_142714`, retained for rollback. Private school projects
+were not modified. Close and reopen existing lyrics tabs to adopt the new shell.

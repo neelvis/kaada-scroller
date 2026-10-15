@@ -1,7 +1,7 @@
 # Timed lyrics revision 10: compact display controls
 
 Feature ID: TL (extension)
-Status: Implemented and locally verified — not deployed
+Status: Implemented, verified and deployed — event rehearsal pending
 Revision: 10, 2026-10-15
 Baseline: [live display controls](revision-4.md), [pause and resume](revision-7.md),
 [plain lyrics and uniform scrolling](revision-8.md)
@@ -136,5 +136,13 @@ audio-error visibility. Its touch scenario exposed sticky CSS hover overwriting
 pointer state; the corrected handler uses actual pointer events. A focused
 independent rereview found no material regression in that correction.
 
-These are synthetic local checks. Projector/event-device rehearsal remains an
-organizer check. No commit, push, or deployment was requested or performed.
+The user subsequently requested `коммит, пуш и деплой` on 2026-10-15.
+Application commit `66e2bc3` was pushed to `main`; paired release
+`20261015_082900` was activated on 2026-10-15. Independent package review accepted
+all 51 staged hashes; all 22 backend/runtime files and deployment scripts match
+the previous pair `20261014_142714`, retained for rollback. Live HTTPS hashes,
+health, anonymous project/audio rejection, and JS/MJS/WASM MIME passed. The full display and supplemental controls
+browser suites also passed against production with synthetic browser-local
+lyrics/audio. No private school projects were modified. Close and reopen existing
+tabs to adopt the new cached shell. Projector/event-device rehearsal remains an
+organizer check.

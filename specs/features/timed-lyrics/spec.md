@@ -16,7 +16,7 @@ Accepted extension: [revision 7 — display pause and resume](revision-7.md).
 Accepted extension: [revision 8 — plain lyrics and uniform scrolling](revision-8.md)
 (implemented, verified and deployed).
 Accepted extension: [revision 10 — compact display controls](revision-10.md)
-(implemented and locally verified; not deployed).
+(implemented, verified and deployed).
 Read the applicable extensions before using a superseded baseline rule.
 
 ## Purpose
