@@ -511,3 +511,25 @@ scenarios passed against production using mocked LRCLIB results and synthetic
 browser-local songs/audio, including import, uniform timing, backing playback,
 pause/resume/seek/reset, short songs and local persistence. No private school
 projects were modified. Close and reopen existing tabs to adopt the new shell.
+
+## Revision 10: compact display controls (local verification)
+
+On 2026-10-15, [revision 10](../specs/features/timed-lyrics/revision-10.md)
+TL-R56–TL-R61 was implemented locally after explicit approval. No commit, push,
+or deployment was requested or performed for this revision.
+
+The portable build, 61 unit tests, base browser suite, plain-scroll browser suite,
+and live-display browser suite passed. Display checks cover the anchored library
+popup, ready-song navigation, responsive icon row, emphasis persistence,
+fullscreen preparation-button hiding, three-second panel hiding, bottom-strip
+and keyboard recovery, and playback/shortcut regressions. Desktop and mobile
+screenshots were inspected.
+
+The new `test:display-controls` suite passed tooltip hover and real keyboard focus,
+editable/menu shortcut guards, Space at the declared end, pending fullscreen-timer
+cancellation/reentry, emulated touch reveal without seeking, and visible audio
+error/recovery controls. The touch scenario identified sticky CSS hover overriding
+actual pointer state; the correction passed both the supplemental suite and the
+full display suite. Independent source review and correction rereview found no
+material production findings. Actual projector/event-device rehearsal remains
+an organizer check.

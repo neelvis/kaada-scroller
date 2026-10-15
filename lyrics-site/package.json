@@ -12,6 +12,7 @@
     "test:plain": "node tests/plain-scroll-browser.mjs",
     "test:plain:server": "node tests/plain-scroll-server-browser.mjs",
     "test:display": "node tests/live-display-browser.mjs",
+    "test:display-controls": "node tests/display-controls-browser.mjs",
     "test:server": "node tests/server-browser.mjs",
     "test:lrclib": "node tests/lrclib-browser.mjs",
     "test:lrclib:server": "node tests/lrclib-server-browser.mjs"

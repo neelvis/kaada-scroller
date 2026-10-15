@@ -44,21 +44,47 @@
     </section>
 
     <section class="event-view" id="event-view" hidden>
+      <svg class="event-icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0">
+        <symbol id="icon-library" viewBox="0 0 24 24"><path d="M4 4v16M8 4v16M12 6v14M16 4l4 15M15 8l4-1M17 17l4-1"/></symbol>
+        <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></symbol>
+        <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+        <symbol id="icon-loading" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-8-8"/></symbol>
+        <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M4 5v5h5M4 10a8 8 0 1 1 0 5"/></symbol>
+        <symbol id="icon-fullscreen" viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+        <symbol id="icon-fullscreen-exit" viewBox="0 0 24 24"><path d="M4 9h5V4M20 9h-5V4M15 20v-5h5M9 20v-5H4"/></symbol>
+        <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4ZM17 8a6 6 0 0 1 0 8M20 5a10 10 0 0 1 0 14"/></symbol>
+        <symbol id="icon-muted" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4ZM17 9l5 6M22 9l-5 6"/></symbol>
+        <symbol id="icon-highlight" viewBox="0 0 24 24"><path class="emphasis-past" d="M4 6h16"/><path class="emphasis-current" d="M4 12h16"/><path class="emphasis-future" d="M4 18h16"/></symbol>
+      </svg>
       <div class="event-bar">
-        <div class="event-bar-start"><button class="button quiet event-menu-toggle" id="event-menu-toggle" type="button" aria-label="Меню песен и проектов" aria-expanded="false" aria-controls="event-menu"><span aria-hidden="true">☰</span></button><button class="button quiet" id="exit-event" type="button">← К подготовке</button></div>
+        <div class="event-bar-start"><button class="button quiet event-menu-toggle event-icon-button" id="event-menu-toggle" type="button" aria-label="Медиатека песен и проектов" data-tooltip="Медиатека песен и проектов" aria-expanded="false" aria-controls="event-menu"><svg class="event-icon" aria-hidden="true"><use href="#icon-library"/></svg></button><button class="button quiet" id="exit-event" type="button">← К подготовке</button></div>
         <span id="event-song-name"></span>
         <div><button class="button quiet" id="font-down" type="button" aria-label="Уменьшить текст">A−</button><button class="button quiet" id="font-up" type="button" aria-label="Увеличить текст">A+</button></div>
       </div>
       <div class="audience" id="audience" style="--audience-size: 54px">
         <div class="audience-lines" id="audience-lines"></div>
       </div>
-      <div class="event-controls">
-        <div class="event-actions"><button class="button primary" id="event-start" type="button">Старт</button><button class="button danger" id="event-reset" type="button">Стоп и сброс</button><button class="button quiet" id="fullscreen" type="button">На весь экран</button><button class="button quiet" id="event-mute" type="button" hidden>Выключить звук</button></div>
-        <label class="event-highlight"><input id="highlight-current" type="checkbox" checked> <span>Выделять текущую строку</span></label>
+      <div class="event-controls" id="event-controls">
+        <div class="event-control-row">
+          <div class="event-progress-row"><span id="event-elapsed">0:00</span><input id="event-progress" type="range" min="0" max="1" value="0" step=".01" aria-label="Позиция песни" aria-description="↑ / ↓ — перемотка на 5 секунд"><span id="event-duration">0:00</span></div>
+          <div class="event-actions">
+            <button class="button primary event-icon-button" id="event-start" type="button" aria-label="Старт" data-tooltip="Старт · Пробел" aria-keyshortcuts="Space"><svg class="event-icon" aria-hidden="true"><use href="#icon-play"/></svg></button>
+            <button class="button danger event-icon-button" id="event-reset" type="button" aria-label="Стоп и сброс" data-tooltip="Стоп и сброс"><svg class="event-icon" aria-hidden="true"><use href="#icon-reset"/></svg></button>
+            <button class="button quiet event-icon-button" id="fullscreen" type="button" aria-label="На весь экран" data-tooltip="На весь экран"><svg class="event-icon" aria-hidden="true"><use href="#icon-fullscreen"/></svg></button>
+            <button class="button quiet event-icon-button" id="event-mute" type="button" aria-label="Выключить звук" data-tooltip="Выключить звук · M" aria-pressed="false" aria-keyshortcuts="M" hidden><svg class="event-icon" aria-hidden="true"><use href="#icon-volume"/></svg></button>
+            <button class="button quiet event-icon-button" id="highlight-current" type="button" aria-label="Выделять текущую строку" data-tooltip="Выделять текущую строку · C" aria-pressed="true" aria-keyshortcuts="C"><svg class="event-icon" aria-hidden="true"><use href="#icon-highlight"/></svg></button>
+          </div>
+        </div>
         <p class="event-audio-status" id="event-audio-status" aria-live="polite" hidden></p>
         <button class="button quiet" id="event-lyrics-only" type="button" hidden>Продолжить без минусовки</button>
-        <div class="event-progress-row"><span id="event-elapsed">0:00</span><input id="event-progress" type="range" min="0" max="1" value="0" step=".01" aria-label="Позиция песни"><span id="event-duration">0:00</span></div>
-        <p class="event-keyboard-hint">↑ / ↓ · 5 сек</p>
+      </div>
+      <div class="event-controls-reveal" id="event-controls-reveal" aria-hidden="true">
+        <span class="event-mini-timeline"></span>
+        <svg class="event-icon" data-preview-for="event-start"><use href="#icon-play"/></svg>
+        <svg class="event-icon"><use href="#icon-reset"/></svg>
+        <svg class="event-icon" data-preview-for="fullscreen"><use href="#icon-fullscreen"/></svg>
+        <svg class="event-icon" data-preview-for="event-mute" hidden><use href="#icon-volume"/></svg>
+        <svg class="event-icon" data-preview-for="highlight-current"><use href="#icon-highlight"/></svg>
       </div>
       <dialog class="event-menu" id="event-menu" tabindex="-1" aria-labelledby="event-menu-title">
         <div class="event-menu-content">

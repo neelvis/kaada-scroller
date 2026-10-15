@@ -98,10 +98,10 @@ try {
   assert.equal(await page.locator('.status-pill').textContent(), 'Готова');
   console.log('live-display: backing and readiness');
 
-  // TL-AC28/29: the backing follows the timeline; progress, mute, checkbox and keys are interactive.
+  // TL-AC28/29: the backing follows the timeline; progress, mute, emphasis and keys are interactive.
   await page.getByRole('button', { name: 'Режим показа', exact: true }).click();
   await page.waitForSelector('#event-view:not([hidden])');
-  assert.equal(await page.locator('#highlight-current').isChecked(), true);
+  assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('#event-progress').getAttribute('max'), '30');
   assert.equal(await page.locator('#event-mute').isHidden(), false);
   await page.locator('#event-start').click();
@@ -111,7 +111,7 @@ try {
     const player = document.querySelector('#event-player');
     return {
       status: document.querySelector('#event-audio-status')?.textContent,
-      start: { disabled: document.querySelector('#event-start')?.disabled, text: document.querySelector('#event-start')?.textContent },
+      start: { disabled: document.querySelector('#event-start')?.disabled, label: document.querySelector('#event-start')?.getAttribute('aria-label') },
       progress: document.querySelector('#event-progress')?.value,
       player: player && { paused: player.paused, readyState: player.readyState, duration: player.duration, currentTime: player.currentTime, error: player.error?.message, ended: player.ended },
     };
@@ -119,9 +119,9 @@ try {
   assert.ok(startState.player.currentTime > 0, JSON.stringify(startState));
   console.log('live-display: event audio started');
   // TL-AC40: pause freezes backing audio and timeline; Start resumes in place.
-  assert.equal(startState.start.text, 'Пауза');
+  assert.equal(startState.start.label, 'Пауза');
   await page.locator('#event-start').click();
-  assert.equal(await page.locator('#event-start').textContent(), 'Старт');
+  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Старт');
   const paused = Number(await page.locator('#event-progress').inputValue());
   assert.equal(await page.locator('#event-player').count(), 0, 'pause releases the stopped audio');
   await page.waitForTimeout(300);
@@ -131,15 +131,17 @@ try {
     const player = document.querySelector('#event-player');
     return player && !player.paused && player.currentTime > position;
   }, paused);
-  assert.equal(await page.locator('#event-start').textContent(), 'Пауза');
+  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Пауза');
   await page.locator('#event-mute').click();
+  assert.equal(await page.locator('#event-mute').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('#event-player').evaluate(player => player.muted), true);
   const beforeMutePosition = await page.locator('#event-player').evaluate(player => player.currentTime);
   await page.waitForTimeout(180);
   assert.ok(await page.locator('#event-player').evaluate((player, before) => player.currentTime >= before, beforeMutePosition), 'mute keeps audio running');
   assert.ok(await page.evaluate(() => Math.abs(Number(document.querySelector('#event-progress').value) - document.querySelector('#event-player').currentTime) < .25), 'audio and progress agree within 250 ms');
 
-  await page.locator('#highlight-current').uncheck();
+  await page.locator('#highlight-current').click();
+  assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'false');
   assert.equal(await page.locator('#audience').evaluate(element => element.classList.contains('no-highlight')), true);
   await page.locator('#event-progress').evaluate(input => { input.value = '12'; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.waitForFunction(() => Math.abs(document.querySelector('#event-player').currentTime - 12) < .35);
@@ -147,6 +149,47 @@ try {
     const styles = [...document.querySelectorAll('.audience-line:not(.rest):not(.neutral)')].map(line => { const s = getComputedStyle(line); return [s.color, s.opacity, s.fontWeight, s.transform].join('|'); });
     return new Set(styles).size === 1;
   });
+
+  // TL-AC47: the icon row follows the timeline and stays inside common viewport widths.
+  for (const width of [1920, 1440, 768, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    const row = await page.evaluate(() => {
+      const panel = document.querySelector('#event-controls');
+      const timeline = document.querySelector('#event-progress').getBoundingClientRect();
+      const controls = ['#event-start', '#event-reset', '#fullscreen', '#event-mute', '#highlight-current']
+        .map(selector => document.querySelector(selector))
+        .filter(button => button && getComputedStyle(button).display !== 'none')
+        .map(button => ({ rect: button.getBoundingClientRect().toJSON(), icon: Boolean(button.querySelector('svg')), label: button.getAttribute('aria-label'), tooltip: button.getAttribute('data-tooltip') }));
+      return { width: innerWidth, panel: { left: panel.getBoundingClientRect().left, right: panel.getBoundingClientRect().right, client: panel.clientWidth, scroll: panel.scrollWidth }, timeline: timeline.toJSON(), controls };
+    });
+    assert.ok(row.panel.left >= 0 && row.panel.right <= width + 1 && row.panel.scroll <= row.panel.client + 1, JSON.stringify(row));
+    assert.ok(row.controls.every(control => control.rect.left >= 0 && control.rect.right <= width + 1 && control.icon && control.label && control.tooltip), JSON.stringify(row));
+    assert.ok(row.controls[0].rect.left >= row.timeline.right - 1, `icons follow timeline at ${width}px: ${JSON.stringify(row)}`);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
+  // TL-AC49: Space on a focused button activates it once; global keys share the same actions.
+  await page.locator('#event-start').focus();
+  await page.keyboard.press('Space');
+  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Старт', 'focused Start/Pause button receives native Space activation once');
+  await page.locator('#audience').click();
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => document.querySelector('#event-start').getAttribute('aria-label') === 'Пауза');
+  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Пауза', 'Space resumes from display content');
+  const muteBeforeShortcut = await page.locator('#event-mute').getAttribute('aria-pressed');
+  await page.keyboard.press('m');
+  assert.notEqual(await page.locator('#event-mute').getAttribute('aria-pressed'), muteBeforeShortcut, 'M toggles backing mute');
+  const emphasisBeforeShortcut = await page.locator('#highlight-current').getAttribute('aria-pressed');
+  await page.keyboard.press('c');
+  assert.notEqual(await page.locator('#highlight-current').getAttribute('aria-pressed'), emphasisBeforeShortcut, 'C toggles current-line emphasis');
+  await page.keyboard.press('c');
+  assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), emphasisBeforeShortcut, 'restore emphasis for the song-switch persistence check');
+  const guardedMute = await page.locator('#event-mute').getAttribute('aria-pressed');
+  await page.keyboard.press('Control+m');
+  assert.equal(await page.locator('#event-mute').getAttribute('aria-pressed'), guardedMute, 'modifier shortcuts do not toggle mute');
+  await page.locator('#audience').evaluate(audience => audience.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true, repeat: true })));
+  assert.equal(await page.locator('#event-mute').getAttribute('aria-pressed'), guardedMute, 'auto-repeated keydown does not toggle mute');
   await page.screenshot({ path: output + '/desktop-display.png' });
   const beforeUp = Number(await page.locator('#event-progress').inputValue());
   await page.locator('#event-progress').press('ArrowUp');
@@ -170,37 +213,140 @@ try {
   await page.waitForSelector('#event-player', { state: 'attached' });
   await page.locator('#event-menu-toggle').click();
   assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true);
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.matches(':modal')), false, 'library popup is nonmodal');
   assert.equal(await page.locator('#event-menu-songs button').count(), 3);
   assert.equal(await page.getByRole('button', { name: /Черновик.*нужна подготовка/ }).isDisabled(), true);
   assert.ok(await page.locator('#event-player').evaluate(player => !player.paused), 'opening menu does not pause playback');
-  await page.locator('#event-menu').press('Escape');
+  const muteBeforeMenuShortcut = await page.locator('#event-mute').getAttribute('aria-pressed');
+  await page.keyboard.press('m');
+  assert.equal(await page.locator('#event-mute').getAttribute('aria-pressed'), muteBeforeMenuShortcut, 'shortcuts are ignored while the library popup is open');
+  const desktopPopup = await page.evaluate(() => {
+    const menu = document.querySelector('#event-menu').getBoundingClientRect();
+    const trigger = document.querySelector('#event-menu-toggle').getBoundingClientRect();
+    return { menu: menu.toJSON(), trigger: trigger.toJSON(), viewport: { width: innerWidth, height: innerHeight } };
+  });
+  assert.ok(desktopPopup.menu.left >= 0 && desktopPopup.menu.right <= desktopPopup.viewport.width && desktopPopup.menu.top >= 0 && desktopPopup.menu.bottom <= desktopPopup.viewport.height, JSON.stringify(desktopPopup));
+  assert.ok(Math.abs(desktopPopup.menu.left - desktopPopup.trigger.left) < 120 && Math.abs(desktopPopup.menu.top - desktopPopup.trigger.bottom) < 120, `popup is anchored beside its trigger: ${JSON.stringify(desktopPopup)}`);
+  await page.setViewportSize({ width: 375, height: 740 });
+  const narrowPopup = await page.locator('#event-menu').evaluate(menu => {
+    const rect = menu.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: innerWidth, height: innerHeight };
+  });
+  assert.ok(narrowPopup.left >= 0 && narrowPopup.right <= narrowPopup.width && narrowPopup.top >= 0 && narrowPopup.bottom <= narrowPopup.height, JSON.stringify(narrowPopup));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.keyboard.press('Escape');
   assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false);
-  await page.getByRole('button', { name: 'Меню песен и проектов' }).focus();
+  await page.waitForFunction(() => document.activeElement?.id === 'event-menu-toggle');
+  await page.locator('#event-menu-toggle').click();
+  await page.locator('#audience').click();
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false, 'outside interaction dismisses the popup');
+  await page.waitForFunction(() => document.activeElement?.id === 'event-menu-toggle');
+  await page.locator('#event-menu-toggle').focus();
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Финал', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#event-song-name').textContent === 'Финал');
   assert.equal(await page.locator('#event-player').count(), 0, 'song switch awaits manual Start');
-  assert.equal(await page.locator('#highlight-current').isChecked(), false, 'line-emphasis preference follows song switching');
+  assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'false', 'line-emphasis preference follows song switching');
   await page.locator('#event-start').click();
   await page.waitForFunction(() => Number(document.querySelector('#event-progress').value) > .2);
-  assert.equal(await page.locator('#event-start').textContent(), 'Пауза');
+  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Пауза');
   await page.locator('#event-start').click();
   const lyricsPaused = Number(await page.locator('#event-progress').inputValue());
   await page.waitForTimeout(300);
   assert.equal(Number(await page.locator('#event-progress').inputValue()), lyricsPaused);
   await page.locator('#event-progress').evaluate(input => { input.value = '5'; input.dispatchEvent(new Event('input', { bubbles: true })); });
-  assert.equal(await page.locator('#event-start').textContent(), 'Старт');
+  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Старт');
   await page.locator('#event-start').click();
   await page.waitForFunction(() => Number(document.querySelector('#event-progress').value) > 5);
   assert.equal(await page.locator('#event-player').count(), 0);
   await page.locator('#event-reset').click();
+  await page.locator('#event-progress').evaluate(input => { input.value = '1'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForSelector('.audience-line.active');
   if (await page.locator('#fullscreen').evaluate(button => Boolean(button.closest('#event-view')?.requestFullscreen))) {
     await page.locator('#fullscreen').click();
-    await page.waitForTimeout(100);
+    await page.waitForFunction(() => Boolean(document.fullscreenElement));
+    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('is-fullscreen'));
+    assert.equal(await page.locator('#exit-event').isHidden(), true, 'preparation navigation hides in fullscreen');
     await page.locator('#event-menu-toggle').click();
     assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true, 'menu remains usable during fullscreen');
+    const fullscreenPopup = await page.locator('#event-menu').evaluate(menu => {
+      const rect = menu.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: innerWidth, height: innerHeight };
+    });
+    assert.ok(fullscreenPopup.left >= 0 && fullscreenPopup.right <= fullscreenPopup.width && fullscreenPopup.top >= 0 && fullscreenPopup.bottom <= fullscreenPopup.height, JSON.stringify(fullscreenPopup));
     await page.locator('#event-menu-close').click();
-    await page.evaluate(() => document.exitFullscreen?.());
+    await page.waitForFunction(() => document.querySelector('#event-menu-toggle').getAttribute('aria-expanded') === 'false');
+    await page.evaluate(() => { document.activeElement?.blur(); });
+    await page.locator('#audience').hover();
+    const beforeHide = await page.evaluate(() => ({
+      progress: Number(document.querySelector('#event-progress').value),
+      activeCenter: (() => { const rect = document.querySelector('.audience-line.active').getBoundingClientRect(); return (rect.top + rect.bottom) / 2; })(),
+    }));
+    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-hidden'), null, { timeout: 5000 });
+    const hidden = await page.evaluate(() => ({
+      progress: Number(document.querySelector('#event-progress').value),
+      activeCenter: (() => { const rect = document.querySelector('.audience-line.active').getBoundingClientRect(); return (rect.top + rect.bottom) / 2; })(),
+    }));
+    assert.equal(hidden.progress, beforeHide.progress, 'hiding controls does not seek');
+    assert.ok(Math.abs(hidden.activeCenter - beforeHide.activeCenter) < 2, 'hiding controls does not shift the lyrics');
+    const startBeforeHiddenShortcut = await page.locator('#event-start').getAttribute('aria-label');
+    await page.keyboard.press('Space');
+    assert.notEqual(await page.locator('#event-start').getAttribute('aria-label'), startBeforeHiddenShortcut, 'Space works while the fullscreen panel is hidden');
+    await page.keyboard.press('Space');
+    assert.equal(await page.locator('#event-start').getAttribute('aria-label'), startBeforeHiddenShortcut, 'Space toggles back while the panel remains hidden');
+    const muteWithoutBacking = await page.locator('#event-mute').getAttribute('aria-pressed');
+    await page.keyboard.press('m');
+    assert.equal(await page.locator('#event-mute').getAttribute('aria-pressed'), muteWithoutBacking, 'M does not change mute state without backing audio');
+    await page.keyboard.press('c');
+    assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'true', 'C works while the fullscreen panel is hidden');
+    await page.keyboard.press('c');
+    assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'false', 'restore the saved emphasis preference');
+    const revealViewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    await page.mouse.move(revealViewport.width / 2, revealViewport.height - 5);
+    await page.waitForFunction(() => !document.querySelector('#event-view').classList.contains('controls-hidden'));
+    await page.locator('#event-controls').hover();
+    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'hover reveals the panel');
+    await page.waitForTimeout(3200);
+    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'hover keeps the panel visible');
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.locator('#audience').hover();
+    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-hidden'), null, { timeout: 5000 });
+    await page.locator('#font-up').focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'event-progress', 'Tab reaches the hidden timeline');
+    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'keyboard focus reveals the panel');
+    await page.waitForTimeout(3200);
+    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'keyboard focus keeps the panel visible');
+    const progressBox = await page.locator('#event-progress').boundingBox();
+    assert.ok(progressBox);
+    await page.mouse.move(progressBox.x + progressBox.width * .25, progressBox.y + progressBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(progressBox.x + progressBox.width * .55, progressBox.y + progressBox.height / 2, { steps: 5 });
+    await page.waitForTimeout(3200);
+    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'dragging the timeline keeps the panel visible');
+    await page.mouse.up();
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.locator('#audience').hover();
+    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-hidden'), null, { timeout: 5000 });
+    const beforeReveal = await page.evaluate(() => ({
+      progress: Number(document.querySelector('#event-progress').value),
+      activeCenter: (() => { const rect = document.querySelector('.audience-line.active').getBoundingClientRect(); return (rect.top + rect.bottom) / 2; })(),
+    }));
+    const stripBox = await page.locator('#event-controls-reveal').boundingBox();
+    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    await page.mouse.move(viewport.width / 2, viewport.height - 5);
+    await page.waitForFunction(() => !document.querySelector('#event-view').classList.contains('controls-hidden'));
+    const afterReveal = await page.evaluate(() => ({
+      progress: Number(document.querySelector('#event-progress').value),
+      activeCenter: (() => { const rect = document.querySelector('.audience-line.active').getBoundingClientRect(); return (rect.top + rect.bottom) / 2; })(),
+    }));
+    assert.ok(stripBox && stripBox.height <= 10.1, `reveal strip is at most 10px high: ${JSON.stringify(stripBox)}`);
+    assert.equal(afterReveal.progress, beforeReveal.progress, 'revealing controls does not seek');
+    assert.ok(Math.abs(afterReveal.activeCenter - beforeReveal.activeCenter) < 2, 'revealing controls does not shift the lyrics');
+    await page.locator('#fullscreen').click();
+    await page.waitForFunction(() => !document.fullscreenElement);
+    await page.waitForFunction(() => !document.querySelector('#event-view').classList.contains('is-fullscreen'));
+    assert.equal(await page.locator('#exit-event').isVisible(), true, 'preparation navigation returns after fullscreen exit');
   }
   await page.locator('#exit-event').click();
   console.log('live-display: event menu');
@@ -208,7 +354,7 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('.song-item').length === 3);
   await page.locator('.song-select').first().click();
   await page.getByRole('button', { name: 'Режим показа', exact: true }).click();
-  assert.equal(await page.locator('#highlight-current').isChecked(), false, 'line-emphasis preference survives reload');
+  assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'false', 'line-emphasis preference survives reload');
   await page.locator('#exit-event').click();
 
   // TL-AC31: adding stays directly under a short list and a long list scrolls before it.

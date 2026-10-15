@@ -72,7 +72,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('.audience-line.active')?.textContent==='Первая строка');
   await page.screenshot({path:output+'/audience.png'});
   await page.locator('#event-start').click();
-  assert.equal(await page.locator('#event-start').textContent(), 'Старт');
+  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Старт');
   await page.locator('#event-start').click();
   await page.waitForFunction(()=>document.querySelector('.audience-line.active')?.textContent==='Вторая строка');
   await page.evaluate(()=>{const until=performance.now()+450;while(performance.now()<until){};});

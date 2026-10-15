@@ -25,6 +25,9 @@ let persistChain = Promise.resolve();
 let importing = false;
 let eventState = { song: null, startedAt: 0, running: false, frame: 0, lastIndex: null };
 let fontSize = 54;
+let highlightEnabled = true;
+const eventControls = $('#event-controls');
+const controlsVisibility = { timer: null, hovered: false, dragging: false };
 let sessionActive = false;
 let project = null;
 let projectEntries = new Map();
@@ -591,6 +594,7 @@ function launchEvent(song) {
   buildAudience(); playback.arm(song.duration, song.backing?.fileName || entry.backingAudioId ? loader : null);
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
   applyHighlight(); renderAudience(-1, false); updateEvent();
+  revealEventControls();
 }
 function buildAudience() {
   els.audienceLines.classList.toggle('uniform-scroll', eventState.song.ignoreTimecodes === true);
@@ -632,8 +636,46 @@ const playback = new Playback({
     updateEvent(); cancelAnimationFrame(eventState.frame);
     if (playback.running) eventState.frame = requestAnimationFrame(tick);
   },
-  failed: error => { $('#event-audio-status').textContent = error.message; $('#event-audio-status').hidden = false; $('#event-lyrics-only').hidden = false; },
+  failed: error => { $('#event-audio-status').textContent = error.message; $('#event-audio-status').hidden = false; $('#event-lyrics-only').hidden = false; revealEventControls(); },
 });
+function setControlIcon(id, icon, label, shortcut = '') {
+  const control = $(`#${id}`);
+  const tooltip = `${label}${shortcut ? ` · ${shortcut}` : ''}`;
+  if (control.getAttribute('aria-label') !== label) control.setAttribute('aria-label', label);
+  if (control.dataset.tooltip !== tooltip) control.dataset.tooltip = tooltip;
+  for (const use of [control.querySelector('use'), $(`[data-preview-for="${id}"] use`)]) {
+    if (use && use.getAttribute('href') !== `#icon-${icon}`) use.setAttribute('href', `#icon-${icon}`);
+  }
+}
+function displayFullscreen() { return document.fullscreenElement === els.event; }
+function cancelControlsHide() { clearTimeout(controlsVisibility.timer); controlsVisibility.timer = null; }
+function scheduleControlsHide() {
+  cancelControlsHide();
+  if (!displayFullscreen() || els.event.hidden || controlsVisibility.hovered || controlsVisibility.dragging ||
+      eventControls.contains(document.activeElement) || !$('#event-audio-status').hidden) return;
+  controlsVisibility.timer = setTimeout(() => {
+    controlsVisibility.timer = null;
+    if (displayFullscreen() && !els.event.hidden && !controlsVisibility.hovered && !controlsVisibility.dragging &&
+        !eventControls.contains(document.activeElement) && $('#event-audio-status').hidden) {
+      els.event.classList.add('controls-hidden');
+    }
+  }, 3000);
+}
+function revealEventControls() {
+  els.event.classList.remove('controls-hidden');
+  scheduleControlsHide();
+}
+function syncFullscreenControls() {
+  const fullscreen = displayFullscreen();
+  els.event.classList.toggle('is-fullscreen', fullscreen);
+  setControlIcon('fullscreen', fullscreen ? 'fullscreen-exit' : 'fullscreen', fullscreen ? 'Выйти из полного экрана' : 'На весь экран');
+  controlsVisibility.dragging = false;
+  revealEventControls(); positionEventMenu();
+}
+function toggleFullscreen() {
+  const operation = displayFullscreen() ? document.exitFullscreen() : els.event.requestFullscreen?.();
+  operation?.catch(() => toast('Не удалось переключить полноэкранный режим.'));
+}
 function displayTime(seconds) { return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`; }
 function updateEvent() {
   const song = eventState.song; if (!song) return;
@@ -646,9 +688,10 @@ function updateEvent() {
   $('#event-progress').setAttribute('aria-valuetext', `${displayTime(elapsed)} из ${displayTime(song.duration)}`);
   $('#event-elapsed').textContent = displayTime(elapsed); $('#event-duration').textContent = displayTime(song.duration);
   $('#event-start').disabled = playback.starting || elapsed >= song.duration;
-  $('#event-start').textContent = playback.starting ? 'Запуск…' : playback.running ? 'Пауза' : 'Старт';
+  setControlIcon('event-start', playback.starting ? 'loading' : playback.running ? 'pause' : 'play', playback.starting ? 'Запуск…' : playback.running ? 'Пауза' : 'Старт', 'Пробел');
   $('#event-mute').hidden = !playback.loadAudio;
-  $('#event-mute').textContent = playback.muted ? 'Включить звук' : 'Выключить звук';
+  $('[data-preview-for="event-mute"]').hidden = !playback.loadAudio;
+  setControlIcon('event-mute', playback.muted ? 'muted' : 'volume', playback.muted ? 'Включить звук' : 'Выключить звук', 'M');
   $('#event-mute').setAttribute('aria-pressed', String(Boolean(playback.muted)));
 }
 function tick() {
@@ -660,26 +703,40 @@ function startEvent() {
   if (!eventState.song || playback.starting) return;
   if (playback.running) { playback.stop(); return; }
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
+  scheduleControlsHide();
   return playback.start();
 }
 function resetEvent() {
   playback.reset(); eventState.lastIndex = null; eventState.ended = false;
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
   if (eventState.song) { renderAudience(-1, false); updateEvent(); }
+  scheduleControlsHide();
 }
 function exitEvent() {
   playback.dispose(); $('#event-menu').close();
   els.event.hidden = true; els.prep.hidden = false; $('.topbar').hidden = false;
+  cancelControlsHide(); controlsVisibility.hovered = false; controlsVisibility.dragging = false;
+  els.event.classList.remove('controls-hidden');
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 }
+function positionEventMenu() {
+  const menu = $('#event-menu'); if (!menu.open) return;
+  const bounds = $('#event-menu-toggle').getBoundingClientRect();
+  const top = Math.min(bounds.bottom + 8, Math.max(12, window.innerHeight - 80));
+  menu.style.maxHeight = `${Math.max(40, Math.min(620, window.innerHeight - top - 12))}px`;
+  menu.style.top = `${top}px`;
+  menu.style.left = `${Math.max(12, Math.min(bounds.left, window.innerWidth - menu.offsetWidth - 12))}px`;
+}
 function showEventMenu() {
+  if ($('#event-menu').open) { $('#event-menu').close(); return; }
   const list = $('#event-menu-songs'); list.replaceChildren(); $('#event-project-name').textContent = set.name;
   for (const song of set.songs) {
     const ready = !validateSong(song).length;
     const item = button(`${song.title || 'Без названия'}${ready ? '' : ' · нужна подготовка'}`, 'button quiet', () => { $('#event-menu').close(); selectedId = song.id; render(); launchEvent(song); });
     item.disabled = !ready; if (eventState.song?.id === song.id) item.setAttribute('aria-current', 'true'); list.append(item);
   }
-  $('#event-menu-toggle').setAttribute('aria-expanded', 'true'); $('#event-menu').showModal();
+  $('#event-menu-toggle').setAttribute('aria-expanded', 'true'); $('#event-menu').show(); positionEventMenu();
+  ($('#event-menu-songs button:not(:disabled)') || $('#event-menu-close')).focus();
 }
 function showProjects() {
   if (!sessionActive) return;
@@ -797,28 +854,75 @@ async function migrateLegacy() {
   } catch (error) { if (workspaceGeneration === workspaceRun && sessionActive === sessionAtStart) toast(error.message); }
 }
 
-$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#prepare-offline').addEventListener('click', prepareOfflineProject); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); $('#export-set').addEventListener('click', downloadSet); $('#import-set').addEventListener('click', () => $('#set-file').click()); $('#set-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project) markRemoteDirty(); else persist(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', () => els.event.requestFullscreen?.()); $('#font-up').addEventListener('click', () => { fontSize = Math.min(100, fontSize + 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); }); $('#font-down').addEventListener('click', () => { fontSize = Math.max(28, fontSize - 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); });
+$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#prepare-offline').addEventListener('click', prepareOfflineProject); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); $('#export-set').addEventListener('click', downloadSet); $('#import-set').addEventListener('click', () => $('#set-file').click()); $('#set-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project) markRemoteDirty(); else persist(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => { fontSize = Math.min(100, fontSize + 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); }); $('#font-down').addEventListener('click', () => { fontSize = Math.max(28, fontSize - 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); });
 $('#projects').addEventListener('click', showProjects);
 $('#event-menu-toggle').addEventListener('click', showEventMenu);
 $('#event-menu-close').addEventListener('click', () => $('#event-menu').close());
 $('#event-menu').addEventListener('close', () => { $('#event-menu-toggle').setAttribute('aria-expanded', 'false'); if (!els.event.hidden) $('#event-menu-toggle').focus(); });
-$('#event-menu').addEventListener('click', event => { const bounds = event.currentTarget.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) event.currentTarget.close(); });
+document.addEventListener('pointerdown', event => {
+  const menu = $('#event-menu');
+  if (menu.open && !menu.contains(event.target) && !$('#event-menu-toggle').contains(event.target)) menu.close();
+});
 $('#event-projects').addEventListener('click', () => { if (!sessionActive) return; $('#event-menu').close(); showProjects(); });
 $('#projects-dialog').addEventListener('close', () => document.body.append($('#projects-dialog')));
 $('#event-progress').addEventListener('input', event => { if (eventState.song) playback.seek(Number(event.target.value)); });
-$('#event-mute').addEventListener('click', () => playback.mute(!playback.muted));
-$('#event-lyrics-only').addEventListener('click', () => { $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true; playback.lyricsOnly(); });
+function toggleMute() { if (playback.loadAudio) playback.mute(!playback.muted); }
+$('#event-mute').addEventListener('click', toggleMute);
+$('#event-lyrics-only').addEventListener('click', () => { $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true; playback.lyricsOnly(); scheduleControlsHide(); });
 function applyHighlight() {
-  els.audience.classList.toggle('no-highlight', !$('#highlight-current').checked);
+  els.audience.classList.toggle('no-highlight', !highlightEnabled);
+  $('#highlight-current').setAttribute('aria-pressed', String(highlightEnabled));
+  $('[data-preview-for="highlight-current"]').dataset.active = String(highlightEnabled);
   if (eventState.song) centerAudience(eventState.lastIndex ?? -1);
 }
-try { $('#highlight-current').checked = localStorage.getItem('lyrics-highlight-current') !== 'false'; } catch {}
-$('#highlight-current').addEventListener('change', () => { try { localStorage.setItem('lyrics-highlight-current', String($('#highlight-current').checked)); } catch {} applyHighlight(); });
+function toggleHighlight() {
+  highlightEnabled = !highlightEnabled;
+  try { localStorage.setItem('lyrics-highlight-current', String(highlightEnabled)); } catch {}
+  applyHighlight();
+}
+try { highlightEnabled = localStorage.getItem('lyrics-highlight-current') !== 'false'; } catch {}
+applyHighlight();
+$('#highlight-current').addEventListener('click', toggleHighlight);
 document.addEventListener('keydown', event => {
-  if (els.event.hidden || !eventState.song || document.querySelector('dialog[open]') || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
-  if (event.target.id !== 'event-progress' && event.target.closest('input,textarea,select,[contenteditable]')) return;
-  event.preventDefault(); playback.seek(playback.elapsed() + (event.key === 'ArrowUp' ? -5 : 5));
+  if (els.event.hidden || !eventState.song) return;
+  if (event.key === 'Escape' && $('#event-menu').open) { event.preventDefault(); $('#event-menu').close(); return; }
+  if (document.querySelector('dialog[open]') || event.ctrlKey || event.altKey || event.metaKey) return;
+  const target = event.target instanceof Element ? event.target : document.body;
+  const editable = target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])');
+  if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
+    if (editable && target.id !== 'event-progress') return;
+    event.preventDefault(); playback.seek(playback.elapsed() + (event.key === 'ArrowUp' ? -5 : 5));
+    return;
+  }
+  if (editable) return;
+  const space = event.code === 'Space' || event.key === ' ';
+  if (space && target.closest('button,[role="button"],a[href]')) return;
+  const key = event.key.toLowerCase();
+  const mute = key === 'm' || event.code === 'KeyM';
+  const highlight = key === 'c' || event.code === 'KeyC';
+  if (!space && !mute && !highlight) return;
+  event.preventDefault();
+  if (event.repeat) return;
+  if (space) { if (!$('#event-start').disabled) startEvent(); }
+  else if (mute) toggleMute();
+  else toggleHighlight();
 });
+eventControls.addEventListener('pointerenter', event => {
+  // Touch can leave CSS :hover sticky; only an actual hovering pointer pins the panel.
+  controlsVisibility.hovered = event.pointerType !== 'touch';
+  revealEventControls();
+});
+eventControls.addEventListener('pointerleave', () => { controlsVisibility.hovered = false; scheduleControlsHide(); });
+eventControls.addEventListener('focusin', revealEventControls);
+eventControls.addEventListener('focusout', () => queueMicrotask(scheduleControlsHide));
+$('#event-progress').addEventListener('pointerdown', () => { controlsVisibility.dragging = true; revealEventControls(); });
+for (const event of ['pointerup', 'pointercancel']) document.addEventListener(event, () => {
+  if (!controlsVisibility.dragging) return;
+  controlsVisibility.dragging = false; scheduleControlsHide();
+});
+$('#event-controls-reveal').addEventListener('pointerenter', revealEventControls);
+$('#event-controls-reveal').addEventListener('pointerdown', event => { event.preventDefault(); revealEventControls(); });
+document.addEventListener('fullscreenchange', syncFullscreenControls);
 els.save.addEventListener('click', saveRemoteProject); els.login.addEventListener('click', () => $('#login-dialog').showModal()); els.logout.addEventListener('click', signOut); $('#login-form').addEventListener('submit', event => { event.preventDefault(); signIn(); }); $('#create-project').addEventListener('click', createRemoteProject); $('#migrate-legacy').addEventListener('click', migrateLegacy); $('#library-search').addEventListener('input', () => searchLibrary());
 els.clearDownloaded.addEventListener('click', clearDownloadedProjectData);
 
@@ -826,7 +930,7 @@ try { const stored = await loadSet(); if (stored) { set = stored; legacySet = st
 updateSessionUi(); render(); initOffline();
 try { if (localStorage.getItem('lyrics-v2-pending-logout')) { await privateMutation(() => clearPrivateProjectCache()); try { await remote.session(); await remote.logout(); localStorage.removeItem('lyrics-v2-pending-logout'); } catch (error) { if (error.status === 401) localStorage.removeItem('lyrics-v2-pending-logout'); } } else { await remote.session(); sessionActive = true; } } catch {} updateSessionUi(); render(); refreshOfflineProjectEntry();
 
-window.addEventListener('resize', () => { if (!els.event.hidden) centerAudience(eventState.lastIndex ?? -1); });
+window.addEventListener('resize', () => { if (!els.event.hidden) { centerAudience(eventState.lastIndex ?? -1); positionEventMenu(); } });
 window.addEventListener('online', () => lrclibState?.paint());
 window.addEventListener('offline', () => lrclibState?.paint());
 

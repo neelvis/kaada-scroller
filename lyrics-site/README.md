@@ -111,12 +111,30 @@ seek back and press Start. **Stop and reset** returns to zero. A shorter backing
 ends without truncating the lyric timeline; a longer backing stops at the declared
 song end. Lyric delay affects cue display, not audio position or duration.
 
-Clear **Highlight current line** for live performance: the text keeps advancing
-with equal emphasis across lyric lines. The setting survives song switches and
-browser reopening. Font controls and full screen remain available. The hamburger
-menu selects ready songs and online/prepared offline projects without leaving the
-display. Selection stops the old song and awaits a fresh Start. Live beat following
-and automatic tempo compensation remain outside this version.
+The bottom row places playback, reset, fullscreen, mute, and line-emphasis icons
+to the right of the timeline. Hover an icon or focus it with the keyboard for its
+tooltip. Space starts/pauses, M toggles backing sound, and C toggles current-line
+emphasis. Shortcuts leave editable fields and open menus/dialogs alone; Space on
+a focused button activates that button. Arrow seeking remains available.
+
+Toggle **Highlight current line** off for equal emphasis across lyric lines.
+Its icon shows three equal lines when off and past/current/upcoming styles when
+on. The setting survives song switches and browser reopening. Font controls and
+full screen remain available. The media-library button opens an adjacent popup
+for ready songs and online/prepared offline projects without leaving the display.
+Selection stops the old song and awaits a fresh Start.
+
+In fullscreen, preparation navigation is hidden. The bottom panel hides after
+three seconds without pointer hover or keyboard focus; moving to the translucent
+10-pixel strip along the bottom edge reveals it. Keyboard focus also reveals the
+controls. Visibility changes preserve lyric position and playback. Use the
+fullscreen icon or Escape to leave fullscreen. See
+[compact display requirements](../specs/features/timed-lyrics/revision-10.md).
+Live beat following and automatic tempo compensation remain outside this version.
+
+For local regression checks, `pnpm test:display` covers display/playback navigation
+and layout; `pnpm test:display-controls` covers tooltip, shortcut, touch-reveal,
+fullscreen timer, and audio-error visibility edge cases after `pnpm build`.
 
 For a server project, save and confirm all songs, then choose **Save locally** in the sidebar.
 This stores an immutable timeline snapshot, every linked backing track and viewer
