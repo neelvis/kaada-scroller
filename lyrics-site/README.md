@@ -56,6 +56,17 @@ Recognition quality remains unproven on representative singing and its controls
 are hidden in this redesign. Manual review remains necessary for imported timelines.
 Revision 6 is verified locally and deployed as paired release `20261013_193539`.
 
+## Local and online libraries
+
+The **Библиотека** button refreshes the sidebar library. Without signing in, only
+**Локальная библиотека** songs are available; new songs and imports stay on this
+device. Signing in automatically loads **Онлайн-библиотека** from the shared API.
+Selecting an online song without an open project opens a read-only preview with
+lyrics, audio and display mode. In an editable server project, selecting it adds
+its current version to that project; click **Save** to persist the addition.
+Local songs remain accessible while signed in. Signing out removes online songs
+from the sidebar and stops private playback without changing the local library.
+
 ## Find an existing LRC
 
 In the **LRCLIB** tab, use **Find LRC in LRCLIB**. The separate search fields

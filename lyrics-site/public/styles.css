@@ -70,3 +70,11 @@
 .event-menu-toggle[aria-expanded=true]::after{visibility:hidden}
 .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 @media(max-width:500px){.topbar-actions .action-icon-button{width:34px;height:34px;padding:5px}.set-name-clip{width:min(175px,calc(100vw - 160px))}}
+
+/* Separate local and authenticated shared song libraries. */
+#local-library,#online-library,#project-songs{flex-shrink:0;margin-bottom:14px}
+#local-library .song-list,#online-library .song-list,#project-songs .song-list{overflow-y:auto}
+.library-song{border-radius:8px;border:1px solid var(--line);margin-bottom:6px}
+.library-song .song-select{width:100%;overflow-wrap:anywhere}
+.library-song:hover{background:var(--surface-2)}
+.song-list-panel{overflow-y:auto}

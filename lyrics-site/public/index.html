@@ -26,6 +26,7 @@
         </svg>
         <span class="offline-state" id="offline-state" aria-live="polite">Проверка автономной работы…</span>
         <span class="remote-state" id="remote-state" aria-live="polite">Локальный набор</span>
+        <button class="button quiet" id="library" type="button" aria-controls="online-library local-library">Библиотека</button>
         <button class="button quiet event-icon-button has-tooltip action-icon-button" id="projects" type="button" aria-label="Проекты" data-tooltip="Проекты" hidden disabled><svg class="event-icon" aria-hidden="true"><use href="#action-icon-library"/></svg></button>
         <button class="button quiet event-icon-button has-tooltip action-icon-button" id="save-project" type="button" aria-label="Сохранить" data-tooltip="Сохранить" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-save"/></svg></button>
         <button class="button quiet event-icon-button has-tooltip action-icon-button" id="login" type="button" aria-label="Войти" data-tooltip="Войти"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-sign-in"/></svg></button>
@@ -41,7 +42,9 @@
       <aside class="song-list-panel" aria-label="Список песен">
         <div class="panel-heading"><div><p class="eyebrow">Набор</p><div class="set-name-clip" id="set-name-clip"><input id="set-name" class="set-name" aria-label="Название набора" value="Мой набор"><div class="set-name-marquee" id="set-name-marquee" aria-hidden="true"><div class="set-name-marquee-track"><span class="set-name-marquee-copy"></span><span class="set-name-marquee-copy"></span></div></div><span class="set-name-measure" id="set-name-measure" aria-hidden="true"></span></div></div><span class="song-count" id="song-count">0 песен</span></div>
         <button class="button primary" id="show-mode" type="button" disabled>Режим показа</button>
-        <div class="song-list" id="song-list"></div>
+        <section id="project-songs" hidden><h2 class="eyebrow">Песни проекта</h2><div class="song-list" id="song-list"></div></section>
+        <section id="local-library" aria-labelledby="local-library-heading"><h2 class="eyebrow" id="local-library-heading">Локальная библиотека</h2><div class="song-list" id="local-song-list"></div></section>
+        <section id="online-library" aria-labelledby="online-library-heading" hidden><h2 class="eyebrow" id="online-library-heading">Онлайн-библиотека</h2><div class="song-list" id="online-song-list" aria-live="polite"></div></section>
         <button class="button add-song" id="add-song" type="button">+ Новая песня</button>
         <button class="button add-song" id="add-library-song" type="button" disabled>+ Из библиотеки</button>
         <button class="button add-song" id="prepare-offline" type="button" disabled>Сохранить локально</button>
