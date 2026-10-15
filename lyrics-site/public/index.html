@@ -59,7 +59,7 @@
       <div class="event-bar">
         <div class="event-bar-start"><button class="button quiet event-menu-toggle event-icon-button" id="event-menu-toggle" type="button" aria-label="Медиатека песен и проектов" data-tooltip="Медиатека песен и проектов" aria-expanded="false" aria-controls="event-menu"><svg class="event-icon" aria-hidden="true"><use href="#icon-library"/></svg></button><button class="button quiet" id="exit-event" type="button">← К подготовке</button></div>
         <span id="event-song-name"></span>
-        <div><button class="button quiet" id="font-down" type="button" aria-label="Уменьшить текст">A−</button><button class="button quiet" id="font-up" type="button" aria-label="Увеличить текст">A+</button></div>
+        <div><button class="button quiet" id="font-down" type="button" aria-label="Уменьшить текст" title="Уменьшить текст · −" aria-keyshortcuts="-">A−</button><button class="button quiet" id="font-up" type="button" aria-label="Увеличить текст" title="Увеличить текст · +" aria-keyshortcuts="= Shift+=">A+</button></div>
       </div>
       <div class="audience" id="audience" style="--audience-size: 54px">
         <div class="audience-lines" id="audience-lines"></div>
@@ -71,7 +71,7 @@
             <button class="button primary event-icon-button" id="event-start" type="button" aria-label="Старт" data-tooltip="Старт · Пробел" aria-keyshortcuts="Space"><svg class="event-icon" aria-hidden="true"><use href="#icon-play"/></svg></button>
             <button class="button danger event-icon-button" id="event-reset" type="button" aria-label="Стоп и сброс" data-tooltip="Стоп и сброс"><svg class="event-icon" aria-hidden="true"><use href="#icon-reset"/></svg></button>
             <button class="button quiet event-icon-button" id="fullscreen" type="button" aria-label="На весь экран" data-tooltip="На весь экран · F" aria-keyshortcuts="F"><svg class="event-icon" aria-hidden="true"><use href="#icon-fullscreen"/></svg></button>
-            <button class="button quiet event-icon-button" id="event-mute" type="button" aria-label="Выключить звук" data-tooltip="Выключить звук · M" aria-pressed="false" aria-keyshortcuts="M" hidden><svg class="event-icon" aria-hidden="true"><use href="#icon-volume"/></svg></button>
+            <button class="button quiet event-icon-button" id="event-mute" type="button" aria-label="для этой песни нет минусовки" data-tooltip="для этой песни нет минусовки" aria-pressed="false" aria-keyshortcuts="M" disabled><svg class="event-icon" aria-hidden="true"><use href="#icon-muted"/></svg></button>
             <button class="button quiet event-icon-button" id="highlight-current" type="button" aria-label="Выделять текущую строку" data-tooltip="Выделять текущую строку · C" aria-pressed="true" aria-keyshortcuts="C"><svg class="event-icon" aria-hidden="true"><use href="#icon-highlight"/></svg></button>
           </div>
         </div>

@@ -45,6 +45,44 @@ try {
 
   assert.equal(await page.locator('#fullscreen').getAttribute('aria-keyshortcuts'), 'F');
   assert.match(await page.locator('#fullscreen').getAttribute('data-tooltip'), /\bF\b/);
+  assert.equal(await page.locator('#event-mute').isVisible(), true);
+  assert.equal(await page.locator('#event-mute').isDisabled(), true);
+  assert.equal(await page.locator('#event-mute use').getAttribute('href'), '#icon-muted');
+  assert.equal(await page.locator('#event-mute').getAttribute('data-tooltip'), 'для этой песни нет минусовки');
+  await page.locator('#event-mute').hover();
+  assert.equal(await page.locator('#event-mute').evaluate(button => getComputedStyle(button, '::after').visibility), 'visible', 'disabled speaker tooltip appears on hover');
+  assert.ok(await page.locator('#event-mute').evaluate(button => getComputedStyle(button, '::after').content.includes('для этой песни нет минусовки')));
+  const unavailableMute = await page.locator('#event-mute').getAttribute('aria-pressed');
+  await page.keyboard.press('m');
+  assert.equal(await page.locator('#event-mute').getAttribute('aria-pressed'), unavailableMute, 'unavailable mute shortcut is inert');
+
+  // Font buttons and keyboard shortcuts share four-pixel steps and the same limits.
+  const fontSize = async () => page.locator('#audience-lines').evaluate(lines => Number.parseFloat(getComputedStyle(lines).fontSize));
+  assert.equal(await fontSize(), 54);
+  await page.locator('#font-up').click();
+  assert.equal(await fontSize(), 58, 'font button increases the audience text by 4px');
+  await page.keyboard.press('+');
+  assert.equal(await fontSize(), 62, '+ increases the audience text by 4px');
+  await page.keyboard.press('=');
+  assert.equal(await fontSize(), 66, '= is a convenient increase shortcut');
+  await page.locator('#audience').evaluate(audience => audience.dispatchEvent(new KeyboardEvent('keydown', { key: '+', code: 'NumpadAdd', bubbles: true })));
+  assert.equal(await fontSize(), 70, 'NumpadAdd increases the audience text by 4px');
+  await page.locator('#font-down').click();
+  assert.equal(await fontSize(), 66, 'font button decreases the audience text by 4px');
+  await page.keyboard.press('-');
+  assert.equal(await fontSize(), 62, '- decreases the audience text by 4px');
+  await page.locator('#audience').evaluate(audience => audience.dispatchEvent(new KeyboardEvent('keydown', { key: '−', bubbles: true })));
+  assert.equal(await fontSize(), 58, 'Unicode minus decreases the audience text by 4px');
+  await page.locator('#audience').evaluate(audience => audience.dispatchEvent(new KeyboardEvent('keydown', { key: '-', code: 'NumpadSubtract', bubbles: true })));
+  assert.equal(await fontSize(), 54, 'NumpadSubtract decreases the audience text by 4px');
+  for (let index = 0; index < 20; index++) await page.keyboard.press('+');
+  assert.equal(await fontSize(), 100, 'font increase stops at 100px');
+  await page.keyboard.press('+');
+  assert.equal(await fontSize(), 100, 'font increase stays at the 100px limit');
+  for (let index = 0; index < 20; index++) await page.keyboard.press('-');
+  assert.equal(await fontSize(), 28, 'font decrease stops at 28px');
+  await page.keyboard.press('-');
+  assert.equal(await fontSize(), 28, 'font decrease stays at the 28px limit');
 
   // Tooltips appear on hover and keyboard focus, with the accessible action text.
   const tooltip = async selector => page.locator(selector).evaluate(button => {
@@ -76,8 +114,12 @@ try {
     input.style.cssText = 'position:fixed;left:20px;top:20px;z-index:10000';
     document.querySelector('#event-view').append(input); input.focus();
   });
-  await page.locator('#shortcut-guard-input').evaluate(input => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true })));
+  const beforeEditableShortcuts = await fontSize();
+  await page.locator('#shortcut-guard-input').evaluate(input => {
+    for (const [key, code] of [['f', 'KeyF'], ['+', 'Equal'], ['-', 'Minus']]) input.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true }));
+  });
   assert.equal(await page.evaluate(() => Boolean(document.fullscreenElement)), false, 'synthetic F keydown on an editable field does not toggle fullscreen');
+  assert.equal(await fontSize(), beforeEditableShortcuts, 'font shortcuts do not trigger while editing text');
   const beforeInput = await states();
   await page.keyboard.press('Space'); await page.keyboard.press('m'); await page.keyboard.press('c'); await page.keyboard.press('f');
   assert.deepEqual(await states(), beforeInput, 'Space, M, C, and F do not trigger while editing text');
@@ -88,18 +130,23 @@ try {
     const audience = document.querySelector('#audience');
     audience.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true, ctrlKey: true }));
     audience.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true, repeat: true }));
+    audience.dispatchEvent(new KeyboardEvent('keydown', { key: '+', code: 'Equal', bubbles: true, ctrlKey: true }));
+    audience.dispatchEvent(new KeyboardEvent('keydown', { key: '+', code: 'Equal', bubbles: true, repeat: true }));
   });
   assert.equal(await page.evaluate(() => Boolean(document.fullscreenElement)), fullscreenBeforeGuards, 'modifier and repeated F keydowns do not toggle fullscreen');
+  assert.equal(await fontSize(), 28, 'modifier and repeated font shortcut keydowns are ignored');
 
   await page.locator('#event-menu-toggle').click();
   assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true);
   const beforeDialog = await states();
+  const fontBeforeDialog = await fontSize();
   await page.locator('#event-menu').evaluate(dialog => {
-    for (const [key, code] of [[' ', 'Space'], ['m', 'KeyM'], ['c', 'KeyC'], ['f', 'KeyF']]) {
+    for (const [key, code] of [[' ', 'Space'], ['m', 'KeyM'], ['c', 'KeyC'], ['f', 'KeyF'], ['+', 'Equal'], ['-', 'Minus']]) {
       dialog.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true }));
     }
   });
   assert.deepEqual(await states(), beforeDialog, 'shortcuts do not trigger while a dialog is open');
+  assert.equal(await fontSize(), fontBeforeDialog, 'font shortcuts do not trigger while a dialog is open');
   await page.locator('#event-menu-close').click();
   await page.waitForFunction(() => !document.querySelector('#event-menu').open);
   await page.waitForFunction(() => document.querySelector('#event-menu-toggle').getAttribute('aria-expanded') === 'false');
@@ -127,7 +174,9 @@ try {
   await page.waitForFunction(() => Boolean(document.fullscreenElement) && document.querySelector('#event-view').classList.contains('is-fullscreen'));
   await page.evaluate(() => document.activeElement?.blur());
   await page.locator('#audience').hover();
-  await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-dimmed'), null, { timeout: 5000 });
+  await page.waitForTimeout(1700);
+  assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-dimmed')), false, 'idle dimming waits for two seconds');
+  await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-dimmed'), null, { timeout: 900 });
   await page.waitForFunction(() => Math.abs(Number(getComputedStyle(document.querySelector('#event-controls')).opacity) - .3) < .02);
   const idle = await page.locator('#event-controls').evaluate(panel => ({
     rect: panel.getBoundingClientRect().toJSON(),

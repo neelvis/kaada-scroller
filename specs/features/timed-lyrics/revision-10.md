@@ -1,7 +1,7 @@
 # Timed lyrics revision 10: compact display controls
 
 Feature ID: TL (extension)
-Status: Implemented, verified and deployed — event rehearsal pending
+Status: Prior display releases deployed; bounded keyboard/audio refinement locally verified
 Revision: 10, 2026-10-15
 Baseline: [live display controls](revision-4.md), [pause and resume](revision-7.md),
 [plain lyrics and uniform scrolling](revision-8.md)
@@ -36,8 +36,10 @@ audio synchronization, and project persistence retain their approved behavior.
   Russian tooltips on hover and keyboard focus, accessible action names, visible
   focus, and toggle state where applicable. Update action names/icons with
   playback, mute, and fullscreen state. Pending startup and unavailable actions
-  retain their existing disabled behavior. Hide mute when no backing track is
-  available, as before. At narrow widths, compact the row without overlapping
+  retain their existing disabled behavior. Without a backing track, keep the sound
+  button visible and disabled, with a crossed-speaker icon and the exact tooltip
+  `для этой песни нет минусовки`. With a backing track, retain active mute/unmute
+  controls and state-dependent tooltips. At narrow widths, compact the row without overlapping
   controls or causing horizontal page overflow; keep the icons after the
   timeline. Audio-error explanations and the explicit lyrics-only recovery
   action remain readable when needed.
@@ -50,22 +52,26 @@ audio synchronization, and project persistence retain their approved behavior.
   updates without seeking or interrupting playback.
 - **TL-R60 — Fullscreen panel visibility:** Outside fullscreen, keep the bottom
   panel fully opaque. In fullscreen, show it fully opaque initially and reduce
-  its opacity to exactly 30% after three seconds without pointer hover or keyboard
+  its opacity to exactly 30% after two seconds without pointer hover or keyboard
   focus anywhere in the panel. Always retain the panel's full dimensions,
   position, controls, and pointer interaction; do not minimize it or substitute
   miniature controls/a reveal strip. Hover anywhere in the full panel, keyboard
   focus, touch, and active timeline manipulation restore full opacity and cancel
-  pending dimming. Leaving starts a fresh three-second delay. Opacity changes
+  pending dimming. Leaving starts a fresh two-second delay. Opacity changes
   must not shift the lyrics or alter playback/seek state. Audio failure keeps
   its explanation and recovery controls fully opaque. Leaving fullscreen or
   display cancels pending dimming and restores full opacity on next entry.
 - **TL-R61 — Display shortcuts:** Space toggles Start/Pause, M toggles backing
-  mute, C toggles current-line emphasis, and F toggles fullscreen in display
-  mode. They invoke the
+  mute, C toggles current-line emphasis, F toggles fullscreen, and +/− increase
+  or decrease the audience font in display mode. Font shortcuts share the
+  buttons' four-pixel step and 28–100 pixel limits; accept main-keyboard + or =,
+  minus, and numeric-keypad Add/Subtract. They invoke the
   same actions and state restrictions as the buttons. Do not apply these
   shortcuts while editing text, inside an open menu/dialog, with Ctrl/Alt/Meta,
-  or on auto-repeated keydown. Space on a focused button retains that button's
-  native activation without triggering a second/global playback action. Existing
+  or on auto-repeated keydown. Space takes precedence over focused display buttons:
+  it toggles playback exactly once, including after the library menu closes and
+  focus returns to its trigger. It must not reopen that menu or activate another
+  focused display control. Enter retains normal focused-button activation. Existing
   ArrowUp/ArrowDown seeking and preparation-space tapping remain intact. Show
   the new shortcuts in the corresponding tooltips. Shortcut handling does not
   require the bottom panel to be fully opaque.
@@ -88,8 +94,10 @@ All other applicable approved behavior remains in force.
   or overflow. Verify icon-only presentation, hover/focus tooltips, accessible
   action names, startup/end restrictions, and updated play/pause, fullscreen,
   mute, and emphasis states. Verify both three-line icon treatments and emphasis
-  preference persistence across song switching and reload.
-- **TL-AC48 (R60):** Verify the panel reaches 30% opacity after three seconds
+  preference persistence across song switching and reload. Switching to a song
+  without backing audio keeps a disabled crossed-speaker button with the exact
+  no-backing tooltip; switching back restores normal mute/unmute interaction.
+- **TL-AC48 (R60):** Verify the panel reaches 30% opacity after two seconds
   outside pointer and keyboard focus, remains fully opaque while hovered/focused
   or dragging the timeline, and returns to full opacity from hover anywhere in
   the full panel, keyboard focus, or touch. Compare panel bounding boxes before
@@ -98,17 +106,31 @@ All other applicable approved behavior remains in force.
   Check a fresh delay on departure, touch restoration, error/recovery opacity,
   fullscreen exit/reentry, and display exit. Compare lyric position and playback
   state before and after visibility changes; no jump, pause, reset, or seek occurs.
-- **TL-AC49 (R61):** Exercise Space, M, C, and F with the panel fully opaque and dimmed,
+- **TL-AC49 (R61):** Exercise Space, M, C, F, +, and − with the panel fully opaque and dimmed,
   with and without backing audio, while running/paused, during startup, and at
   song end. Check that editable fields, open menus/dialogs, modifier combinations,
   repeated keydown, and Space on focused buttons cause no accidental or duplicate
-  action. Repeat existing five-second seek and preparation-tapping scenarios.
+  action. After library dismissal via Escape, close button, and outside interaction,
+  leave focus on the trigger; Space starts/pauses playback without reopening the
+  menu. On other focused display buttons, Space controls playback and Enter
+  activates the button normally. Verify main/keypad font keys use the same
+  four-pixel step and 28–100 bounds as buttons, preserve playback position, and
+  respect input/menu/modifier/repeat guards. Repeat existing five-second seek and
+  preparation-tapping scenarios.
 
 On 2026-10-15, after publication, the user requested F for fullscreen and full-size
 30% panel opacity instead of minimization. This bounded local UI refinement
 updates TL-R60/TL-R61 and their acceptance criteria; the user's explicit request
 establishes the exact changed behavior. Retain the previous three-second delay
 and interaction guards. It does not change playback or preparation workflows.
+
+The user subsequently reported Space reopening the media menu after interaction
+and requested +/− font shortcuts. This small explicit correction supersedes the
+original focused-button Space exception in TL-R61. Menu dismissal still restores
+accessible focus; the display shortcut now takes precedence on focused buttons.
+The user then explicitly shortened the idle-opacity delay to two seconds.
+The user also requested a visible, disabled crossed-speaker button with the exact
+no-backing tooltip above, superseding the original hidden mute-button rule.
 
 ## Sources, decisions, and handoff
 
@@ -172,3 +194,17 @@ scripts. Prior pair `20261015_082900` is retained for rollback. Live HTTPS asset
 health, privacy and MIME checks passed. The supplemental controls suite passed
 against the production origin, including F, 30% opacity, full-panel geometry,
 hover/focus/touch restoration, and error visibility with synthetic local data.
+
+## Keyboard and unavailable-audio refinement verification
+
+On 2026-10-15, syntax, portable build, the full display browser suite, and the
+supplemental controls suite passed for the subsequent refinements. Actual Space
+presses after Escape, close-button, and outside menu dismissal keep the library
+closed and toggle playback while retaining accessible trigger focus. Space on a
+focused font button controls playback, while Enter changes the font. Font shortcut
+steps, main/keypad keys, limits, and editing/menu/modifier/repeat guards passed.
+The opacity test confirms no dimming before 1.7 seconds and dimming within the
+next 0.9 seconds; the configured timer is exactly 2000 ms. No-backing songs show
+the disabled crossed-speaker control and its exact hover tooltip; backed songs
+retain enabled sound controls. Independent source/package review found no
+material findings. Publication evidence follows after activation.

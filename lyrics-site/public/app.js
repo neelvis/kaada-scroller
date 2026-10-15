@@ -182,7 +182,7 @@ async function openProject(id, { cached = false } = {}) {
       els.audienceLines.replaceChildren(node('div', { className: 'audience-line neutral', text: 'В проекте пока нет готовых песен' })); centerAudience(0);
       $('#event-start').disabled = true; $('#event-progress').disabled = true;
       $('#event-elapsed').textContent = '0:00'; $('#event-duration').textContent = '0:00'; $('#event-progress').value = '0';
-      $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true; $('#event-mute').hidden = true;
+      $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true; $('#event-mute').disabled = true;
     }
   }
 }
@@ -608,6 +608,11 @@ function centerAudience(index) {
   const line = els.audienceLines.children[Math.max(0, index)];
   if (line) els.audienceLines.style.transform = `translateY(-${line.offsetTop + line.offsetHeight / 2}px)`;
 }
+function changeAudienceFont(delta) {
+  fontSize = Math.max(28, Math.min(100, fontSize + delta));
+  els.audience.style.setProperty('--audience-size', `${fontSize}px`);
+  centerAudience(eventState.lastIndex ?? -1);
+}
 function positionUniformAudience() {
   const lines = els.audienceLines.children;
   const first = lines[0], last = lines[lines.length - 1];
@@ -658,7 +663,7 @@ function scheduleControlsDimming() {
         !eventControls.contains(document.activeElement) && $('#event-audio-status').hidden) {
       els.event.classList.add('controls-dimmed');
     }
-  }, 3000);
+  }, 2000);
 }
 function restoreEventControls() {
   els.event.classList.remove('controls-dimmed');
@@ -688,9 +693,13 @@ function updateEvent() {
   $('#event-elapsed').textContent = displayTime(elapsed); $('#event-duration').textContent = displayTime(song.duration);
   $('#event-start').disabled = playback.starting || elapsed >= song.duration;
   setControlIcon('event-start', playback.starting ? 'loading' : playback.running ? 'pause' : 'play', playback.starting ? 'Запуск…' : playback.running ? 'Пауза' : 'Старт', 'Пробел');
-  $('#event-mute').hidden = !playback.loadAudio;
-  setControlIcon('event-mute', playback.muted ? 'muted' : 'volume', playback.muted ? 'Включить звук' : 'Выключить звук', 'M');
-  $('#event-mute').setAttribute('aria-pressed', String(Boolean(playback.muted)));
+  $('#event-mute').disabled = !playback.loadAudio;
+  if (playback.loadAudio) {
+    setControlIcon('event-mute', playback.muted ? 'muted' : 'volume', playback.muted ? 'Включить звук' : 'Выключить звук', 'M');
+  } else {
+    setControlIcon('event-mute', 'muted', 'для этой песни нет минусовки');
+  }
+  $('#event-mute').setAttribute('aria-pressed', String(Boolean(playback.loadAudio && playback.muted)));
 }
 function tick() {
   updateEvent();
@@ -852,7 +861,7 @@ async function migrateLegacy() {
   } catch (error) { if (workspaceGeneration === workspaceRun && sessionActive === sessionAtStart) toast(error.message); }
 }
 
-$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#prepare-offline').addEventListener('click', prepareOfflineProject); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); $('#export-set').addEventListener('click', downloadSet); $('#import-set').addEventListener('click', () => $('#set-file').click()); $('#set-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project) markRemoteDirty(); else persist(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => { fontSize = Math.min(100, fontSize + 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); }); $('#font-down').addEventListener('click', () => { fontSize = Math.max(28, fontSize - 4); els.audience.style.setProperty('--audience-size', `${fontSize}px`); centerAudience(eventState.lastIndex ?? -1); });
+$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#prepare-offline').addEventListener('click', prepareOfflineProject); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); $('#export-set').addEventListener('click', downloadSet); $('#import-set').addEventListener('click', () => $('#set-file').click()); $('#set-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project) markRemoteDirty(); else persist(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => changeAudienceFont(4)); $('#font-down').addEventListener('click', () => changeAudienceFont(-4));
 $('#projects').addEventListener('click', showProjects);
 $('#event-menu-toggle').addEventListener('click', showEventMenu);
 $('#event-menu-close').addEventListener('click', () => $('#event-menu').close());
@@ -893,17 +902,19 @@ document.addEventListener('keydown', event => {
   }
   if (editable) return;
   const space = event.code === 'Space' || event.key === ' ';
-  if (space && target.closest('button,[role="button"],a[href]')) return;
   const key = event.key.toLowerCase();
   const mute = key === 'm' || event.code === 'KeyM';
   const highlight = key === 'c' || event.code === 'KeyC';
   const fullscreen = key === 'f' || event.code === 'KeyF';
-  if (!space && !mute && !highlight && !fullscreen) return;
+  const fontUp = ['+', '='].includes(event.key) || event.code === 'NumpadAdd';
+  const fontDown = ['-', '−'].includes(event.key) || event.code === 'NumpadSubtract';
+  if (!space && !mute && !highlight && !fullscreen && !fontUp && !fontDown) return;
   event.preventDefault();
   if (event.repeat) return;
   if (space) { if (!$('#event-start').disabled) startEvent(); }
   else if (mute) toggleMute();
   else if (fullscreen) toggleFullscreen();
+  else if (fontUp || fontDown) changeAudienceFont(fontUp ? 4 : -4);
   else toggleHighlight();
 });
 eventControls.addEventListener('pointerenter', event => {

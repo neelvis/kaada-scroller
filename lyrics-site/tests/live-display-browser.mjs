@@ -104,6 +104,7 @@ try {
   assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('#event-progress').getAttribute('max'), '30');
   assert.equal(await page.locator('#event-mute').isHidden(), false);
+  assert.equal(await page.locator('#event-mute').isEnabled(), true, 'backing audio enables sound control');
   await page.locator('#event-start').click();
   await page.waitForSelector('#event-player', { state: 'attached' });
   await page.waitForTimeout(1200);
@@ -168,12 +169,23 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
 
-  // TL-AC49: Space on a focused button activates it once; global keys share the same actions.
+  // TL-AC49: Space controls playback on focused display buttons exactly once.
   await page.locator('#event-start').focus();
   await page.keyboard.press('Space');
-  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Старт', 'focused Start/Pause button receives native Space activation once');
+  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Старт', 'Space pauses once when Start/Pause has focus');
+  const focusedFontBeforeSpace = await page.locator('#audience-lines').evaluate(lines => Number.parseFloat(getComputedStyle(lines).fontSize));
+  await page.locator('#font-up').focus();
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => document.querySelector('#event-start').getAttribute('aria-label') === 'Пауза');
+  assert.equal(await page.locator('#audience-lines').evaluate(lines => Number.parseFloat(getComputedStyle(lines).fontSize)), focusedFontBeforeSpace, 'Space on a focused display button controls playback without activating that button');
+  assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false, 'Space on the focused font button does not open the library');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#audience-lines').evaluate(lines => Number.parseFloat(getComputedStyle(lines).fontSize)), focusedFontBeforeSpace + 4, 'Enter still activates the focused font button');
   await page.locator('#audience').click();
   await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => document.querySelector('#event-start').getAttribute('aria-label') === 'Старт');
+  assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Старт', 'Space pauses from display content');
   await page.keyboard.press('Space');
   await page.waitForFunction(() => document.querySelector('#event-start').getAttribute('aria-label') === 'Пауза');
   assert.equal(await page.locator('#event-start').getAttribute('aria-label'), 'Пауза', 'Space resumes from display content');
@@ -241,10 +253,35 @@ try {
   await page.locator('#audience').click();
   assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false, 'outside interaction dismisses the popup');
   await page.waitForFunction(() => document.activeElement?.id === 'event-menu-toggle');
+
+  // The library trigger keeps focus after every dismissal, while Space remains the playback shortcut.
+  const assertSpaceAfterMenuDismissal = async (dismiss, label) => {
+    await page.locator('#event-menu-toggle').click();
+    assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true);
+    await dismiss();
+    await page.waitForFunction(() => document.querySelector('#event-menu-toggle').getAttribute('aria-expanded') === 'false');
+    await page.waitForFunction(() => document.activeElement?.id === 'event-menu-toggle');
+    const before = await page.locator('#event-start').getAttribute('aria-label');
+    await page.keyboard.press('Space');
+    await page.waitForFunction(previous => document.querySelector('#event-start').getAttribute('aria-label') !== previous, before);
+    assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false, `Space after ${label} controls playback without reopening the library`);
+    assert.equal(await page.locator('#event-menu-toggle').getAttribute('aria-expanded'), 'false');
+    await page.keyboard.press('Space');
+    await page.waitForFunction(previous => document.querySelector('#event-start').getAttribute('aria-label') === previous, before);
+    assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false, `second Space after ${label} keeps the library closed`);
+  };
+  await assertSpaceAfterMenuDismissal(() => page.keyboard.press('Escape'), 'Escape');
+  await assertSpaceAfterMenuDismissal(() => page.locator('#event-menu-close').click(), 'close-button dismissal');
+  await assertSpaceAfterMenuDismissal(() => page.locator('#audience').click(), 'outside dismissal');
+
   await page.locator('#event-menu-toggle').focus();
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Финал', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#event-song-name').textContent === 'Финал');
+  assert.equal(await page.locator('#event-mute').isVisible(), true, 'no-backing songs keep sound control in place');
+  assert.equal(await page.locator('#event-mute').isDisabled(), true);
+  assert.equal(await page.locator('#event-mute use').getAttribute('href'), '#icon-muted');
+  assert.equal(await page.locator('#event-mute').getAttribute('data-tooltip'), 'для этой песни нет минусовки');
   assert.equal(await page.locator('#event-player').count(), 0, 'song switch awaits manual Start');
   assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'false', 'line-emphasis preference follows song switching');
   await page.locator('#event-start').click();

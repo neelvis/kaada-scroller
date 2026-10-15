@@ -565,3 +565,18 @@ project/audio rejection, and JS/MJS/WASM MIME passed. The supplemental controls
 suite also passed against the live origin with isolated synthetic browser-local
 data, covering F, exact 30% opacity, full-panel geometry, hover/focus/touch
 restoration, and error visibility. Private school projects were not modified.
+
+## Revision 10 follow-up: keyboard focus, font keys and unavailable audio
+
+The user reported Space activating the focused library trigger and requested
++/− font shortcuts, a two-second idle-opacity delay, and a visible disabled
+crossed-speaker control without backing audio. TL-R58/TL-R60/TL-R61 and their
+acceptance criteria record these small explicit refinements.
+
+Syntax, portable build, full display browser and supplemental controls browser
+checks passed. Tests cover Space after all three menu-dismissal routes with focus
+retained on the trigger, Space/Enter precedence on other buttons, font button/key
+step and bounds, shortcut guards, measured two-second dimming, disabled crossed
+speaker visibility and exact hover tooltip, backing/no-backing switching, and
+existing playback, fullscreen, focus/touch and error behavior. No production data
+was used in the local checks.

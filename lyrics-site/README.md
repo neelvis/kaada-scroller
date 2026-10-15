@@ -91,6 +91,8 @@ lyrics and selected backing track together. Without a backing track, start the
 external music at the same moment. The original vocal reference is never used as
 show audio. **Mute/unmute** changes sound without pausing or shifting the timeline.
 Audio errors offer retry or an explicit lyrics-only launch.
+Without a backing track, the crossed-speaker button remains visible and disabled;
+its tooltip reads `для этой песни нет минусовки`.
 While playback is running, **Start** becomes **Pause**. Press it to pause lyrics
 and backing audio at the current position; press **Start** again to resume there.
 This also works without backing audio. See [display pause requirements](../specs/features/timed-lyrics/revision-7.md).
@@ -114,8 +116,12 @@ song end. Lyric delay affects cue display, not audio position or duration.
 The bottom row places playback, reset, fullscreen, mute, and line-emphasis icons
 to the right of the timeline. Hover an icon or focus it with the keyboard for its
 tooltip. Space starts/pauses, M toggles backing sound, C toggles current-line
-emphasis, and F enters/exits fullscreen. Shortcuts leave editable fields and open menus/dialogs alone; Space on
-a focused button activates that button. Arrow seeking remains available.
+emphasis, and F enters/exits fullscreen. + (or =) and − change font size in
+four-pixel steps, within 28–100 pixels; numeric keypad +/− also work. Shortcuts
+leave editable fields and open menus/dialogs alone. After closing the library,
+Space starts/pauses even when focus remains on its trigger. Space also controls
+playback on other focused display buttons; use Enter to activate that button.
+Arrow seeking remains available.
 
 Toggle **Highlight current line** off for equal emphasis across lyric lines.
 Its icon shows three equal lines when off and past/current/upcoming styles when
@@ -124,7 +130,7 @@ full screen remain available. The media-library button opens an adjacent popup
 for ready songs and online/prepared offline projects without leaving the display.
 Selection stops the old song and awaits a fresh Start.
 
-In fullscreen, preparation navigation is hidden. After three seconds without
+In fullscreen, preparation navigation is hidden. After two seconds without
 pointer hover or keyboard focus, the bottom panel fades to 30% opacity while
 retaining its full size, position, and working controls. Hover anywhere in the
 panel, focus a control with the keyboard, or touch the panel to restore full
