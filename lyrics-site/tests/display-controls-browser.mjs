@@ -43,6 +43,9 @@ try {
   const page = await context.newPage();
   await ready(page, [song('ready-no-backing', 'Без минусовки')]);
 
+  assert.equal(await page.locator('#fullscreen').getAttribute('aria-keyshortcuts'), 'F');
+  assert.match(await page.locator('#fullscreen').getAttribute('data-tooltip'), /\bF\b/);
+
   // Tooltips appear on hover and keyboard focus, with the accessible action text.
   const tooltip = async selector => page.locator(selector).evaluate(button => {
     const style = getComputedStyle(button, '::after');
@@ -66,22 +69,33 @@ try {
     start: document.querySelector('#event-start').getAttribute('aria-label'),
     mute: document.querySelector('#event-mute').getAttribute('aria-pressed'),
     emphasis: document.querySelector('#highlight-current').getAttribute('aria-pressed'),
+    fullscreen: Boolean(document.fullscreenElement),
   }));
   await page.evaluate(() => {
     const input = document.createElement('input'); input.id = 'shortcut-guard-input';
     input.style.cssText = 'position:fixed;left:20px;top:20px;z-index:10000';
     document.querySelector('#event-view').append(input); input.focus();
   });
+  await page.locator('#shortcut-guard-input').evaluate(input => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true })));
+  assert.equal(await page.evaluate(() => Boolean(document.fullscreenElement)), false, 'synthetic F keydown on an editable field does not toggle fullscreen');
   const beforeInput = await states();
-  await page.keyboard.press('Space'); await page.keyboard.press('m'); await page.keyboard.press('c');
-  assert.deepEqual(await states(), beforeInput, 'Space, M, and C do not trigger while editing text');
+  await page.keyboard.press('Space'); await page.keyboard.press('m'); await page.keyboard.press('c'); await page.keyboard.press('f');
+  assert.deepEqual(await states(), beforeInput, 'Space, M, C, and F do not trigger while editing text');
   await page.locator('#shortcut-guard-input').evaluate(input => input.remove());
+
+  const fullscreenBeforeGuards = await page.evaluate(() => Boolean(document.fullscreenElement));
+  await page.evaluate(() => {
+    const audience = document.querySelector('#audience');
+    audience.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true, ctrlKey: true }));
+    audience.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true, repeat: true }));
+  });
+  assert.equal(await page.evaluate(() => Boolean(document.fullscreenElement)), fullscreenBeforeGuards, 'modifier and repeated F keydowns do not toggle fullscreen');
 
   await page.locator('#event-menu-toggle').click();
   assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), true);
   const beforeDialog = await states();
   await page.locator('#event-menu').evaluate(dialog => {
-    for (const [key, code] of [[' ', 'Space'], ['m', 'KeyM'], ['c', 'KeyC']]) {
+    for (const [key, code] of [[' ', 'Space'], ['m', 'KeyM'], ['c', 'KeyC'], ['f', 'KeyF']]) {
       dialog.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true }));
     }
   });
@@ -102,38 +116,66 @@ try {
   assert.equal(await page.locator('#event-start').isDisabled(), true);
   assert.equal(await page.locator('#event-progress').inputValue(), endPosition, 'Space does not move playback past song end');
 
-  // Exiting with a hide timer pending must leave the panel visible; reentry gets a fresh delay.
+  // Physical F enters and exits fullscreen using the same fullscreen action as the button.
+  await page.keyboard.press('f');
+  await page.waitForFunction(() => Boolean(document.fullscreenElement) && document.querySelector('#event-view').classList.contains('is-fullscreen'));
+  await page.keyboard.press('f');
+  await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('#event-view').classList.contains('is-fullscreen'));
+
+  // Idle controls stay in place at reduced opacity; hover and focus restore full contrast.
   await page.locator('#fullscreen').click();
   await page.waitForFunction(() => Boolean(document.fullscreenElement) && document.querySelector('#event-view').classList.contains('is-fullscreen'));
   await page.evaluate(() => document.activeElement?.blur());
   await page.locator('#audience').hover();
-  await page.waitForTimeout(2500);
+  await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-dimmed'), null, { timeout: 5000 });
+  await page.waitForFunction(() => Math.abs(Number(getComputedStyle(document.querySelector('#event-controls')).opacity) - .3) < .02);
+  const idle = await page.locator('#event-controls').evaluate(panel => ({
+    rect: panel.getBoundingClientRect().toJSON(),
+    opacity: Number(getComputedStyle(panel).opacity),
+    pointerEvents: getComputedStyle(panel).pointerEvents,
+  }));
+  assert.ok(Math.abs(idle.opacity - .3) < .02, `idle panel opacity is 0.3: ${JSON.stringify(idle)}`);
+  assert.equal(idle.pointerEvents, 'auto');
+  assert.equal(await page.locator('#event-controls-reveal').count(), 0, 'the reveal strip is removed');
+  await page.locator('#event-controls').hover({ position: { x: 4, y: 4 } });
+  await page.waitForFunction(() => Number(getComputedStyle(document.querySelector('#event-controls')).opacity) > .98);
+  const hovered = await page.locator('#event-controls').evaluate(panel => ({ rect: panel.getBoundingClientRect().toJSON(), opacity: Number(getComputedStyle(panel).opacity) }));
+  assert.ok(Math.abs(hovered.opacity - 1) < .02);
+  assert.deepEqual(
+    { x: hovered.rect.x, y: hovered.rect.y, width: hovered.rect.width, height: hovered.rect.height },
+    { x: idle.rect.x, y: idle.rect.y, width: idle.rect.width, height: idle.rect.height },
+    'hover restores opacity without changing panel size or location',
+  );
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.locator('#audience').hover();
+  await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-dimmed'), null, { timeout: 5000 });
   await page.evaluate(() => document.exitFullscreen());
   await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('#event-view').classList.contains('is-fullscreen'));
-  assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false);
+  assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-dimmed')), false);
   await page.locator('#fullscreen').click();
   await page.waitForFunction(() => Boolean(document.fullscreenElement) && document.querySelector('#event-view').classList.contains('is-fullscreen'));
   await page.waitForTimeout(1000);
-  assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'fullscreen reentry starts with a fresh hide delay');
+  assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-dimmed')), false, 'fullscreen reentry starts with a fresh dim delay');
   await page.evaluate(() => document.activeElement?.blur());
   await page.locator('#audience').hover();
-  await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-hidden'), null, { timeout: 3500 });
+  await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-dimmed'), null, { timeout: 3500 });
   await page.evaluate(() => document.exitFullscreen());
   await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('#event-view').classList.contains('is-fullscreen'));
   await page.locator('#exit-event').click();
 
-  // A touch tap on the bottom reveal strip restores controls without seeking.
+  // Touching the full, dimmed panel restores controls without seeking.
   const touchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const touch = await touchContext.newPage();
   await ready(touch, [song('touch-ready', 'Проверка касания')]);
   await touch.locator('#fullscreen').tap();
   await touch.waitForFunction(() => Boolean(document.fullscreenElement) && document.querySelector('#event-view').classList.contains('is-fullscreen'));
   await touch.evaluate(() => document.activeElement?.blur());
-  await touch.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-hidden'), null, { timeout: 5000 });
+  await touch.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-dimmed'), null, { timeout: 5000 });
   const beforeTouch = await touch.locator('#event-progress').inputValue();
-  const touchSize = await touch.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-  await touch.touchscreen.tap(touchSize.width / 2, touchSize.height - 5);
-  await touch.waitForFunction(() => !document.querySelector('#event-view').classList.contains('controls-hidden'));
+  const touchPanel = await touch.locator('#event-controls').boundingBox();
+  await touch.touchscreen.tap(touchPanel.x + 4, touchPanel.y + touchPanel.height / 2);
+  await touch.waitForFunction(() => Number(getComputedStyle(document.querySelector('#event-controls')).opacity) > .98);
+  assert.ok(await touch.locator('#event-controls').evaluate(panel => Number(getComputedStyle(panel).opacity) > .98), 'touch restores full panel opacity');
   assert.equal(await touch.locator('#event-progress').inputValue(), beforeTouch, 'touch reveal does not seek');
   await touch.evaluate(() => document.exitFullscreen());
   await touch.waitForFunction(() => !document.fullscreenElement);
@@ -150,14 +192,14 @@ try {
   await missing.evaluate(() => document.activeElement?.blur());
   await missing.locator('#audience').hover();
   await missing.waitForTimeout(3300);
-  assert.equal(await missing.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false);
+  assert.equal(await missing.locator('#event-view').evaluate(view => view.classList.contains('controls-dimmed')), false);
   assert.equal(await missing.locator('#event-audio-status').isVisible(), true);
   assert.equal(await missing.locator('#event-lyrics-only').isVisible(), true);
   await missing.evaluate(() => document.exitFullscreen());
   await missing.waitForFunction(() => !document.fullscreenElement);
   await missing.close();
 
-  console.log('PASS: supplemental display tooltip, shortcut guards, timer restore, touch reveal, and audio-error visibility.');
+  console.log('PASS: supplemental display tooltip, shortcut guards, dimmed controls, touch restore, and audio-error visibility.');
 } finally {
   if (browser) await browser.close();
   server.kill();

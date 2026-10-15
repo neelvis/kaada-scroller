@@ -594,7 +594,7 @@ function launchEvent(song) {
   buildAudience(); playback.arm(song.duration, song.backing?.fileName || entry.backingAudioId ? loader : null);
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
   applyHighlight(); renderAudience(-1, false); updateEvent();
-  revealEventControls();
+  restoreEventControls();
 }
 function buildAudience() {
   els.audienceLines.classList.toggle('uniform-scroll', eventState.song.ignoreTimecodes === true);
@@ -636,41 +636,40 @@ const playback = new Playback({
     updateEvent(); cancelAnimationFrame(eventState.frame);
     if (playback.running) eventState.frame = requestAnimationFrame(tick);
   },
-  failed: error => { $('#event-audio-status').textContent = error.message; $('#event-audio-status').hidden = false; $('#event-lyrics-only').hidden = false; revealEventControls(); },
+  failed: error => { $('#event-audio-status').textContent = error.message; $('#event-audio-status').hidden = false; $('#event-lyrics-only').hidden = false; restoreEventControls(); },
 });
 function setControlIcon(id, icon, label, shortcut = '') {
   const control = $(`#${id}`);
   const tooltip = `${label}${shortcut ? ` · ${shortcut}` : ''}`;
   if (control.getAttribute('aria-label') !== label) control.setAttribute('aria-label', label);
   if (control.dataset.tooltip !== tooltip) control.dataset.tooltip = tooltip;
-  for (const use of [control.querySelector('use'), $(`[data-preview-for="${id}"] use`)]) {
-    if (use && use.getAttribute('href') !== `#icon-${icon}`) use.setAttribute('href', `#icon-${icon}`);
-  }
+  const use = control.querySelector('use');
+  if (use.getAttribute('href') !== `#icon-${icon}`) use.setAttribute('href', `#icon-${icon}`);
 }
 function displayFullscreen() { return document.fullscreenElement === els.event; }
-function cancelControlsHide() { clearTimeout(controlsVisibility.timer); controlsVisibility.timer = null; }
-function scheduleControlsHide() {
-  cancelControlsHide();
+function cancelControlsDimming() { clearTimeout(controlsVisibility.timer); controlsVisibility.timer = null; }
+function scheduleControlsDimming() {
+  cancelControlsDimming();
   if (!displayFullscreen() || els.event.hidden || controlsVisibility.hovered || controlsVisibility.dragging ||
       eventControls.contains(document.activeElement) || !$('#event-audio-status').hidden) return;
   controlsVisibility.timer = setTimeout(() => {
     controlsVisibility.timer = null;
     if (displayFullscreen() && !els.event.hidden && !controlsVisibility.hovered && !controlsVisibility.dragging &&
         !eventControls.contains(document.activeElement) && $('#event-audio-status').hidden) {
-      els.event.classList.add('controls-hidden');
+      els.event.classList.add('controls-dimmed');
     }
   }, 3000);
 }
-function revealEventControls() {
-  els.event.classList.remove('controls-hidden');
-  scheduleControlsHide();
+function restoreEventControls() {
+  els.event.classList.remove('controls-dimmed');
+  scheduleControlsDimming();
 }
 function syncFullscreenControls() {
   const fullscreen = displayFullscreen();
   els.event.classList.toggle('is-fullscreen', fullscreen);
-  setControlIcon('fullscreen', fullscreen ? 'fullscreen-exit' : 'fullscreen', fullscreen ? 'Выйти из полного экрана' : 'На весь экран');
+  setControlIcon('fullscreen', fullscreen ? 'fullscreen-exit' : 'fullscreen', fullscreen ? 'Выйти из полного экрана' : 'На весь экран', 'F');
   controlsVisibility.dragging = false;
-  revealEventControls(); positionEventMenu();
+  restoreEventControls(); positionEventMenu();
 }
 function toggleFullscreen() {
   const operation = displayFullscreen() ? document.exitFullscreen() : els.event.requestFullscreen?.();
@@ -690,7 +689,6 @@ function updateEvent() {
   $('#event-start').disabled = playback.starting || elapsed >= song.duration;
   setControlIcon('event-start', playback.starting ? 'loading' : playback.running ? 'pause' : 'play', playback.starting ? 'Запуск…' : playback.running ? 'Пауза' : 'Старт', 'Пробел');
   $('#event-mute').hidden = !playback.loadAudio;
-  $('[data-preview-for="event-mute"]').hidden = !playback.loadAudio;
   setControlIcon('event-mute', playback.muted ? 'muted' : 'volume', playback.muted ? 'Включить звук' : 'Выключить звук', 'M');
   $('#event-mute').setAttribute('aria-pressed', String(Boolean(playback.muted)));
 }
@@ -703,20 +701,20 @@ function startEvent() {
   if (!eventState.song || playback.starting) return;
   if (playback.running) { playback.stop(); return; }
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
-  scheduleControlsHide();
+  scheduleControlsDimming();
   return playback.start();
 }
 function resetEvent() {
   playback.reset(); eventState.lastIndex = null; eventState.ended = false;
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
   if (eventState.song) { renderAudience(-1, false); updateEvent(); }
-  scheduleControlsHide();
+  scheduleControlsDimming();
 }
 function exitEvent() {
   playback.dispose(); $('#event-menu').close();
   els.event.hidden = true; els.prep.hidden = false; $('.topbar').hidden = false;
-  cancelControlsHide(); controlsVisibility.hovered = false; controlsVisibility.dragging = false;
-  els.event.classList.remove('controls-hidden');
+  cancelControlsDimming(); controlsVisibility.hovered = false; controlsVisibility.dragging = false;
+  els.event.classList.remove('controls-dimmed');
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 }
 function positionEventMenu() {
@@ -868,11 +866,10 @@ $('#projects-dialog').addEventListener('close', () => document.body.append($('#p
 $('#event-progress').addEventListener('input', event => { if (eventState.song) playback.seek(Number(event.target.value)); });
 function toggleMute() { if (playback.loadAudio) playback.mute(!playback.muted); }
 $('#event-mute').addEventListener('click', toggleMute);
-$('#event-lyrics-only').addEventListener('click', () => { $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true; playback.lyricsOnly(); scheduleControlsHide(); });
+$('#event-lyrics-only').addEventListener('click', () => { $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true; playback.lyricsOnly(); scheduleControlsDimming(); });
 function applyHighlight() {
   els.audience.classList.toggle('no-highlight', !highlightEnabled);
   $('#highlight-current').setAttribute('aria-pressed', String(highlightEnabled));
-  $('[data-preview-for="highlight-current"]').dataset.active = String(highlightEnabled);
   if (eventState.song) centerAudience(eventState.lastIndex ?? -1);
 }
 function toggleHighlight() {
@@ -900,28 +897,29 @@ document.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
   const mute = key === 'm' || event.code === 'KeyM';
   const highlight = key === 'c' || event.code === 'KeyC';
-  if (!space && !mute && !highlight) return;
+  const fullscreen = key === 'f' || event.code === 'KeyF';
+  if (!space && !mute && !highlight && !fullscreen) return;
   event.preventDefault();
   if (event.repeat) return;
   if (space) { if (!$('#event-start').disabled) startEvent(); }
   else if (mute) toggleMute();
+  else if (fullscreen) toggleFullscreen();
   else toggleHighlight();
 });
 eventControls.addEventListener('pointerenter', event => {
   // Touch can leave CSS :hover sticky; only an actual hovering pointer pins the panel.
   controlsVisibility.hovered = event.pointerType !== 'touch';
-  revealEventControls();
+  restoreEventControls();
 });
-eventControls.addEventListener('pointerleave', () => { controlsVisibility.hovered = false; scheduleControlsHide(); });
-eventControls.addEventListener('focusin', revealEventControls);
-eventControls.addEventListener('focusout', () => queueMicrotask(scheduleControlsHide));
-$('#event-progress').addEventListener('pointerdown', () => { controlsVisibility.dragging = true; revealEventControls(); });
+eventControls.addEventListener('pointerleave', () => { controlsVisibility.hovered = false; scheduleControlsDimming(); });
+eventControls.addEventListener('focusin', restoreEventControls);
+eventControls.addEventListener('focusout', () => queueMicrotask(scheduleControlsDimming));
+$('#event-progress').addEventListener('pointerdown', () => { controlsVisibility.dragging = true; restoreEventControls(); });
 for (const event of ['pointerup', 'pointercancel']) document.addEventListener(event, () => {
   if (!controlsVisibility.dragging) return;
-  controlsVisibility.dragging = false; scheduleControlsHide();
+  controlsVisibility.dragging = false; scheduleControlsDimming();
 });
-$('#event-controls-reveal').addEventListener('pointerenter', revealEventControls);
-$('#event-controls-reveal').addEventListener('pointerdown', event => { event.preventDefault(); revealEventControls(); });
+eventControls.addEventListener('pointerdown', restoreEventControls);
 document.addEventListener('fullscreenchange', syncFullscreenControls);
 els.save.addEventListener('click', saveRemoteProject); els.login.addEventListener('click', () => $('#login-dialog').showModal()); els.logout.addEventListener('click', signOut); $('#login-form').addEventListener('submit', event => { event.preventDefault(); signIn(); }); $('#create-project').addEventListener('click', createRemoteProject); $('#migrate-legacy').addEventListener('click', migrateLegacy); $('#library-search').addEventListener('input', () => searchLibrary());
 els.clearDownloaded.addEventListener('click', clearDownloadedProjectData);

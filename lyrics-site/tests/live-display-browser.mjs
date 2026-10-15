@@ -282,65 +282,81 @@ try {
       progress: Number(document.querySelector('#event-progress').value),
       activeCenter: (() => { const rect = document.querySelector('.audience-line.active').getBoundingClientRect(); return (rect.top + rect.bottom) / 2; })(),
     }));
-    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-hidden'), null, { timeout: 5000 });
-    const hidden = await page.evaluate(() => ({
+    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-dimmed'), null, { timeout: 5000 });
+    await page.waitForFunction(() => Math.abs(Number(getComputedStyle(document.querySelector('#event-controls')).opacity) - .3) < .02);
+    const dimmed = await page.evaluate(() => ({
       progress: Number(document.querySelector('#event-progress').value),
       activeCenter: (() => { const rect = document.querySelector('.audience-line.active').getBoundingClientRect(); return (rect.top + rect.bottom) / 2; })(),
+      panel: document.querySelector('#event-controls').getBoundingClientRect().toJSON(),
+      opacity: Number(getComputedStyle(document.querySelector('#event-controls')).opacity),
     }));
-    assert.equal(hidden.progress, beforeHide.progress, 'hiding controls does not seek');
-    assert.ok(Math.abs(hidden.activeCenter - beforeHide.activeCenter) < 2, 'hiding controls does not shift the lyrics');
+    assert.equal(dimmed.progress, beforeHide.progress, 'dimming controls does not seek');
+    assert.ok(Math.abs(dimmed.activeCenter - beforeHide.activeCenter) < 2, 'dimming controls does not shift the lyrics');
+    assert.ok(Math.abs(dimmed.opacity - .3) < .02, `idle controls use 0.3 opacity: ${JSON.stringify(dimmed)}`);
+    assert.equal(await page.locator('#event-controls-reveal').count(), 0, 'there is no miniature reveal strip');
+    assert.ok(await page.locator('#event-controls').evaluate(panel => panel.getBoundingClientRect().height > 10), 'the full controls panel remains present');
     const startBeforeHiddenShortcut = await page.locator('#event-start').getAttribute('aria-label');
     await page.keyboard.press('Space');
-    assert.notEqual(await page.locator('#event-start').getAttribute('aria-label'), startBeforeHiddenShortcut, 'Space works while the fullscreen panel is hidden');
+    assert.notEqual(await page.locator('#event-start').getAttribute('aria-label'), startBeforeHiddenShortcut, 'Space works while the fullscreen panel is dimmed');
     await page.keyboard.press('Space');
-    assert.equal(await page.locator('#event-start').getAttribute('aria-label'), startBeforeHiddenShortcut, 'Space toggles back while the panel remains hidden');
+    assert.equal(await page.locator('#event-start').getAttribute('aria-label'), startBeforeHiddenShortcut, 'Space toggles back while the panel remains dimmed');
     const muteWithoutBacking = await page.locator('#event-mute').getAttribute('aria-pressed');
     await page.keyboard.press('m');
     assert.equal(await page.locator('#event-mute').getAttribute('aria-pressed'), muteWithoutBacking, 'M does not change mute state without backing audio');
     await page.keyboard.press('c');
-    assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'true', 'C works while the fullscreen panel is hidden');
+    assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'true', 'C works while the fullscreen panel is dimmed');
     await page.keyboard.press('c');
     assert.equal(await page.locator('#highlight-current').getAttribute('aria-pressed'), 'false', 'restore the saved emphasis preference');
-    const revealViewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-    await page.mouse.move(revealViewport.width / 2, revealViewport.height - 5);
-    await page.waitForFunction(() => !document.querySelector('#event-view').classList.contains('controls-hidden'));
-    await page.locator('#event-controls').hover();
-    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'hover reveals the panel');
+    const panelBox = await page.locator('#event-controls').boundingBox();
+    assert.ok(panelBox);
+    await page.locator('#event-controls').hover({ position: { x: panelBox.width / 2, y: panelBox.height / 2 } });
+    await page.waitForFunction(() => Number(getComputedStyle(document.querySelector('#event-controls')).opacity) > .98);
+    const restored = await page.evaluate(() => ({
+      panel: document.querySelector('#event-controls').getBoundingClientRect().toJSON(),
+      opacity: Number(getComputedStyle(document.querySelector('#event-controls')).opacity),
+    }));
+    assert.ok(Math.abs(restored.opacity - 1) < .02, 'hover over the full panel restores opacity');
+    assert.deepEqual(
+      { x: restored.panel.x, y: restored.panel.y, width: restored.panel.width, height: restored.panel.height },
+      { x: dimmed.panel.x, y: dimmed.panel.y, width: dimmed.panel.width, height: dimmed.panel.height },
+      'dimming and restoring controls do not move or resize the panel',
+    );
     await page.waitForTimeout(3200);
-    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'hover keeps the panel visible');
+    assert.ok(await page.locator('#event-controls').evaluate(panel => Number(getComputedStyle(panel).opacity) > .98), 'hover keeps the panel fully visible');
     await page.evaluate(() => document.activeElement?.blur());
     await page.locator('#audience').hover();
-    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-hidden'), null, { timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-dimmed'), null, { timeout: 5000 });
     await page.locator('#font-up').focus();
     await page.keyboard.press('Tab');
-    assert.equal(await page.evaluate(() => document.activeElement?.id), 'event-progress', 'Tab reaches the hidden timeline');
-    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'keyboard focus reveals the panel');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'event-progress', 'Tab reaches the dimmed timeline');
+    await page.waitForFunction(() => Number(getComputedStyle(document.querySelector('#event-controls')).opacity) > .98);
+    assert.ok(await page.locator('#event-controls').evaluate(panel => Number(getComputedStyle(panel).opacity) > .98), 'keyboard focus restores the panel');
     await page.waitForTimeout(3200);
-    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'keyboard focus keeps the panel visible');
+    assert.ok(await page.locator('#event-controls').evaluate(panel => Number(getComputedStyle(panel).opacity) > .98), 'keyboard focus keeps the panel visible');
     const progressBox = await page.locator('#event-progress').boundingBox();
     assert.ok(progressBox);
     await page.mouse.move(progressBox.x + progressBox.width * .25, progressBox.y + progressBox.height / 2);
     await page.mouse.down();
     await page.mouse.move(progressBox.x + progressBox.width * .55, progressBox.y + progressBox.height / 2, { steps: 5 });
     await page.waitForTimeout(3200);
-    assert.equal(await page.locator('#event-view').evaluate(view => view.classList.contains('controls-hidden')), false, 'dragging the timeline keeps the panel visible');
+    assert.ok(await page.locator('#event-controls').evaluate(panel => Number(getComputedStyle(panel).opacity) > .98), 'dragging the timeline keeps the panel visible');
     await page.mouse.up();
     await page.evaluate(() => document.activeElement?.blur());
     await page.locator('#audience').hover();
-    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-hidden'), null, { timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector('#event-view').classList.contains('controls-dimmed'), null, { timeout: 5000 });
     const beforeReveal = await page.evaluate(() => ({
       progress: Number(document.querySelector('#event-progress').value),
       activeCenter: (() => { const rect = document.querySelector('.audience-line.active').getBoundingClientRect(); return (rect.top + rect.bottom) / 2; })(),
     }));
-    const stripBox = await page.locator('#event-controls-reveal').boundingBox();
-    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-    await page.mouse.move(viewport.width / 2, viewport.height - 5);
-    await page.waitForFunction(() => !document.querySelector('#event-view').classList.contains('controls-hidden'));
+    const idlePanel = await page.locator('#event-controls').boundingBox();
+    await page.locator('#event-controls').hover({ position: { x: 1, y: 1 } });
+    await page.waitForFunction(() => Number(getComputedStyle(document.querySelector('#event-controls')).opacity) > .98);
     const afterReveal = await page.evaluate(() => ({
       progress: Number(document.querySelector('#event-progress').value),
       activeCenter: (() => { const rect = document.querySelector('.audience-line.active').getBoundingClientRect(); return (rect.top + rect.bottom) / 2; })(),
     }));
-    assert.ok(stripBox && stripBox.height <= 10.1, `reveal strip is at most 10px high: ${JSON.stringify(stripBox)}`);
+    const revealedPanel = await page.locator('#event-controls').boundingBox();
+    assert.deepEqual(revealedPanel, idlePanel, 'hovering any panel region restores controls without moving or resizing them');
     assert.equal(afterReveal.progress, beforeReveal.progress, 'revealing controls does not seek');
     assert.ok(Math.abs(afterReveal.activeCenter - beforeReveal.activeCenter) < 2, 'revealing controls does not shift the lyrics');
     await page.locator('#fullscreen').click();

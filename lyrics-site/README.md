@@ -113,8 +113,8 @@ song end. Lyric delay affects cue display, not audio position or duration.
 
 The bottom row places playback, reset, fullscreen, mute, and line-emphasis icons
 to the right of the timeline. Hover an icon or focus it with the keyboard for its
-tooltip. Space starts/pauses, M toggles backing sound, and C toggles current-line
-emphasis. Shortcuts leave editable fields and open menus/dialogs alone; Space on
+tooltip. Space starts/pauses, M toggles backing sound, C toggles current-line
+emphasis, and F enters/exits fullscreen. Shortcuts leave editable fields and open menus/dialogs alone; Space on
 a focused button activates that button. Arrow seeking remains available.
 
 Toggle **Highlight current line** off for equal emphasis across lyric lines.
@@ -124,16 +124,17 @@ full screen remain available. The media-library button opens an adjacent popup
 for ready songs and online/prepared offline projects without leaving the display.
 Selection stops the old song and awaits a fresh Start.
 
-In fullscreen, preparation navigation is hidden. The bottom panel hides after
-three seconds without pointer hover or keyboard focus; moving to the translucent
-10-pixel strip along the bottom edge reveals it. Keyboard focus also reveals the
-controls. Visibility changes preserve lyric position and playback. Use the
-fullscreen icon or Escape to leave fullscreen. See
+In fullscreen, preparation navigation is hidden. After three seconds without
+pointer hover or keyboard focus, the bottom panel fades to 30% opacity while
+retaining its full size, position, and working controls. Hover anywhere in the
+panel, focus a control with the keyboard, or touch the panel to restore full
+opacity. These changes preserve lyric position and playback. Use F, the
+fullscreen icon, or Escape to leave fullscreen. See
 [compact display requirements](../specs/features/timed-lyrics/revision-10.md).
 Live beat following and automatic tempo compensation remain outside this version.
 
 For local regression checks, `pnpm test:display` covers display/playback navigation
-and layout; `pnpm test:display-controls` covers tooltip, shortcut, touch-reveal,
+and layout; `pnpm test:display-controls` covers tooltip, shortcut, touch restoration,
 fullscreen timer, and audio-error visibility edge cases after `pnpm build`.
 
 For a server project, save and confirm all songs, then choose **Save locally** in the sidebar.

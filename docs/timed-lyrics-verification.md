@@ -544,3 +544,15 @@ passed live asset hashes, site/API health, anonymous private-data rejection, and
 JS/MJS/WASM MIME. The full display and supplemental controls browser suites passed against the live origin
 using synthetic browser-local songs/audio. Private school projects were not
 modified. Close and reopen existing lyrics tabs to adopt the new shell.
+
+## Revision 10 follow-up: fullscreen F and idle opacity
+
+On 2026-10-15, the user replaced minimization with a full-size panel at 30%
+opacity and requested F to enter/exit fullscreen. TL-R60/TL-R61 and AC48/AC49
+record the bounded refinement. The original three-second delay remains.
+
+Syntax, portable build, full live-display browser, and supplemental controls
+browser checks passed. Tests verify F and its guards, 0.3 computed opacity,
+unchanged panel bounds, active pointer interaction, restoration on full-panel
+hover, keyboard focus and touch, stable lyric position, timer cancellation, and
+visible audio-error recovery. Prior strip/miniature expectations were removed.

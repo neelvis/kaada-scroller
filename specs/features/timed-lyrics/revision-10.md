@@ -1,7 +1,7 @@
 # Timed lyrics revision 10: compact display controls
 
 Feature ID: TL (extension)
-Status: Implemented, verified and deployed — event rehearsal pending
+Status: Baseline deployed; bounded display follow-up locally verified
 Revision: 10, 2026-10-15
 Baseline: [live display controls](revision-4.md), [pause and resume](revision-7.md),
 [plain lyrics and uniform scrolling](revision-8.md)
@@ -49,27 +49,26 @@ audio synchronization, and project persistence retain their approved behavior.
   preference persistence, equal lyric styling when disabled, and immediate
   updates without seeking or interrupting playback.
 - **TL-R60 — Fullscreen panel visibility:** Outside fullscreen, keep the bottom
-  panel visible. In fullscreen, show it initially and hide it after three seconds
-  without pointer hover or keyboard focus anywhere in the panel. Pointer hover,
-  focus, and active manipulation of the timeline keep it visible; returning
-  interaction cancels pending hiding. Reveal it immediately when the pointer
-  enters a translucent strip along the bottom edge, 10 CSS pixels high. The strip
-  shows miniature representations of the controls; entering it reveals the full
-  working controls before use. Keyboard navigation to panel controls also
-  reveals the panel. Leaving the revealed panel starts a fresh three-second
-  delay. Hiding/revealing must not shift the lyrics or alter playback/seek state.
-  Audio failure keeps its explanation and recovery controls visible. On touch
-  screens, touching the strip reveals the panel. Leaving fullscreen or display
-  cancels pending hiding and restores the normal visible state on next entry.
+  panel fully opaque. In fullscreen, show it fully opaque initially and reduce
+  its opacity to exactly 30% after three seconds without pointer hover or keyboard
+  focus anywhere in the panel. Always retain the panel's full dimensions,
+  position, controls, and pointer interaction; do not minimize it or substitute
+  miniature controls/a reveal strip. Hover anywhere in the full panel, keyboard
+  focus, touch, and active timeline manipulation restore full opacity and cancel
+  pending dimming. Leaving starts a fresh three-second delay. Opacity changes
+  must not shift the lyrics or alter playback/seek state. Audio failure keeps
+  its explanation and recovery controls fully opaque. Leaving fullscreen or
+  display cancels pending dimming and restores full opacity on next entry.
 - **TL-R61 — Display shortcuts:** Space toggles Start/Pause, M toggles backing
-  mute, and C toggles current-line emphasis in display mode. They invoke the
+  mute, C toggles current-line emphasis, and F toggles fullscreen in display
+  mode. They invoke the
   same actions and state restrictions as the buttons. Do not apply these
   shortcuts while editing text, inside an open menu/dialog, with Ctrl/Alt/Meta,
   or on auto-repeated keydown. Space on a focused button retains that button's
   native activation without triggering a second/global playback action. Existing
   ArrowUp/ArrowDown seeking and preparation-space tapping remain intact. Show
   the new shortcuts in the corresponding tooltips. Shortcut handling does not
-  require the bottom panel to be visible.
+  require the bottom panel to be fully opaque.
 
 TL-R56 supersedes the hamburger presentation and centered popup in TL-R38.
 TL-R59 supersedes the checkbox presentation in TL-R36. TL-R58 supersedes
@@ -90,17 +89,26 @@ All other applicable approved behavior remains in force.
   action names, startup/end restrictions, and updated play/pause, fullscreen,
   mute, and emphasis states. Verify both three-line icon treatments and emphasis
   preference persistence across song switching and reload.
-- **TL-AC48 (R60):** Verify the panel hides after three seconds outside pointer
-  and keyboard focus, stays visible while hovered/focused or dragging the timeline,
-  and reveals immediately from the bottom 10-pixel strip or keyboard focus.
-  Check a fresh delay on departure, touch reveal, error/recovery visibility,
+- **TL-AC48 (R60):** Verify the panel reaches 30% opacity after three seconds
+  outside pointer and keyboard focus, remains fully opaque while hovered/focused
+  or dragging the timeline, and returns to full opacity from hover anywhere in
+  the full panel, keyboard focus, or touch. Compare panel bounding boxes before
+  and after dimming: size and position remain identical, all controls stay
+  interactive, and no miniature/reveal strip remains.
+  Check a fresh delay on departure, touch restoration, error/recovery opacity,
   fullscreen exit/reentry, and display exit. Compare lyric position and playback
   state before and after visibility changes; no jump, pause, reset, or seek occurs.
-- **TL-AC49 (R61):** Exercise Space, M, and C with the panel visible and hidden,
+- **TL-AC49 (R61):** Exercise Space, M, C, and F with the panel fully opaque and dimmed,
   with and without backing audio, while running/paused, during startup, and at
   song end. Check that editable fields, open menus/dialogs, modifier combinations,
   repeated keydown, and Space on focused buttons cause no accidental or duplicate
   action. Repeat existing five-second seek and preparation-tapping scenarios.
+
+On 2026-10-15, after publication, the user requested F for fullscreen and full-size
+30% panel opacity instead of minimization. This bounded local UI refinement
+updates TL-R60/TL-R61 and their acceptance criteria; the user's explicit request
+establishes the exact changed behavior. Retain the previous three-second delay
+and interaction guards. It does not change playback or preparation workflows.
 
 ## Sources, decisions, and handoff
 
@@ -146,3 +154,13 @@ browser suites also passed against production with synthetic browser-local
 lyrics/audio. No private school projects were modified. Close and reopen existing
 tabs to adopt the new cached shell. Projector/event-device rehearsal remains an
 organizer check.
+
+## Fullscreen follow-up verification
+
+The requested F shortcut and full-size 30% idle-opacity refinement passed syntax,
+portable build, full live-display browser, and supplemental controls browser
+checks on 2026-10-15. Verified F enter/exit and input/menu/modifier/repeat guards,
+0.3 opacity with identical panel bounds and pointer interaction, hover/focus/touch
+restoration, stable lyric position, and existing playback/error behavior.
+Publication evidence for the refinement is recorded separately from the original
+release above.
