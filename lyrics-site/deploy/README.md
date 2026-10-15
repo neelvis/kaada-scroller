@@ -189,3 +189,13 @@ review, HTTPS asset/health/privacy/MIME checks, and isolated live display browse
 scenarios passed. All 22 backend/runtime files and deployment scripts match the
 previous pair `20261014_142714`, retained for rollback. Private school projects
 were not modified. Close and reopen existing lyrics tabs to adopt the new shell.
+
+### Fullscreen opacity follow-up
+
+Paired release `20261015_084025` on 2026-10-15 (application commit `1cd15cc`)
+adds F fullscreen toggling and replaces the miniature reveal strip with the
+full-size, interactive panel at 30% opacity after three seconds of inactivity.
+Hover, keyboard focus, or touch restores full opacity. Source/package review,
+local display suites, HTTPS checks, and the live supplemental controls suite
+passed. Backend/runtime and deployment scripts are unchanged; prior pair
+`20261015_082900` remains available for rollback. Close and reopen existing tabs.

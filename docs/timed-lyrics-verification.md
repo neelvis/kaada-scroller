@@ -556,3 +556,12 @@ browser checks passed. Tests verify F and its guards, 0.3 computed opacity,
 unchanged panel bounds, active pointer interaction, restoration on full-panel
 hover, keyboard focus and touch, stable lyric position, timer cancellation, and
 visible audio-error recovery. Prior strip/miniature expectations were removed.
+
+Follow-up commit `1cd15cc` was pushed to `main` and published as paired release
+`20261015_084025` on 2026-10-15. Independent source/package review accepted all 51
+stage hashes; all service/runtime files and deploy scripts match the preceding
+pair `20261015_082900`, retained for rollback. HTTPS hashes, health, anonymous
+project/audio rejection, and JS/MJS/WASM MIME passed. The supplemental controls
+suite also passed against the live origin with isolated synthetic browser-local
+data, covering F, exact 30% opacity, full-panel geometry, hover/focus/touch
+restoration, and error visibility. Private school projects were not modified.

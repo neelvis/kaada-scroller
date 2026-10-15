@@ -1,7 +1,7 @@
 # Timed lyrics revision 10: compact display controls
 
 Feature ID: TL (extension)
-Status: Baseline deployed; bounded display follow-up locally verified
+Status: Implemented, verified and deployed — event rehearsal pending
 Revision: 10, 2026-10-15
 Baseline: [live display controls](revision-4.md), [pause and resume](revision-7.md),
 [plain lyrics and uniform scrolling](revision-8.md)
@@ -164,3 +164,11 @@ checks on 2026-10-15. Verified F enter/exit and input/menu/modifier/repeat guard
 restoration, stable lyric position, and existing playback/error behavior.
 Publication evidence for the refinement is recorded separately from the original
 release above.
+
+Follow-up application commit `1cd15cc` was pushed to `main`; paired release
+`20261015_084025` was activated on 2026-10-15. Independent source/package review
+accepted all 51 stage hashes with unchanged service/runtime and deployment
+scripts. Prior pair `20261015_082900` is retained for rollback. Live HTTPS asset,
+health, privacy and MIME checks passed. The supplemental controls suite passed
+against the production origin, including F, 30% opacity, full-panel geometry,
+hover/focus/touch restoration, and error visibility with synthetic local data.
