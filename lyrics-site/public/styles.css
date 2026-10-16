@@ -78,3 +78,23 @@
 .library-song .song-select{width:100%;overflow-wrap:anywhere}
 .library-song:hover{background:var(--surface-2)}
 .song-list-panel{overflow-y:auto}
+
+/* Keep project names, row actions and dialog actions within the viewport. */
+#projects-dialog{width:calc(100vw - 32px);max-width:640px;max-height:calc(100dvh - 32px)}
+#projects-dialog form{min-width:0}
+#projects-dialog .project-list{max-height:36dvh;overflow-y:auto;scrollbar-gutter:stable}
+#projects-dialog .project-row{display:grid;grid-template-columns:minmax(0,1fr) auto;min-width:0}
+#projects-dialog .project-row>span:first-child{min-width:0;overflow-wrap:anywhere}
+#projects-dialog .project-row .action-row{flex-wrap:nowrap}
+#projects-dialog .project-row button{white-space:nowrap}
+#projects-dialog .migration-choice{display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+#projects-dialog .migration-choice input{flex:none;margin:3px 0 0}
+#projects-dialog .migration-action{margin:0 0 20px;max-width:100%}
+#projects-dialog .dialog-actions{flex-wrap:wrap}
+@media(max-width:500px){
+  #projects-dialog form{padding:18px 14px}
+  #projects-dialog .project-row{padding:9px 8px;gap:8px}
+  #projects-dialog .project-row button{padding:8px}
+  #projects-dialog .project-row .action-row{gap:6px}
+}
+#projects-dialog .project-row .has-tooltip::after{left:auto;right:0;transform:none}

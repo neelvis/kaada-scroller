@@ -19,15 +19,16 @@
         <svg class="action-icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0">
           <symbol id="action-icon-library" viewBox="0 0 24 24"><path d="M4 4v16M8 4v16M12 6v14M16 4l4 15M15 8l4-1M17 17l4-1"/></symbol>
           <symbol id="action-icon-save" viewBox="0 0 24 24"><path d="M4 3h13l3 3v15H4zM8 3v6h8V3M8 21v-8h8v8"/></symbol>
-          <symbol id="action-icon-sign-in" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M16 12H5m5-5-5 5 5 5"/></symbol>
+          <symbol id="action-icon-sign-in" viewBox="0 0 24 24"><path d="M14 4h6v16h-6M3 12h12m-4-4 4 4-4 4"/></symbol>
+          <symbol id="action-icon-projects" viewBox="0 0 24 24"><path d="M3 7V5a1 1 0 0 1 1-1h5l3 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/></symbol>
           <symbol id="action-icon-sign-out" viewBox="0 0 24 24"><path d="M10 4H5v16h5M8 12h11m-5-5 5 5-5 5"/></symbol>
           <symbol id="action-icon-import" viewBox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 20h16"/></symbol>
           <symbol id="action-icon-export" viewBox="0 0 24 24"><path d="M12 17V4m-5 5 5-5 5 5M4 20h16"/></symbol>
         </svg>
         <span class="offline-state" id="offline-state" aria-live="polite">Проверка автономной работы…</span>
         <span class="remote-state" id="remote-state" aria-live="polite">Локальный набор</span>
-        <button class="button quiet" id="library" type="button" aria-controls="online-library local-library">Библиотека</button>
-        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="projects" type="button" aria-label="Проекты" data-tooltip="Проекты" hidden disabled><svg class="event-icon" aria-hidden="true"><use href="#action-icon-library"/></svg></button>
+        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="library" type="button" aria-label="Библиотека" data-tooltip="Библиотека" aria-controls="online-library local-library"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-library"/></svg></button>
+        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="projects" type="button" aria-label="Проекты" data-tooltip="Проекты" hidden disabled><svg class="event-icon" aria-hidden="true"><use href="#action-icon-projects"/></svg></button>
         <button class="button quiet event-icon-button has-tooltip action-icon-button" id="save-project" type="button" aria-label="Сохранить" data-tooltip="Сохранить" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-save"/></svg></button>
         <button class="button quiet event-icon-button has-tooltip action-icon-button" id="login" type="button" aria-label="Войти" data-tooltip="Войти"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-sign-in"/></svg></button>
         <button class="button quiet event-icon-button has-tooltip action-icon-button" id="logout" type="button" aria-label="Выйти" data-tooltip="Выйти" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-sign-out"/></svg></button>
@@ -101,7 +102,17 @@
   </main>
   <dialog id="confirm-dialog"><form method="dialog"><h2 id="confirm-title">Заменить текст?</h2><p id="confirm-text"></p><div class="dialog-actions"><button class="button quiet" value="cancel">Отмена</button><button class="button primary" id="confirm-ok" value="confirm">Заменить</button></div></form></dialog>
   <dialog id="login-dialog"><form id="login-form"><h2>Вход организатора</h2><p>Введите общий пароль школы. Он не сохраняется в браузере.</p><label class="field">Пароль<input id="login-password" type="password" autocomplete="current-password" required></label><p class="dialog-error" id="login-error" hidden></p><div class="dialog-actions"><button class="button quiet" value="cancel" formmethod="dialog">Отмена</button><button class="button primary" type="submit">Войти</button></div></form></dialog>
-  <dialog id="projects-dialog"><form method="dialog"><h2>Проекты</h2><p>Проекты сохраняются на сервере. Подготовленные снимки доступны для показа без сети.</p><div id="project-list" class="project-list"></div><label class="field" id="new-project-field">Новый проект<input id="new-project-name" maxlength="120" placeholder="Например, Осенний концерт"></label><label class="migration-choice"><input id="migration-audio" type="checkbox"> При переносе набора загрузить оригиналы и минусовки</label><div class="dialog-actions"><button class="button quiet" id="migrate-legacy" type="button">Перенести локальный набор</button><button class="button quiet" value="cancel">Закрыть</button><button class="button primary" id="create-project" type="button">Создать проект</button></div></form></dialog>
+  <dialog id="projects-dialog" aria-labelledby="projects-title">
+    <form method="dialog">
+      <h2 id="projects-title">Проекты</h2>
+      <p>Проекты сохраняются на сервере. Подготовленные снимки доступны для показа без сети.</p>
+      <div id="project-list" class="project-list"></div>
+      <label class="field" id="new-project-field">Новый проект<input id="new-project-name" maxlength="120" placeholder="Например, Осенний концерт"></label>
+      <label class="migration-choice"><input id="migration-audio" type="checkbox"><span>При переносе набора загрузить оригиналы и минусовки</span></label>
+      <button class="button quiet migration-action" id="migrate-legacy" type="button">Перенести локальный набор</button>
+      <div class="dialog-actions"><button class="button quiet" value="cancel">Закрыть</button><button class="button primary" id="create-project" type="button">Создать проект</button></div>
+    </form>
+  </dialog>
   <dialog id="library-dialog"><form method="dialog"><h2>Общая библиотека</h2><p>Добавьте уже сохранённую песню в проект. У проекта останется выбранная версия таймлайна.</p><label class="field">Поиск<input id="library-search" placeholder="Название или исполнитель"></label><div id="library-list" class="project-list"></div><div class="dialog-actions"><button class="button quiet" value="cancel">Закрыть</button></div></form></dialog>
   <template id="empty-state"><div class="empty-state"><span class="empty-note">♪</span><h1 data-empty-title></h1><p data-empty-copy></p><button class="button primary" type="button" data-add-song hidden>Добавить песню</button><button class="button primary" type="button" data-empty-login hidden>Войти организатору</button><button class="button quiet" type="button" data-empty-project hidden>Создать проект</button></div></template>
   <script type="module" src="./app.js"></script>
