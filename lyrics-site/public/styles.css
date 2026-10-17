@@ -97,4 +97,13 @@
   #projects-dialog .project-row button{padding:8px}
   #projects-dialog .project-row .action-row{gap:6px}
 }
-#projects-dialog .project-row .has-tooltip::after{left:auto;right:0;transform:none}
+/* Keep list tooltips inside their row so they cannot enlarge the scroll area. */
+.song-reorder.has-tooltip::after,
+#projects-dialog .project-row .has-tooltip::after{
+  top:50%;
+  right:calc(100% + 8px);
+  bottom:auto;
+  left:auto;
+  transform:translateY(-50%);
+  max-width:min(190px,calc(100vw - 110px));
+}
