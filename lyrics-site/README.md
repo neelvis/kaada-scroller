@@ -6,7 +6,9 @@ of current songs; cloud projects use those songs and resolve their latest saved
 versions when opened. A selected folder stores local project snapshots. The same
 public artifact runs at `/lyrics/` or an origin's root.
 
-The current workflow follows [revision 16](../specs/features/timed-lyrics/revision-16.md).
+The current workflow follows [revision 16](../specs/features/timed-lyrics/revision-16.md)
+with [revision 17](../specs/features/timed-lyrics/revision-17.md) timeline editing
+and library sorting.
 Validation and publication evidence is recorded in the
 [verification report](../docs/timed-lyrics-verification.md). Representative sung
 recordings and a projector rehearsal remain organizer checks.
@@ -20,6 +22,21 @@ unchanged. Copies must have a distinct combination of title, artist and recordin
 version after trimming outer whitespace; changing any one field allows a copy.
 Both save actions require a confirmed, valid song. The optional **Recording
 version** field describes the audio take and appears on cards when nonempty.
+
+Library sorting defaults to newest additions first. The dropdown also offers
+oldest first and ascending/descending artist or title order. Dates refer to
+original library creation; editing a song does not move its creation date.
+
+In **Строки таймлайна**, drag a row by its handle or use its arrows to change
+occurrence order. Timestamps stay with their rows; correct any resulting timing
+conflicts before confirming readiness again. The **+ ♪** button between a row's
+type dropdown and clock inserts an interlude after that row. The small start
+button inserts an intro or adds an interlude to an empty timeline. Suggested
+starts use the previous interval, 5 seconds after a single predecessor, or zero
+without a predecessor. Review and edit the suggestion; later cues are not shifted.
+An interlude lasts until the next cue or song end. During timed display its active
+row shows **♪ ♪ ♪** in the current-line color; notes freeze on pause and remain
+static with reduced motion enabled. Ignored-timecode mode keeps text labels.
 
 Open **Projects** to assemble a performance from the current library songs. Saving
 a song edit from a project updates that same library song, so other projects use

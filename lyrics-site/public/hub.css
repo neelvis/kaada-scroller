@@ -36,6 +36,8 @@
 .hub-search-wrap input::placeholder{color:var(--muted)}
 .hub-search-wrap input:focus,.hub-toolbar select:focus{outline:2px solid var(--accent);outline-offset:1px}
 .hub-toolbar select{min-width:185px;padding:8px 34px 8px 12px}
+.hub-sort-label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;white-space:nowrap}
+.hub-sort-label select{color:var(--text);font-size:13px}
 .hub-create-row{display:flex;justify-content:flex-start;margin-bottom:12px}
 .hub-create{min-height:42px;white-space:nowrap;padding-inline:17px}
 .hub-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px}
@@ -75,6 +77,8 @@
   .hub-toolbar{flex-wrap:wrap}
   .hub-search-wrap{flex-basis:calc(100% - 200px)}
   .hub-toolbar select{flex:1;min-width:160px}
+  .hub-sort-label{flex:1;min-width:0}
+  .hub-sort-label select{min-width:0;width:100%}
   .hub-create{flex:1}
   .workspace{display:block}
   .song-list-panel{min-height:auto;border-right:0;border-bottom:1px solid var(--line);padding:14px}
@@ -89,6 +93,7 @@
   .hub-toolbar{gap:8px;padding:10px}
   .hub-search-wrap{flex:1 1 100%}
   .hub-toolbar select{flex:1;min-width:0}
+  .hub-sort-label{flex:1 1 100%}
   .hub-create{flex:1}
   .hub-list{grid-template-columns:1fr;gap:10px;margin-top:16px}
   .hub-card{min-height:166px;padding:16px}

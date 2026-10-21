@@ -135,6 +135,8 @@ try {
   await page.unroute(`**/api/songs/${shared.songId}`);
   await saveSongButton(page).click(); await waitSong(page, shared.songId, { title: 'Общая песня — правка' });
   await changeField(page, 'Текст строки 1', 'Исправленная строка');
+  // A save may still be refreshing the editor after its server write completes.
+  await page.waitForFunction(() => document.querySelector('.cue-text')?.value === 'Исправленная строка' && document.querySelector('.status-pill')?.textContent === 'Нужно проверить');
   assert.equal(await saveSongButton(page).isDisabled(), true, 'lyric edits invalidate readiness');
   await changeField(page, 'Время строки 1', '00:00.50'); await confirmReady(page); await saveSongButton(page).click();
   await page.waitForFunction(async id => { const { song } = await (await import('./remote.js')).getSong(id); return song.cues[0].text === 'Исправленная строка' && song.cues[0].start === .5; }, shared.songId);

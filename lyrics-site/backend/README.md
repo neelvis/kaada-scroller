@@ -96,7 +96,10 @@ ready and valid. Duplicate identity checks are serialized with revision writes,
 including concurrent requests.
 
 `GET /library` returns current song metadata, including optional `version`,
-`reviewed` and `valid` fields. Its `q` filter matches title, artist or version.
+`reviewed` and `valid` fields, plus `createdAt` as an ISO UTC timestamp from the
+original cloud song creation. Subsequent revisions retain that date; copies have
+their own. The frontend uses it for library date sorting. Its `q` filter matches
+title, artist or version.
 Duplicate identity is the trimmed tuple of title, artist and version; missing
 artist or version is treated as empty. Existing duplicates are not merged
 automatically.

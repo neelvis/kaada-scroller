@@ -119,6 +119,22 @@ class ApiTest(unittest.TestCase):
         with self.client.app.state.store.read() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM song_revisions WHERE song_id=?",(original["songId"],)).fetchone()[0],2)
 
+    def test_library_includes_original_creation_date_across_edits_and_copies(self):
+        headers=self.login()
+        original=self.client.post("/songs",headers=headers,json={"migrationKey":"dated-original", "song":song()}).json()
+        store=self.client.app.state.store
+        with store.tx() as db:
+            db.execute("UPDATE songs SET created_at=? WHERE id=?",("2020-01-02 03:04:05",original["songId"]))
+        before=self.client.get("/library").json()["songs"][0]["createdAt"]
+        self.assertEqual(before,"2020-01-02T03:04:05Z")
+        edited=self.client.put(f"/songs/{original['songId']}",headers=headers,json={"revisionId":original["revisionId"],"song":song("Edited")}).json()
+        after=next(item["createdAt"] for item in self.client.get("/library").json()["songs"] if item["id"]==original["songId"])
+        self.assertEqual(after,before)
+        copied=self.client.post("/songs",headers=headers,json={"migrationKey":"dated-copy", "song":song("Copied")}).json()
+        copy_date=next(item["createdAt"] for item in self.client.get("/library").json()["songs"] if item["id"]==copied["songId"])
+        self.assertNotEqual(copy_date,before)
+        self.assertEqual(edited["song"]["title"],"Edited")
+
     def test_library_update_preserves_omitted_audio_and_can_clear_backing(self):
         headers=self.login(); payload=io.BytesIO()
         with wave.open(payload,"wb") as output:

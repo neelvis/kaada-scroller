@@ -281,7 +281,11 @@ async function saveLibrarySong(copy = false) {
       set = { ...set, songs: result.songs }; projectEntries = result.entries; selectedId = result.selectedId;
     }
     toast(copy ? 'Копия сохранена в облачной библиотеке.' : 'Песня сохранена в облаке.');
-    await refreshHubCloud(); render();
+    await refreshHubCloud();
+    // Existing-song saves do not change the editor's content. Keep its inputs
+    // mounted so a refresh cannot interrupt the next edit between focus/input.
+    if (!copy && (saved.song.id !== snapshot.id || !sameEntryContent(saved, payload))) render();
+    else updateRemoteState();
   } catch (error) { toast(error.message); }
   finally { saveBusy = false; updateRemoteState(); }
 }
@@ -466,18 +470,23 @@ function launchEvent(song) {
   const loader = () => loaded ||= loadBacking(song, owner, entry, offline).catch(error => { loaded = null; throw error; });
   buildAudience(); playback.arm(song.duration, song.backing?.fileName || entry.backingAudioId ? loader : null);
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
-  applyHighlight(); renderAudience(-1, false); updateEvent();
+  applyHighlight(); updateEvent();
   restoreEventControls();
 }
 function buildAudience() {
   if (!eventState.song.cues.length) { els.audienceLines.replaceChildren(node('div', { className: 'audience-line neutral', text: eventState.song.title })); centerAudience(0); return; }
   const untimed = eventState.song.ignoreTimecodes === true;
+  els.audienceLines.classList.toggle('timed-rests', !untimed);
   els.audienceLines.classList.toggle('uniform-scroll', untimed && eventState.song.autoScrollEnabled !== false);
   els.audienceLines.classList.toggle('manual-scroll', untimed && eventState.song.autoScrollEnabled === false);
-  els.audienceLines.replaceChildren(...eventState.song.cues.map(cue => node('div', {
-    className: `audience-line${cue.type === 'rest' ? ' rest' : ''}`,
-    text: cue.type === 'rest' ? `— ${cue.text} —` : cue.text,
-  })));
+  els.audienceLines.replaceChildren(...eventState.song.cues.map(cue => {
+    if (cue.type !== 'rest') return node('div', { className: 'audience-line', text: cue.text });
+    return node('div', { className: 'audience-line rest', role: 'group', 'aria-label': cue.text || 'Проигрыш' }, [
+      node('span', { className: 'interlude-label', text: `— ${cue.text || 'Проигрыш'} —` }),
+      node('span', { className: 'interlude-notes', 'aria-hidden': 'true' },
+        [node('span', { text: '♪' }), ' ', node('span', { text: '♪' }), ' ', node('span', { text: '♪' })]),
+    ]);
+  }));
 }
 function centerAudience(index) {
   if (eventState.song?.ignoreTimecodes && !eventState.ended) {
@@ -575,6 +584,7 @@ function toggleFullscreen() {
 function displayTime(seconds) { return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`; }
 function updateEvent() {
   const song = eventState.song; if (!song) return;
+  els.audienceLines.classList.toggle('playback-running', playback.running);
   const elapsed = playback.elapsed(); const current = cueAt(song, elapsed);
   if (current.index !== eventState.lastIndex || current.ended !== eventState.ended) {
     eventState.lastIndex = current.index; eventState.ended = current.ended; renderAudience(current.index, current.ended);

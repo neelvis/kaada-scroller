@@ -775,3 +775,46 @@ without cloud audio requests, Space pause and 320px layout. There were no uncaug
 browser errors and no production API write requests. Authenticated cloud writes
 were exercised against the disposable local API, not private school data. Native
 OS folder-dialog and physical rehearsal boundaries remain as stated above.
+
+
+## Revision 17: cue ordering, interludes and library sorting (2026-10-22)
+
+Scope: approved TL-R94–R99 / TL-AC72–AC75, including the user's final row-level
+`+ ♪` placement and three space-separated notes. No database migration or runtime
+dependency change is introduced. Library dates come from existing song creation
+rows and are returned as ISO UTC `createdAt` metadata.
+
+Local verification:
+
+- `node tools/build.mjs`: portable artifact built successfully.
+- `node --test tests/*.test.mjs`: all 110 tests passed, including cue identity,
+  unchanged timestamps, no-op moves, before-first/empty insertion estimates, invalid timing/readiness,
+  portable rest preservation and all six stable locale-aware sort orders.
+- `/tmp/kaada-backend-revision16-venv/bin/python -m unittest discover -s backend/tests`:
+  all 24 API tests passed, including original creation dates across edits/copies.
+- `LYRICS_TEST_PYTHON=/tmp/kaada-backend-revision16-venv/bin/python node tests/cue-interludes-browser.mjs`:
+  real authenticated temporary API and Chrome cover row arrows/native drag,
+  focused edits immediately followed by move/insertion, repeated lyric identity,
+  row `+ ♪` position, editable estimates,
+  same-position drops, readiness, cloud save/reopen and directory-backed local
+  project snapshots. Audience checks cover exactly `♪ ♪ ♪`, active color even
+  with ordinary lyric highlighting disabled, intro/middle/final rest cues,
+  pause/resume/seek/end, delay, reduced motion and unchanged untimed labels.
+  Six dropdown orders, filtering, selection retention and unchanged creation
+  dates pass. Layouts at 320, 375, 1120 and 1360px have no page overflow.
+- `node tests/display-controls-browser.mjs`: existing supplemental display
+  shortcuts, dimming, tooltips, touch restoration and audio-error checks passed.
+- `LYRICS_TEST_PYTHON=/tmp/kaada-backend-revision16-venv/bin/python node tests/cloud-library-browser.mjs`:
+  existing cloud creation/edit/copy, save failure/retry, readiness, shared-project
+  updates, durable local copies/playback and cascading deletion passed. The
+  regression exposed an unnecessary post-save editor rebuild that could remove
+  a focused input before the next input event; unchanged same-song saves now keep
+  those controls mounted. The check waits for both the edited text and readiness.
+- Independent source review accepted the final scoped change with no unresolved
+  material findings. Logs and review evidence are in the ignored directory
+  `work/cue-interludes-sort-20261021/`; screenshots are under
+  `lyrics-site/test-results/revision-17/`.
+
+Browser tests use installed Chrome and a real-file directory adapter, not the
+native OS folder chooser. Physical projector readability and event rehearsal
+remain organizer checks. Production publication evidence follows after activation.

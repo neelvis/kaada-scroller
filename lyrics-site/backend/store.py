@@ -162,7 +162,7 @@ class Store:
 
     def library(self, query: str) -> list[dict[str, Any]]:
         with self.read() as db:
-            rows = db.execute("""SELECT r.* FROM song_revisions r JOIN (SELECT song_id, MAX(rowid) latest FROM song_revisions GROUP BY song_id) l ON l.song_id=r.song_id AND l.latest=r.rowid ORDER BY r.rowid DESC""").fetchall()
+            rows = db.execute("""SELECT r.*,s.created_at song_created_at FROM song_revisions r JOIN (SELECT song_id, MAX(rowid) latest FROM song_revisions GROUP BY song_id) l ON l.song_id=r.song_id AND l.latest=r.rowid JOIN songs s ON s.id=r.song_id ORDER BY r.rowid DESC""").fetchall()
         result=[]
         for row in rows:
             song=json.loads(row["body"])
@@ -172,7 +172,12 @@ class Store:
                 valid=True
             except InvalidSong:
                 valid=False
-            result.append({"id": row["song_id"], "title": song.get("title", ""), "artist": song.get("artist", ""), "version": song.get("version", ""), "revisionId": row["id"], "reviewed": song.get("reviewed") is True, "valid":valid, "hasAudio": bool(row["audio_id"]), "hasBackingAudio": bool(row["backing_audio_id"])})
+            created_at = row["song_created_at"]
+            if "T" not in created_at:
+                created_at = created_at.replace(" ", "T", 1)
+            if not created_at.endswith("Z"):
+                created_at += "Z"
+            result.append({"id": row["song_id"], "title": song.get("title", ""), "artist": song.get("artist", ""), "version": song.get("version", ""), "revisionId": row["id"], "createdAt": created_at, "reviewed": song.get("reviewed") is True, "valid":valid, "hasAudio": bool(row["audio_id"]), "hasBackingAudio": bool(row["backing_audio_id"])})
         return result
 
     def get_song(self, song_id: str) -> dict[str, Any]:

@@ -1,10 +1,17 @@
 import { node, button } from './ui.js';
 import { validateSong } from './core.js';
+import { DEFAULT_LIBRARY_SORT, LIBRARY_SORTS, sortLibrarySongs } from './library-sort.js';
 
 export function createWorkspaceHub({ state, actions }) {
   let destination = 'projects';
   let tooltipId = 0;
   const $ = selector => document.querySelector(selector);
+  const sortSelect = node('select', { id: 'hub-library-sort', 'aria-label': 'Сортировка песен' }, LIBRARY_SORTS.map(option => node('option', { value: option.value, text: option.label })));
+  let savedSort = null;
+  try { savedSort = sessionStorage.getItem('kaada-library-sort'); } catch {}
+  sortSelect.value = LIBRARY_SORTS.some(option => option.value === savedSort) ? savedSort : DEFAULT_LIBRARY_SORT;
+  const sortLabel = node('label', { className: 'hub-sort-label' }, [node('span', { text: 'Сортировка' }), sortSelect]);
+  $('#hub-search').parentElement.after(sortLabel);
   function show(next = destination) {
     destination = next;
     actions.leaveEditor();
@@ -40,10 +47,11 @@ export function createWorkspaceHub({ state, actions }) {
     $('#hub-create').textContent = isProjects ? '+ Создать проект' : '+ Новая песня';
     $('#hub-filter').hidden = !isProjects;
     $('#hub-filter-label').hidden = !isProjects;
+    sortLabel.hidden = isProjects;
     const query = $('#hub-search').value.trim().toLocaleLowerCase();
     const filter = isProjects ? $('#hub-filter').value : 'cloud';
     const localItems = isProjects ? data.projects : [];
-    const cloudItems = isProjects ? data.cloudProjects : data.cloudSongs;
+    const cloudItems = isProjects ? data.cloudProjects : sortLibrarySongs(data.cloudSongs, sortSelect.value);
     const linkedIds = new Set(localItems.map(item => data.links[`project:${item.id}`]?.id).filter(Boolean));
     const cards = [];
     const matches = item => `${item.name || item.title || ''} ${item.artist || ''} ${item.version || ''}`.toLocaleLowerCase().includes(query);
@@ -103,5 +111,9 @@ export function createWorkspaceHub({ state, actions }) {
   }
   $('#hub-create').addEventListener('click', () => destination === 'projects' ? actions.createProject() : actions.createSong());
   $('#hub-search').addEventListener('input', render); $('#hub-filter').addEventListener('change', render);
+  sortSelect.addEventListener('change', () => {
+    try { sessionStorage.setItem('kaada-library-sort', sortSelect.value); } catch {}
+    render();
+  });
   return { show, render, destination: () => destination };
 }

@@ -5,6 +5,7 @@ import { hasPlainLyrics, hasSynchronizedLyrics, LrclibClient, prepareLrcImport, 
 import { recognizeFile } from './recognition.js';
 import { getPrivateAudio, putPrivateAudio, removePrivateAudio } from './offline-projects.js';
 import * as remote from './remote.js';
+import { insertRestCue, moveCueToBoundary } from './cue-editing.js';
 
 export function createSongEditor(context) {
   const { els, previewPlayer, backingPreview, recognition, tapHistory, sourceGeneration } = context.resources;
@@ -12,10 +13,12 @@ export function createSongEditor(context) {
   const recognitionProfiles = new Map();
   const backingGeneration = new Map();
   const importDrafts = new Map();
+  const estimatedRestStarts = new Set();
   const lrclibClient = new LrclibClient();
   let editorTab = 'lrclib';
   let editorTabSongId = null;
   let lrclibState = null;
+  let committingCueBeforeRender = false;
   function lrclibContext() { return JSON.stringify([context.state.workspaceGeneration, context.state.set.id, context.state.project?.id, context.state.selectedId, context.state.sessionActive, context.state.offlineProjectOpen]); }
   function cancelLrclib() { lrclibState?.controller?.abort(); if (lrclibState) lrclibState.token += 1; lrclibState = null; }
   function resetPreparation({ preserveDrafts = false } = {}) { cancelLrclib(); if (!preserveDrafts) importDrafts.clear(); editorTabSongId = null; }
@@ -25,6 +28,15 @@ export function createSongEditor(context) {
   function remoteAudioMode() { return Boolean(context.state.project || context.state.onlineSongOpen); }
 
   function renderEditor() {
+    if (committingCueBeforeRender) return;
+    const focused = document.activeElement;
+    if (els.editor.contains(focused) && focused.matches('.cue-time,.cue-text,.cue-type')) {
+      // An async save refresh can arrive before a focused cue's native change.
+      // Commit it before replacing the DOM; this outer render owns the rebuild.
+      committingCueBeforeRender = true;
+      try { focused.dispatchEvent(new Event('change', { bubbles: true })); }
+      finally { committingCueBeforeRender = false; }
+    }
     if (lrclibState && lrclibState.context !== lrclibContext()) cancelLrclib();
     const song = currentSong(); els.editor.replaceChildren();
     if (!song && context.state.localProjectId) { els.editor.append(node('div', { className: 'empty-state' }, [node('span', { className: 'empty-note', text: '♫' }), node('h1', { text: 'Соберите программу выступления' }), node('p', { className: 'hint', text: 'Добавьте песни из библиотеки или создайте новую.' }), button('Добавить из библиотеки', 'button primary', showLibrary), button('Создать песню', 'button quiet', addSong)])); return; }
@@ -272,11 +284,51 @@ export function createSongEditor(context) {
   function confirmReplace(message) { const dialog = $('#confirm-dialog'); $('#confirm-text').textContent = message; return new Promise((resolve) => { dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true }); dialog.showModal(); }); }
   function renderCues(song, validation) {
     const card = node('section', { className: 'section-card' }); const table = node('div', { className: 'cue-table' });
+    let deferCueRender = false;
+    let pendingCueRender = false;
+    let nativeDragActive = false;
     const addCue = (cue = { id: `cue-${crypto.randomUUID()}`, start: null, text: '', type: 'lyric' }) => { changeSong(song.id, s => invalidateChanged(s, { cues: [...s.cues, cue] })); render(); };
+    const estimateKey = cueId => `${song.id}/${cueId}`;
+    const commitFocusedEdit = () => {
+      const focused = document.activeElement;
+      if (els.editor.contains(focused) && focused.matches('input,textarea,select')) focused.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const cueActionButton = (label, className, action) => {
+      const control = button(label, className, action);
+      // Preserve the click target until its handler commits any focused edit.
+      control.addEventListener('pointerdown', event => { if (event.button === 0) event.preventDefault(); });
+      return control;
+    };
+    const resolveBoundary = (current, destination) => typeof destination === 'function' ? destination(current) : destination;
+    const focusCue = (cueId, control) => {
+      const row = [...els.editor.querySelectorAll('.cue-row')].find(item => item.dataset.cueId === cueId);
+      const target = row?.querySelector(control);
+      (target?.disabled ? row.querySelector('.cue-drag-handle') : target)?.focus();
+    };
+    const insertRest = destination => {
+      commitFocusedEdit();
+      const latest = currentSong();
+      if (!latest || latest.id !== song.id) return;
+      const boundary = resolveBoundary(latest, destination);
+      if (!Number.isInteger(boundary) || boundary < 0 || boundary > latest.cues.length) return;
+      const cueId = `cue-${crypto.randomUUID()}`;
+      estimatedRestStarts.add(estimateKey(cueId));
+      changeSong(song.id, () => insertRestCue(latest, boundary, cueId));
+      render(); focusCue(cueId, '.cue-time');
+    };
+    const moveCue = (cueId, destination, focusControl = '.cue-drag-handle') => {
+      commitFocusedEdit();
+      const latest = currentSong();
+      if (!latest || latest.id !== song.id) return;
+      const moved = moveCueToBoundary(latest, cueId, resolveBoundary(latest, destination));
+      if (moved === latest) return;
+      changeSong(song.id, () => moved);
+      pendingCueRender = false; render(); focusCue(cueId, focusControl);
+    };
     const tapCue = (index) => { const player = previewPlayer; if (!player.src) { toast('Для отметки включите оригинальную запись.'); return; } const before = currentSong()?.cues[index]?.start ?? null; changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((cue, i) => i === index ? { ...cue, start: player.currentTime } : cue) })); const history = tapHistory.get(song.id) || []; history.push({ cueId: song.cues[index].id, before }); tapHistory.set(song.id, history); render(); };
     const tapNext = () => { const index = currentSong()?.cues.findIndex((cue) => cue.start == null) ?? -1; if (index < 0) { toast('Нет неотмеченных строк. Для повторной отметки используйте кнопку часов у строки.'); return; } tapCue(index); };
     const undoTap = () => { const history = tapHistory.get(song.id) || []; const last = history.pop(); if (!last) { toast('Нет последней отметки для отмены.'); return; } tapHistory.set(song.id, history); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((cue) => cue.id === last.cueId ? { ...cue, start: last.before } : cue) })); render(); };
-    card.append(node('div', { className: 'cue-toolbar' }, [node('div', {}, [node('h2', { text: 'Строки таймлайна' }), node('p', { className: 'hint', text: 'Время — начало строки. Кнопка «Отметить следующую» или пробел отмечает начало. Отмечайте строки по очереди или переотмечайте конкретную строку кнопкой часов.' })]), node('div', { className: 'action-row' }, [button('+ Строка', 'button quiet', () => addCue()), button('Отметить следующую', 'button quiet', tapNext), button('Отменить отметку', 'button quiet', undoTap)])]));
+    card.append(node('div', { className: 'cue-toolbar' }, [node('div', {}, [node('h2', { text: 'Строки таймлайна' }), node('p', { className: 'hint', text: 'Время — начало строки. Отмечайте начало кнопкой «Отметить следующую», пробелом или часами у строки. Переносите строки за ручку или стрелками; время при переносе сохраняется.' })]), node('div', { className: 'action-row' }, [button('+ Строка', 'button quiet', () => addCue()), button('Отметить следующую', 'button quiet', tapNext), button('Отменить отметку', 'button quiet', undoTap)])]));
     const ignore = input('', 'checkbox', { id: 'ignore-timecodes' });
     ignore.checked = song.ignoreTimecodes === true;
     ignore.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { ignoreTimecodes: ignore.checked })); render(); });
@@ -326,13 +378,85 @@ export function createSongEditor(context) {
     };
     updateAutoScrollVisibility();
     card.append(node('label', { className: 'ignore-timecodes cue-ignore-timecodes' }, [ignore, node('span', { text: 'игнорировать таймкоды' })]), autoScrollSettings, scrollStartHint, manualScrollHint, timeShiftControls);
-    song.cues.forEach((cue, index) => { const time = input(cue.start == null ? '' : formatTime(cue.start), 'text', { 'aria-label': `Время строки ${index + 1}` }); const text = input(cue.text, 'text', { 'aria-label': `Текст строки ${index + 1}` }); const type = node('select', { 'aria-label': `Тип строки ${index + 1}` }); type.append(node('option', { value: 'lyric', text: 'Текст' }), node('option', { value: 'rest', text: 'Пауза' })); type.value = cue.type;
-      const update = () => { const start = parseTime(time.value); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((item, i) => i === index ? { ...item, start, text: text.value, type: type.value } : item) })); render(); }; time.addEventListener('change', update); text.addEventListener('change', update); type.addEventListener('change', update);
+    let draggedCueId = null;
+    const boundaries = [];
+    const indicateBoundary = boundary => {
+      boundaries.forEach((item, index) => item.classList.toggle('cue-drop-target', index === boundary));
+    };
+    const clearDrag = () => {
+      draggedCueId = null; nativeDragActive = false; indicateBoundary(null);
+      table.querySelectorAll('.cue-dragging').forEach(row => row.classList.remove('cue-dragging'));
+    };
+    const flushCueRender = () => { if (pendingCueRender) { pendingCueRender = false; render(); } };
+    const allowDrop = (event, boundary) => {
+      if (!draggedCueId) return;
+      event.preventDefault(); event.dataTransfer.dropEffect = 'move'; indicateBoundary(boundary);
+    };
+    const dropAt = (event, boundary) => {
+      if (!draggedCueId) return;
+      event.preventDefault();
+      const cueId = draggedCueId; clearDrag(); moveCue(cueId, boundary);
+    };
+    for (let boundary = 0; boundary <= song.cues.length; boundary += 1) {
+      const target = node('div', { className: 'cue-boundary', 'data-cue-boundary': boundary });
+      if (boundary === 0) {
+        const label = song.cues.length ? 'Вставить проигрыш перед первой строкой' : 'Вставить проигрыш в пустой таймлайн';
+        const insert = cueActionButton('+ ♪', 'button quiet cue-insert-start', () => insertRest(0));
+        insert.setAttribute('aria-label', label); insert.title = label; target.append(insert);
+      }
+      target.addEventListener('dragover', event => allowDrop(event, boundary));
+      target.addEventListener('drop', event => dropAt(event, boundary));
+      boundaries.push(target);
+    }
+    table.addEventListener('dragleave', event => { if (!table.contains(event.relatedTarget)) indicateBoundary(null); });
+    table.addEventListener('keydown', event => { if (event.key === 'Escape') clearDrag(); });
+    song.cues.forEach((cue, index) => { const time = input(cue.start == null ? '' : formatTime(cue.start), 'text', { className: 'cue-time', 'aria-label': `Время строки ${index + 1}` }); const text = input(cue.text, 'text', { className: 'cue-text', 'aria-label': `Текст строки ${index + 1}` }); const type = node('select', { className: 'cue-type', 'aria-label': `Тип строки ${index + 1}` }); type.append(node('option', { value: 'lyric', text: 'Текст' }), node('option', { value: 'rest', text: 'Проигрыш' })); type.value = cue.type;
+      const initialValues = new Map([[time, time.value], [text, text.value], [type, type.value]]);
+      const update = event => { if (event.target.value === initialValues.get(event.target)) return; initialValues.set(event.target, event.target.value); if (event.target === time || type.value !== 'rest') estimatedRestStarts.delete(estimateKey(cue.id)); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map(item => item.id === cue.id ? { ...item, start: event.target === time ? parseTime(time.value) : item.start, text: text.value, type: type.value } : item) })); if (deferCueRender) pendingCueRender = true; else render(); }; time.addEventListener('change', update); text.addEventListener('change', update); type.addEventListener('change', update);
       const retapLabel = `Отметить строку ${index + 1} по текущему времени записи`;
-      const retap = button('◷', 'button quiet has-tooltip', () => tapCue(index)); retap.setAttribute('aria-label', retapLabel); retap.setAttribute('data-tooltip', retapLabel);
+      const retap = button('◷', 'button quiet has-tooltip cue-retap', () => { estimatedRestStarts.delete(estimateKey(cue.id)); tapCue(index); }); retap.setAttribute('aria-label', retapLabel); retap.setAttribute('data-tooltip', retapLabel);
+      const insertRestAfter = cueActionButton('+ ♪', 'button quiet cue-insert-rest', () => insertRest(current => {
+        const currentIndex = current.cues.findIndex(item => item.id === cue.id);
+        return currentIndex < 0 ? -1 : currentIndex + 1;
+      }));
+      const insertLabel = `Вставить проигрыш после строки ${index + 1}`;
+      insertRestAfter.setAttribute('aria-label', insertLabel); insertRestAfter.title = insertLabel;
       const removeLabel = `Удалить строку ${index + 1}`;
-      const remove = button('×', 'button quiet has-tooltip', () => { changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.filter((_, i) => i !== index) })); render(); }); remove.setAttribute('aria-label', removeLabel); remove.setAttribute('data-tooltip', removeLabel); table.append(node('div', { className: `cue-row${cue.type === 'rest' ? ' rest' : ''}` }, [time, text, type, retap, remove]));
-    }); card.append(table);
+      const remove = button('×', 'button quiet has-tooltip cue-remove', () => { estimatedRestStarts.delete(estimateKey(cue.id)); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.filter(item => item.id !== cue.id) })); render(); }); remove.setAttribute('aria-label', removeLabel); remove.setAttribute('data-tooltip', removeLabel);
+      const handle = button('⠿', 'button quiet cue-drag-handle', () => {});
+      handle.draggable = true; handle.setAttribute('aria-label', `Перетащить строку ${index + 1}`); handle.title = 'Перетащите строку или используйте стрелки рядом';
+      handle.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || !table.contains(document.activeElement) || !document.activeElement.matches('input,select')) return;
+        // Keep the native drag target mounted while committing a pending row edit.
+        // Unlike preventing pointerdown, this preserves the browser's drag gesture.
+        deferCueRender = true;
+        try { commitFocusedEdit(); } finally { deferCueRender = false; }
+      });
+      handle.addEventListener('pointerup', () => { if (!nativeDragActive) flushCueRender(); });
+      handle.addEventListener('pointercancel', () => { if (!nativeDragActive) flushCueRender(); });
+      const up = cueActionButton('↑', 'button quiet cue-move-up', () => moveCue(cue.id, current => current.cues.findIndex(item => item.id === cue.id) - 1, '.cue-move-up'));
+      up.disabled = index === 0; up.setAttribute('aria-label', `Поднять строку ${index + 1}`);
+      const down = cueActionButton('↓', 'button quiet cue-move-down', () => moveCue(cue.id, current => current.cues.findIndex(item => item.id === cue.id) + 2, '.cue-move-down'));
+      down.disabled = index === song.cues.length - 1; down.setAttribute('aria-label', `Опустить строку ${index + 1}`);
+      const row = node('div', { className: `cue-row${cue.type === 'rest' ? ' rest' : ''}`, 'data-cue-id': cue.id }, [node('div', { className: 'cue-reorder' }, [handle, up, down]), time, text, type, insertRestAfter, retap, remove]);
+      if (cue.type === 'rest') {
+        const estimated = estimatedRestStarts.has(estimateKey(cue.id));
+        const end = song.cues[index + 1]?.start;
+        const until = index + 1 < song.cues.length ? `До следующей строки${Number.isFinite(end) ? ` (${formatTime(end)})` : ' — задайте её время'}.` : `До конца песни (${formatTime(song.duration)}).`;
+        const noteId = `cue-note-${index}`;
+        row.append(node('p', { id: noteId, className: 'cue-note' }, [estimated && node('span', { className: 'cue-estimate', text: 'Примерное начало — проверьте. ' }), node('span', { text: until })]));
+        time.setAttribute('aria-describedby', noteId);
+      }
+      handle.addEventListener('dragstart', event => {
+        draggedCueId = cue.id; nativeDragActive = true; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', cue.id);
+        event.dataTransfer.setDragImage(row, 20, 20); row.classList.add('cue-dragging');
+      });
+      handle.addEventListener('dragend', () => { clearDrag(); flushCueRender(); });
+      const rowBoundary = event => event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2 ? index : index + 1;
+      row.addEventListener('dragover', event => allowDrop(event, rowBoundary(event)));
+      row.addEventListener('drop', event => dropAt(event, rowBoundary(event)));
+      table.append(boundaries[index], row);
+    }); table.append(boundaries.at(-1)); card.append(table);
     if (validation.length) card.append(node('ul', { className: 'validation' }, validation.map((message) => node('li', { text: message })))); return card;
   }
   function renderReview(song) {

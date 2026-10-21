@@ -98,6 +98,16 @@
   #projects-dialog .project-row .action-row{gap:6px}
 }
 /* Keep list tooltips inside their row so they cannot enlarge the scroll area. */
+.interlude-notes{display:none;white-space:nowrap;min-height:1.2em}
+.audience .audience-lines.timed-rests .audience-line.rest.active{color:var(--accent);font-weight:800;opacity:1}
+.timed-rests .rest.active .interlude-label{display:none}
+.timed-rests .rest.active .interlude-notes{display:inline-block}
+.timed-rests .rest.active .interlude-notes span{display:inline-block;animation:interlude-note 1.6s ease-in-out infinite;animation-play-state:paused}
+.timed-rests.playback-running .rest.active .interlude-notes span{animation-play-state:running}
+.interlude-notes span:nth-child(2){animation-delay:-.4s}
+.interlude-notes span:nth-child(3){animation-delay:-.8s}
+@keyframes interlude-note{0%,100%{transform:translateY(.08em) rotate(-7deg);opacity:.65}50%{transform:translateY(-.16em) rotate(7deg);opacity:1}}
+@media(prefers-reduced-motion:reduce){.timed-rests .rest.active .interlude-notes span{animation:none}}
 .song-reorder.has-tooltip::after,
 #projects-dialog .project-row .has-tooltip::after{
   top:50%;
