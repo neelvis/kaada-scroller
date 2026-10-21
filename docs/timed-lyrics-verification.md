@@ -619,3 +619,52 @@ passed. Isolated live keyboard checks passed L opening/idempotence, physical Spa
 on current/other songs and close/trigger controls without selection/reset/pause,
 and closed-popup playback/font/timer/unavailable-audio regressions. Synthetic local
 browser fixtures only were used; no private school project was modified.
+
+
+## Revision 14: local/cloud workspace redesign (2026-10-21)
+
+Approved scope: [revision 14](../specs/features/timed-lyrics/revision-14.md),
+TL-R73–R81 and TL-AC59–AC63. The user approved the concrete draft on 2026-10-17
+and authorized commit, push and paired deployment. Publication is recorded below
+when completed.
+
+Local verification passed:
+
+- `node --test tests/*.test.mjs`: 92 tests. Storage checks cover interrupted
+  writes, corrupted snapshots/audio, path validation, permission failure,
+  same-directory reconnect/retry, queued save status and media version baselines.
+- `python -m unittest discover -s backend/tests -v`: 17 tests. Standalone cloud
+  song creation/update includes authenticated writes, retry keys, revision
+  conflicts and preservation of project-pinned versions.
+- `node tests/workspace-browser.mjs`: projects-first logged-out navigation,
+  multiple projects, library selection/reordering/removal, narrow layout,
+  recovery in a fresh browser context after clearing browser storage, and
+  legacy migration with independent pinned audio and retained source data.
+- `node tests/workspace-cloud-browser.mjs`: real temporary API, byte-exact
+  backing upload, lost-response creation retry, standalone song upload without
+  a project, second-folder download, service-worker-ready offline playback
+  after logout, conflicts preserved as separate versions, and cancelled
+  project switches not starting playback.
+- `node tests/plain-scroll-browser.mjs`: plain import and review, file-backed
+  reopen, scrolling positions, narrow layout, backing playback and stale guards.
+- `node tests/display-controls-browser.mjs`: tooltips, shortcut guards, global
+  Space behavior from TL-R67, fullscreen dimming, touch and audio-error recovery.
+- Production build, JavaScript syntax, Python compilation and `git diff --check`.
+
+Browser directory tests write ordinary files to temporary OS directories through
+an API adapter. Native OS picker interaction was not automated. Desktop Chrome
+and Edge are the supported directory-access targets; an unsupported browser does
+not silently substitute browser storage for durable files. Physical projector
+and representative live-music rehearsal remain organizer checks.
+
+Source audit extracted preparation, workspace actions, hub UI, cloud transfers,
+file snapshots, active directory sessions and DOM helpers. Hub styles are separate
+and the old inline stylesheet was removed. Existing backend API/store/config/
+backup boundaries remain appropriate. New module assets are included in the
+service-worker shell and deployment required-file checks.
+
+Independent reviews found and resolved F1–F4 (audio pin isolation, reconnect
+recovery, overlapping transfers and same-name audio change detection), plus
+R14-1/R14-2 (cancelled launch and stale source pins). The correction reviews
+reported no remaining material findings in the inspected scope. Older browser
+suites tied to superseded navigation were not claimed as passing.

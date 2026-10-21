@@ -1,3 +1,6 @@
+import { installWorkspaceDirectory, connectTestWorkspace } from './workspace-test-directory.mjs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
@@ -7,10 +10,11 @@ const output = process.env.LYRICS_TEST_OUTPUT || 'test-results/plain-scroll';
 await mkdir(output, { recursive: true });
 const server = spawn(process.execPath, ['tools/serve.mjs'], { env: { ...process.env, LYRICS_PORT: String(port) }, stdio: 'pipe' });
 let browser;
+const workspaceDirectory = await mkdtemp(tmpdir() + '/kaada-scroll-');
 const fixture = { schemaVersion: 1, id: 'plain-set', name: 'Plain', songs: [{ schemaVersion: 1, id: 'plain', title: 'Песня', artist: 'Автор', version: 'Original', language: 'ru', duration: 30, delayMs: 5000, reviewed: true, source: { kind: 'manual', fileName: '' }, cues: [{ id: 'old', start: 1, text: 'Existing', type: 'lyric' }] }] };
 const text = ['Первый куплет', 'Hello <b>world</b>', 'Припев', 'Припев', 'Длинная строка '.repeat(24), 'Финал'].join('\n');
 const records = [{ id: 1, trackName: 'Песня', artistName: 'Автор', albumName: 'Album', duration: 70, instrumental: false, syncedLyrics: null, plainLyrics: text }, { id: 2, trackName: 'No text', artistName: 'Автор', albumName: '', duration: 80, instrumental: false, syncedLyrics: null, plainLyrics: null }];
-async function stored(page) { return page.evaluate(async () => (await (await import('./storage.js')).loadSet()).songs[0]); }
+async function stored(page) { return page.evaluate(async () => (await import('./local-workspace.js')).localState().projects.at(-1).songs[0]); }
 async function seek(page, value) { await page.locator('#event-progress').evaluate((el, value) => { el.value = String(value); el.dispatchEvent(new Event('input', { bubbles: true })); }, value); }
 async function position(page) { return page.locator('#audience-lines').evaluate(el => {
   const first = el.children[0], last = el.children[el.children.length - 1];
@@ -23,9 +27,10 @@ try {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
   const page = await context.newPage(), errors = [];
+  await installWorkspaceDirectory(page, workspaceDirectory);
   page.on('pageerror', error => errors.push(error.message));
   await page.route('https://lrclib.net/api/search*', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(records), headers: { 'Access-Control-Allow-Origin': '*' } }));
-  await page.goto(origin + '/lyrics/');
+  await page.goto(origin + '/lyrics/'); await connectTestWorkspace(page);
   await page.locator('#set-file').setInputFiles({ name: 'fixture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
   await page.locator('.song-select').first().click();
   assert.equal(await page.getByRole('tab', { name: 'Свой текст', exact: true }).count(), 1);
@@ -33,7 +38,7 @@ try {
   const search = async () => { await page.locator('#lrclib-search-form').getByRole('button', { name: 'Найти LRC', exact: true }).click(); await page.waitForSelector('.lrclib-result'); };
   await search();
   await page.setViewportSize({ width: 320, height: 780 });
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'plain import actions fit narrow viewport');
+  await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth, null, { timeout: 5000 });
   await page.screenshot({ path: output + '/plain-import-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   assert.equal(await page.locator('.lrclib-result').nth(1).getByRole('button', { name: 'Вставить чистый текст' }).isDisabled(), true);
@@ -50,9 +55,10 @@ try {
   await page.locator('#ignore-timecodes').check();
   assert.equal((await page.locator('.validation').textContent()).includes('не задано время'), false);
   await page.getByRole('button', { name: 'Подтвердить готовность', exact: true }).click(); assert.equal(await page.locator('.status-pill').textContent(), 'Готова');
-  await page.waitForFunction(async () => (await (await import('./storage.js')).loadSet()).songs[0].reviewed);
-  await page.reload(); await page.locator('.song-select').first().click(); assert.equal(await page.locator('#ignore-timecodes').isChecked(), true);
-  await page.getByRole('button', { name: 'Режим показа', exact: true }).click(); assert.equal(await page.locator('#event-view').isVisible(), true, JSON.stringify({ saved: await stored(page), errors })); assert.equal(await page.locator('#audience-lines b').count(), 0);
+  assert.equal((await stored(page)).reviewed, true);
+  await page.waitForFunction(() => document.querySelector('#local-save-status').textContent === 'Сохранено');
+  await page.reload(); await connectTestWorkspace(page); await page.locator('#hub-list .hub-card[data-local-id]').last().getByRole('button', {name:'Открыть',exact:true}).click(); await page.locator('#song-list .song-select').first().click(); assert.equal(await page.locator('#ignore-timecodes').isChecked(), true);
+  await page.locator('#show-mode').click(); assert.equal(await page.locator('#event-view').isVisible(), true, JSON.stringify({ saved: await stored(page), errors })); assert.equal(await page.locator('#audience-lines b').count(), 0);
   assert.deepEqual(errors, []);
   for (const time of [0, 5, 10]) { await seek(page, time); assert.ok(Math.abs((await position(page)).ratio) < .001); }
   await seek(page, 40); assert.ok(Math.abs((await position(page)).ratio - .5) < .001);
@@ -76,7 +82,7 @@ try {
   const backingSong = { ...fixture.songs[0], duration: 70, delayMs: 0, ignoreTimecodes: true, reviewed: true,
     cues: Array.from({ length: 5 }, (_, i) => ({ id: `b${i}`, start: null, text: `Line ${i}`, type: 'lyric' })) };
   const importSong = async (song, path = '/lyrics/') => {
-    await page.goto(origin + path);
+    await page.goto(origin + path); await connectTestWorkspace(page);
     await page.locator('#set-file').setInputFiles({ name: 'case.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ ...fixture, songs: [song] })) });
     await page.locator('.song-select').first().click();
   };
@@ -88,7 +94,7 @@ try {
   await page.locator('#backing-file').setInputFiles({ name: 'backing.wav', mimeType: 'audio/wav', buffer: wave });
   await page.waitForFunction(() => document.querySelector('.backing-card .file-name')?.textContent.includes('backing.wav'));
   await page.getByRole('button', { name: 'Подтвердить готовность', exact: true }).click();
-  await page.getByRole('button', { name: 'Режим показа', exact: true }).click(); await seek(page, 40);
+  await page.locator('#show-mode').click(); await seek(page, 40);
   assert.ok(Math.abs((await position(page)).ratio - .5) < .001);
   await page.locator('#event-start').click(); await page.waitForFunction(() => document.querySelector('#event-player')?.currentTime > 40);
   await page.locator('#event-start').click(); const backingPaused = await position(page); await page.waitForTimeout(250);
@@ -98,11 +104,11 @@ try {
   await page.locator('#event-reset').click(); assert.ok(Math.abs((await position(page)).ratio) < .001); await page.locator('#exit-event').click();
   // Short songs retain the initial position, and one-line songs never travel.
   for (const song of [{ ...backingSong, duration: 5 }, { ...backingSong, cues: [backingSong.cues[0]] }]) {
-    await importSong(song); await page.getByRole('button', { name: 'Режим показа', exact: true }).click();
+    await importSong(song); await page.locator('#show-mode').click();
     const initial = (await position(page)).y;
     await seek(page, song.duration - .1); assert.equal((await position(page)).y, initial);
     await seek(page, song.duration); assert.equal(await page.locator('.audience-line.neutral').textContent(), 'Песня закончилась');
     await page.locator('#exit-event').click();
   }
   assert.deepEqual(errors, []); console.log('PASS: plain import, readiness, persistence, uniform positions, wrapping, controls and stale guard');
-} finally { if (browser) await browser.close(); server.kill(); }
+} finally { if (browser) await browser.close(); server.kill(); await rm(workspaceDirectory, { recursive: true, force: true }); }

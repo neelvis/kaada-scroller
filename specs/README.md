@@ -12,3 +12,4 @@
 | TL revision 11 | Preparation refinements | Implemented and deployed — UI verification pending | [Requirements](features/timed-lyrics/revision-11.md) |
 | TL revision 12 | Display keyboard and optional uniform scrolling | Implemented and deployed — UI verification pending | [Requirements](features/timed-lyrics/revision-12.md) |
 | TL revision 13 | Manual scrolling in display mode | Implemented; browser verification pending | [Requirements](features/timed-lyrics/revision-13.md) |
+| TL revision 14 | Projects, library and durable local files | Implemented and verified; deployment pending | [Requirements](features/timed-lyrics/revision-14.md) |

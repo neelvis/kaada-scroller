@@ -149,17 +149,34 @@ async def library(request: Request) -> Response:
     if isinstance(found, Response): return found
     return JSONResponse({"songs": request.app.state.store.library(request.query_params.get("q", "")[:300])})
 
+async def songs(request: Request) -> Response:
+    found=require(request, True)
+    if isinstance(found, Response): return found
+    try:
+        data=await body_json(request); key=data["migrationKey"]
+        if not isinstance(key,str) or not key.strip() or len(key)>300 or not valid_entry(data): raise ValueError()
+        entry, created=request.app.state.store.create_song(key, data)
+        return JSONResponse(entry,status_code=201 if created else 200)
+    except Missing: return error("Указанная запись не найдена.","not_found",404)
+    except (ValueError,KeyError,AttributeError,TypeError,json.JSONDecodeError): return error("Проверьте ключ переноса и песню.","invalid",400)
+
 async def song(request: Request) -> Response:
-    found=require(request, request.method == "DELETE")
+    found=require(request, request.method in {"PUT","DELETE"})
     if isinstance(found, Response): return found
     store=request.app.state.store; song_id=request.path_params["song_id"]
     try:
         if request.method == "GET": return JSONResponse(store.get_song(song_id))
+        if request.method == "PUT":
+            data=await body_json(request); revision_id=data["revisionId"]
+            if not isinstance(revision_id,str) or not revision_id or not valid_entry(data): raise ValueError()
+            return JSONResponse(store.save_song(song_id,revision_id,data))
         audio_ids=store.delete_song(song_id)
         for audio_id in audio_ids: (store.audio_dir / audio_id).unlink(missing_ok=True)
         return Response(status_code=204)
     except Referenced: return error("Нельзя удалить песню: она есть в проекте.","referenced",409)
+    except Conflict: return error("Песня уже изменена. Загрузите новую версию или сохраните отдельную копию.","conflict",409)
     except Missing: return error("Песня не найдена.","not_found",404)
+    except (ValueError,KeyError,AttributeError,TypeError,json.JSONDecodeError): return error("Проверьте версию и песню.","invalid",400)
 
 def sniff(path: Path, content_type: str) -> bool:
     with path.open("rb") as stream: head=stream.read(12)
@@ -256,7 +273,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     app=Starlette(routes=[
         Route("/health",health), Route("/login",login,methods=["POST"]), Route("/session",get_session), Route("/logout",logout,methods=["POST"]),
         Route("/projects",projects,methods=["GET","POST"]), Route("/projects/{project_id}",project,methods=["GET","PUT","DELETE"]),
-        Route("/library",library), Route("/songs/{song_id}",song,methods=["GET","DELETE"]), Route("/audio",upload_audio,methods=["POST"]), Route("/audio/cleanup",cleanup_audio,methods=["POST"]), Route("/audio/{audio_id}",audio), Route("/imports",imports,methods=["POST"]), Route("/imports/{migration_key}",imported_project),
+        Route("/library",library), Route("/songs",songs,methods=["POST"]), Route("/songs/{song_id}",song,methods=["GET","PUT","DELETE"]), Route("/audio",upload_audio,methods=["POST"]), Route("/audio/cleanup",cleanup_audio,methods=["POST"]), Route("/audio/{audio_id}",audio), Route("/imports",imports,methods=["POST"]), Route("/imports/{migration_key}",imported_project),
     ])
     app.state.settings=settings; app.state.store=store
     return app

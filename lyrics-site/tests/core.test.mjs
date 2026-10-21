@@ -155,3 +155,10 @@ test('uniform scroll progress has fixed ten-second intro and follows elapsed tim
   assert.equal(uniformScrollProgress({ duration: 10 }, 10), 0);
   assert.equal(uniformScrollProgress({ duration: 5 }, 3), 0);
 });
+
+
+test('backing-only playback is valid with reviewed metadata and a linked track', () => {
+  assert.deepEqual(validateSong({ ...song({ cues: [], backing: { fileName: 'instrumental.wav' } }), reviewed: true }), []);
+  assert.ok(validateSong(song({ cues: [], backing: { fileName: '' } })).some(message => message.includes('текст или минусовку')));
+  assert.ok(validateSong(song({ cues: [], reviewed: false, backing: { fileName: 'instrumental.wav' } })).some(message => message.includes('Подтвердите')));
+});

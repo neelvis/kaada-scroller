@@ -8,7 +8,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
-  <style>[hidden]{display:none!important}.song-item{padding:0;gap:2px}.song-select{min-width:0;flex:1;display:flex;text-align:left;align-items:center;border:0;background:transparent;color:inherit;padding:11px 6px 11px 9px;gap:9px}.song-item-title,.song-item-status{display:block}.song-reorder-wrap{display:flex;padding-right:4px}.song-reorder{border:0;background:transparent;color:var(--muted);padding:4px 3px;font-size:14px}.song-reorder:disabled{opacity:.25;cursor:not-allowed}.cue-row{grid-template-columns:105px minmax(0,1fr) 118px 35px 35px}@media(max-width:780px){.cue-row{grid-template-columns:82px minmax(0,1fr) 88px 30px 30px}}@media(max-width:500px){.cue-row{grid-template-columns:70px minmax(0,1fr) 30px 30px}}</style>
+  <link rel="stylesheet" href="./hub.css">
   <title>Тексты песен</title>
 </head>
 <body>
@@ -27,24 +27,57 @@
         </svg>
         <span class="offline-state" id="offline-state" aria-live="polite">Проверка автономной работы…</span>
         <span class="remote-state" id="remote-state" aria-live="polite">Локальный набор</span>
-        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="library" type="button" aria-label="Библиотека" data-tooltip="Библиотека" aria-controls="online-library local-library"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-library"/></svg></button>
-        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="projects" type="button" aria-label="Проекты" data-tooltip="Проекты" hidden disabled><svg class="event-icon" aria-hidden="true"><use href="#action-icon-projects"/></svg></button>
+        <nav class="primary-nav" aria-label="Основные разделы">
+          <button class="button quiet nav-button is-active" id="projects" type="button" aria-current="page">Проекты</button>
+          <button class="button quiet nav-button" id="library" type="button" aria-controls="online-library local-library">Библиотека песен</button>
+        </nav>
         <button class="button quiet event-icon-button has-tooltip action-icon-button" id="save-project" type="button" aria-label="Сохранить" data-tooltip="Сохранить" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-save"/></svg></button>
-        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="login" type="button" aria-label="Войти" data-tooltip="Войти"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-sign-in"/></svg></button>
-        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="logout" type="button" aria-label="Выйти" data-tooltip="Выйти" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-sign-out"/></svg></button>
+        <button class="button quiet account-button" id="login" type="button">Войти</button>
+        <button class="button quiet account-button" id="logout" type="button" hidden>Выйти</button>
         <button class="button quiet" id="clear-downloaded" type="button" hidden>Очистить загруженный проект</button>
-        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="import-set" type="button" aria-label="Импорт" data-tooltip="Импорт"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-import"/></svg></button>
-        <button class="button quiet event-icon-button has-tooltip action-icon-button" id="export-set" type="button" aria-label="Экспорт" data-tooltip="Экспорт"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-export"/></svg></button>
+        <button class="button quiet" id="import-set" type="button" hidden>Импорт</button>
+        <button class="button quiet" id="export-set" type="button" hidden>Экспорт</button>
         <input id="set-file" type="file" accept="application/json,application/zip,.json,.zip" hidden>
       </div>
     </header>
 
-    <section class="workspace" id="preparation-view">
+    <section class="home-view" id="home-view" aria-labelledby="hub-title">
+      <div class="hub-wrap">
+        <div class="hub-heading">
+          <div class="hub-heading-copy">
+            <p class="eyebrow">Рабочее пространство</p>
+            <h1 id="hub-title">Ваши проекты</h1>
+            <p id="hub-description">Соберите песни и минусовки для выступления. Проекты и библиотека доступны на этом устройстве и в облаке.</p>
+          </div>
+          <div class="hub-workspace">
+            <button class="button quiet workspace-connect" id="workspace-connect" type="button">Выбрать папку</button>
+            <span id="workspace-status" class="workspace-status" aria-live="polite">Папка не выбрана</span><button id="workspace-retry" class="button quiet" type="button" hidden>Повторить сохранение</button>
+            <button class="button quiet migration-link" id="migrate-browser" type="button">Перенести прежние данные</button>
+          </div>
+        </div>
+        <div class="hub-toolbar">
+          <label class="hub-search-wrap"><span class="visually-hidden">Поиск по проектам</span><input id="hub-search" type="search" placeholder="Найти проект" autocomplete="off"></label>
+          <label class="visually-hidden" for="hub-filter">Расположение проектов</label>
+          <select id="hub-filter" aria-label="Расположение проектов">
+            <option value="all">Все</option>
+            <option value="local">На этом устройстве</option>
+            <option value="cloud">В облаке</option>
+          </select>
+          <button class="button primary hub-create" id="hub-create" type="button">Создать проект</button>
+        </div>
+        <div class="hub-list" id="hub-list" aria-live="polite" aria-busy="false"></div>
+        <p class="hub-message" id="hub-message" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="workspace" id="preparation-view" hidden>
       <aside class="song-list-panel" aria-label="Список песен">
+        <div class="prep-actions"><button class="button quiet" id="back-home" type="button">← Проекты</button><button class="button quiet" id="upload-current" type="button">Загрузить в облако</button></div>
+        <span class="local-save-status" id="local-save-status" aria-live="polite"></span><button class="button quiet" id="retry-local-save" type="button" hidden>Повторить сохранение</button>
         <div class="panel-heading"><div><p class="eyebrow">Набор</p><div class="set-name-clip" id="set-name-clip"><input id="set-name" class="set-name" aria-label="Название набора" value="Мой набор"><div class="set-name-marquee" id="set-name-marquee" aria-hidden="true"><div class="set-name-marquee-track"><span class="set-name-marquee-copy"></span><span class="set-name-marquee-copy"></span></div></div><span class="set-name-measure" id="set-name-measure" aria-hidden="true"></span></div></div><span class="song-count" id="song-count">0 песен</span></div>
-        <button class="button primary" id="show-mode" type="button" disabled>Режим показа</button>
+        <button class="button primary" id="show-mode" type="button" disabled>▶ Запустить</button>
         <section id="project-songs" hidden><h2 class="eyebrow">Песни проекта</h2><div class="song-list" id="song-list"></div></section>
-        <section id="local-library" aria-labelledby="local-library-heading"><h2 class="eyebrow" id="local-library-heading">Локальная библиотека</h2><div class="song-list" id="local-song-list"></div></section>
+        <section id="local-library" aria-labelledby="local-library-heading"><h2 class="eyebrow" id="local-library-heading">Библиотека песен</h2><div class="song-list" id="local-song-list"></div></section>
         <section id="online-library" aria-labelledby="online-library-heading" hidden><h2 class="eyebrow" id="online-library-heading">Онлайн-библиотека</h2><div class="song-list" id="online-song-list" aria-live="polite"></div></section>
         <button class="button add-song" id="add-song" type="button">+ Новая песня</button>
         <button class="button add-song" id="add-library-song" type="button" disabled>+ Из библиотеки</button>
@@ -100,20 +133,10 @@
       </dialog>
     </section>
   </main>
+  <dialog id="create-local-project-dialog"><form id="create-local-project-form"><h2>Новый проект</h2><label class="field">Название проекта<input id="local-project-name" maxlength="120" required placeholder="Например, Осенний концерт"></label><label class="field">Где хранить<select id="new-project-location"><option value="local">На этом устройстве</option><option value="cloud">В облаке</option></select></label><p class="hint">На этом устройстве проект и его файлы сохраняются в выбранной рабочей папке.</p><div class="dialog-actions"><button class="button quiet" type="button" id="cancel-local-project">Отмена</button><button class="button primary" type="submit">Создать проект</button></div></form></dialog>
   <dialog id="confirm-dialog"><form method="dialog"><h2 id="confirm-title">Заменить текст?</h2><p id="confirm-text"></p><div class="dialog-actions"><button class="button quiet" value="cancel">Отмена</button><button class="button primary" id="confirm-ok" value="confirm">Заменить</button></div></form></dialog>
   <dialog id="login-dialog"><form id="login-form"><h2>Вход организатора</h2><p>Введите общий пароль школы. Он не сохраняется в браузере.</p><label class="field">Пароль<input id="login-password" type="password" autocomplete="current-password" required></label><p class="dialog-error" id="login-error" hidden></p><div class="dialog-actions"><button class="button quiet" value="cancel" formmethod="dialog">Отмена</button><button class="button primary" type="submit">Войти</button></div></form></dialog>
-  <dialog id="projects-dialog" aria-labelledby="projects-title">
-    <form method="dialog">
-      <h2 id="projects-title">Проекты</h2>
-      <p>Проекты сохраняются на сервере. Подготовленные снимки доступны для показа без сети.</p>
-      <div id="project-list" class="project-list"></div>
-      <label class="field" id="new-project-field">Новый проект<input id="new-project-name" maxlength="120" placeholder="Например, Осенний концерт"></label>
-      <label class="migration-choice"><input id="migration-audio" type="checkbox"><span>При переносе набора загрузить оригиналы и минусовки</span></label>
-      <button class="button quiet migration-action" id="migrate-legacy" type="button">Перенести локальный набор</button>
-      <div class="dialog-actions"><button class="button quiet" value="cancel">Закрыть</button><button class="button primary" id="create-project" type="button">Создать проект</button></div>
-    </form>
-  </dialog>
-  <dialog id="library-dialog"><form method="dialog"><h2>Общая библиотека</h2><p>Добавьте уже сохранённую песню в проект. У проекта останется выбранная версия таймлайна.</p><label class="field">Поиск<input id="library-search" placeholder="Название или исполнитель"></label><div id="library-list" class="project-list"></div><div class="dialog-actions"><button class="button quiet" value="cancel">Закрыть</button></div></form></dialog>
+  <dialog id="library-dialog"><form method="dialog"><h2>Общая библиотека</h2><p>Добавьте уже сохранённую песню в проект. У проекта останется выбранная версия таймлайна.</p><label class="field">Поиск<input id="library-search" placeholder="Название или исполнитель"></label><div id="library-list" class="project-list"></div><div class="dialog-actions"><button class="button quiet" value="cancel">Закрыть</button><button class="button quiet" id="library-create-new" type="button">Новая песня</button><button class="button primary" id="library-add-selected" type="button">Добавить выбранные</button></div></form></dialog>
   <template id="empty-state"><div class="empty-state"><span class="empty-note">♪</span><h1 data-empty-title></h1><p data-empty-copy></p><button class="button primary" type="button" data-add-song hidden>Добавить песню</button><button class="button primary" type="button" data-empty-login hidden>Войти организатору</button><button class="button quiet" type="button" data-empty-project hidden>Создать проект</button></div></template>
   <script type="module" src="./app.js"></script>
 </body>

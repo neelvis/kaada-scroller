@@ -72,6 +72,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS upload_reservations(id TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS songs(id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS song_revisions(id TEXT PRIMARY KEY, song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE, audio_id TEXT REFERENCES audio(id), backing_audio_id TEXT REFERENCES audio(id), body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+            CREATE TABLE IF NOT EXISTS song_uploads(migration_key TEXT PRIMARY KEY, revision_id TEXT NOT NULL REFERENCES song_revisions(id) ON DELETE CASCADE);
             CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, migration_key TEXT UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS project_entries(project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, position INTEGER NOT NULL, song_id TEXT NOT NULL REFERENCES songs(id), revision_id TEXT NOT NULL REFERENCES song_revisions(id), PRIMARY KEY(project_id,position));
             CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires_at INTEGER NOT NULL);
@@ -170,6 +171,35 @@ class Store:
             row=db.execute("SELECT * FROM song_revisions WHERE song_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1", (song_id,)).fetchone()
             if not row: raise Missing()
             return self.entry(row)
+
+    def create_song(self, migration_key: str, raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        """Commit a standalone upload and its retry key together, without a project."""
+        with self.tx() as db:
+            existing=db.execute("SELECT revision_id FROM song_uploads WHERE migration_key=?", (migration_key,)).fetchone()
+            if existing: return self.entry(self.revision(db, existing["revision_id"])), False
+            # Uploading a separate copy must never resolve a caller-supplied cloud ID.
+            entry={"song":raw["song"], "audioId":raw.get("audioId"), "backingAudioId":raw.get("backingAudioId")}
+            row=self._resolve_entry(db, entry)
+            db.execute("INSERT INTO song_uploads(migration_key,revision_id) VALUES(?,?)", (migration_key,row["id"]))
+            return self.entry(row), True
+
+    def save_song(self, song_id: str, revision_id: str, raw: dict[str, Any]) -> dict[str, Any]:
+        """Advance the library head only from the version the caller reviewed."""
+        with self.tx() as db:
+            prior=self.revision(db, revision_id, song_id)
+            latest=db.execute("SELECT * FROM song_revisions WHERE song_id=? ORDER BY rowid DESC LIMIT 1", (song_id,)).fetchone()
+            audio_id=raw.get("audioId", prior["audio_id"])
+            backing_audio_id=raw.get("backingAudioId", prior["backing_audio_id"])
+            for candidate in (audio_id, backing_audio_id):
+                if candidate and not db.execute("SELECT 1 FROM audio WHERE id=?", (candidate,)).fetchone(): raise Missing()
+            song=self._with_backing_metadata(db, {**raw["song"], "id":song_id}, backing_audio_id)
+            canonical=json.dumps(song, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            # A response may have been lost after commit. Replaying the same update
+            # returns its existing head instead of creating another revision.
+            if latest["body"] == canonical and latest["audio_id"] == audio_id and latest["backing_audio_id"] == backing_audio_id:
+                return self.entry(latest)
+            if latest["id"] != revision_id: raise Conflict()
+            return self.entry(self._new_revision(db, song_id, audio_id, backing_audio_id, song))
 
     def delete_project(self, project_id: str, revision: int) -> None:
         with self.tx() as db:

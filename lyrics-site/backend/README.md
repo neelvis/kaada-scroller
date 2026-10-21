@@ -57,3 +57,17 @@ cleanup consider references in both roles, including older pinned revisions.
 Backup/restore includes and validates both audio roles. Revision-3 archives remain
 readable and receive the nullable migration when opened. Publish revision-4 viewer
 and API together; data remains outside release directories as before.
+
+## Standalone library writes
+
+Authenticated `POST /songs` accepts `migrationKey`, `song`, and optional `audioId`
+and `backingAudioId`. It commits the new song and retry key together without a
+project: 201 for creation, 200 for a replay of that key. A persistent mapping
+returns the original uploaded revision even after later song edits.
+
+`PUT /songs/{songId}` accepts the reviewed `revisionId`, `song`, and optional audio
+links. It advances the library head only from that revision; a divergent stale
+update returns 409 without changing content. An exact completed-update replay
+returns its existing head. Omitted audio links retain the previous links; explicit
+null clears them. Project-pinned revisions remain unchanged. Existing Origin,
+CSRF and private-session checks apply to both writes.

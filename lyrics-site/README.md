@@ -1,71 +1,82 @@
 # Timed lyrics
 
-A portable browser application for preparing small music-school set lists and
-showing lyrics after a manual Start, with optional synchronized backing audio. Initial
-mount: `https://nasty-edu.online/lyrics/`. The same public artifact also runs at a
-separate origin's root. Revision 3 is live as paired release `20261012_025323`, with a
-private server API and projects. Publication evidence is recorded in the
+A portable browser application for assembling performance projects and playing
+backing tracks and/or timed lyrics. Local projects and the song library live in a
+user-selected folder; the private API provides explicit cloud transfer. The same
+public artifact runs at `/lyrics/` or an origin's root.
+
+The current redesign follows [revision 14](../specs/features/timed-lyrics/revision-14.md).
+Validation and publication evidence is recorded in the
 [verification report](../docs/timed-lyrics-verification.md). Representative sung
 recordings and a projector rehearsal remain organizer checks.
-Revision 4 added backing audio and live display controls, published as paired
-release `20261012_080618`. Revision 5 added LRCLIB search in paired release `20261012_202705`. Revision 6
-adds the preparation redesign and portable backing archives; paired release
-`20261013_193539` is now live after local and production checks.
 
-## Prepare and save songs
+## Projects and durable local files
 
-1. Open the site in desktop Chrome or Edge with internet. Choose **Log in** with
-   the shared organizer password, then **Projects → Create project**.
-2. Choose **+ New song** in the sidebar; enter a title, optional artist,
-   recording version and duration in `MM:SS`. Language and global delay fields
-   are hidden; previously saved values remain intact. Projects require login.
-3. Choose one of the upper preparation tabs: **LRCLIB** (initially selected),
-   **Own LRC**, or **Own text** (`Свой текст`). Import line-timed LRC or paste lyrics, including
-   every performed chorus occurrence as a separate line. Tab changes preserve
-   import drafts; the editable timeline remains available below every tab.
-   The original recording and recognition controls are temporarily hidden.
-   Previously linked originals remain available for listening and manual tapping
-   with **Mark next** (Space outside an input). Stored original audio is preserved
-   by ordinary local/server saves, but is excluded from portable exports.
-4. Optionally select/preview a separate **Backing track** MP3/WAV. Bounds are
-   150 MiB and 20 minutes per file, with a configurable 1 GiB private library quota.
-   Check the arrangement and start against the timeline; replacing or removing
-   backing audio requires renewed readiness confirmation.
-5. Confirm duration and every cue, or enable **ignore timecodes** above the
-   timeline rows for uniform scrolling without line timing. This keeps stored
-   times but bypasses their validation. Changing the mode requires renewed
-   readiness confirmation. Choose **Confirm readiness**, then **Save**.
-   Server saving remains explicit. Failed saves retain drafts; conflicts preserve
-   the other organizer's saved version.
-6. Repeat for up to 25 songs. **+ From library** is below **+ New song** and requires
-   an authenticated online project. **Update version** replaces the selected song
-   with the latest library text, timings and audio links in this project only;
-   other projects keep their pinned versions. Confirm the replacement and Save.
-   Removing a song or deleting a project retains the shared library.
-7. Export a portable ZIP containing `set.json` and every linked backing track.
-   Each JSON song has a `backingTrack` relative archive path or `null`. Original
-   vocal audio and private server references are excluded. Unavailable linked
-   backing audio fails export visibly. Import restores the local set and backing
-   audio together without relinking; invalid archives or storage failures preserve
-   the previous set. Legacy JSON-only imports remain supported and require audio
-   relinking. Imported sets do not silently update a server project. Use
-   **Projects → Transfer local set** for explicit transfer, with optional audio
-   upload; successful transfers can be retried without duplication.
+Open **Projects** to assemble a performance, or **Song library** to prepare reusable
+songs. Both sections work without signing in. The local location label is
+`На этом устройстве`; filters select all items, local items or cloud items.
 
-Recognition quality remains unproven on representative singing and its controls
-are hidden in this redesign. Manual review remains necessary for imported timelines.
-Revision 6 is verified locally and deployed as paired release `20261013_193539`.
+For local work, use desktop Chrome or Edge over HTTPS (localhost is supported for
+development). Choose a working folder with **Choose folder**. Local project JSON,
+library data and audio are ordinary files under `kaada-workspace/` in that folder.
+Browser storage only remembers the directory handle and retains legacy data for
+explicit migration. If permission expires, reconnect the same folder; use
+**Retry saving** to finish an interrupted save. Unsupported browsers explain the
+restriction and retain cloud access and explicit portable transfer where available.
 
-## Local and online libraries
+Local edits save automatically. Wait for **Saved** before closing the browser.
+Pending and failed writes are visible; failed saves retain the draft and staged
+media in the active session for retry. An unsaved draft is not guaranteed to
+survive closing the browser. Immutable snapshots and last-written commit markers
+preserve previous complete versions. Copy the whole `kaada-workspace` directory
+for a backup; its snapshots and audio belong together. Old snapshots/audio are
+retained for recovery, so storage usage grows over time.
 
-The **Библиотека** button refreshes the sidebar library. Without signing in, only
-**Локальная библиотека** songs are available; new songs and imports stay on this
-device. Signing in automatically loads **Онлайн-библиотека** from the shared API.
-Selecting an online song without an open project opens a read-only preview with
-lyrics, audio and display mode. In an editable server project, selecting it adds
-its current version to that project; click **Save** to persist the addition.
-Local songs remain accessible while signed in. Signing out removes online songs
-from the sidebar and stops private playback without changing the local library.
+1. Choose **Create project**, enter a name and select local or cloud storage.
+   Local is the default; cloud creation requires login.
+2. Choose **From library**, select several songs and add them together, or create
+   a song in the project. Drag-free up/down controls change the performance order.
+3. Prepare the song's text, optional backing track and timing. Existing LRCLIB,
+   own LRC and plain-text tabs remain available. Durations use `MM:SS`.
+4. Confirm readiness. A song can contain lyrics, backing audio, or both. Configured
+   missing backing audio is a playback failure with an explicit lyrics-only option.
+5. Choose **Launch** to open performance mode. Local readiness verifies the files;
+   the offline-ready label additionally requires a cached application shell.
+
+Projects keep selected song versions. Adding a library song copies its metadata
+and audio identity into the project; editing or removing the library song does not
+alter that pinned version. **Update from library** explicitly adopts the latest
+local library version. **Save song to library** preserves a prepared project song
+for reuse. Removing a project song does not delete library content.
+
+## Cloud transfer and migration
+
+Signing in reveals the shared cloud library and projects without uploading local
+work. Choose **Upload to cloud** explicitly for a song or project; projects include
+all required backing tracks. Standalone song uploads do not create a project.
+Linked uploads update their existing cloud object; **Create separate copy** makes
+an independent local object for a separate upload. Retry keys prevent duplicate
+creation after interrupted responses. If an update response was lost, a subsequent
+attempt may report a changed cloud revision; download that revision for comparison.
+
+**Download for performance** saves project data and backing files into the selected
+working folder. Downloading a newer cloud version preserves the existing local
+version as a separate copy. Simultaneous local/cloud edits never silently overwrite
+either side. Location and version badges describe local changes, a newer cloud
+version or changes on both sides. Signing out preserves deliberate folder downloads,
+while private online-only playback and browser-private drafts/caches are cleared.
+
+Use **Migrate previous data** to copy legacy browser-local songs and downloaded
+snapshots into the folder. Original browser data remains intact; repeated migration
+skips completed sources. Missing backing files fail visibly and do not publish a
+partially migrated snapshot. Existing cloud projects remain available.
+
+**Import** accepts portable ZIP projects with backing files and older JSON sets;
+JSON sets containing backing labels need their files relinked. Import creates a
+new local project and independent library versions. **Export** creates one portable
+ZIP with every linked backing file; original vocal recordings and private cloud
+identifiers are excluded. Export fails rather than silently omitting a required
+backing file.
 
 ## Find an existing LRC
 
@@ -136,9 +147,9 @@ four-pixel steps, within 28–100 pixels; numeric keypad +/− also work. Shortc
 leave editable fields and open menus/dialogs alone. After closing the library,
 Space starts/pauses even when focus remains on its trigger. Space also controls
 playback on other focused display buttons; use Enter to activate that button.
-L opens the library popup. While that popup is open, Space does nothing: it cannot
-select/restart a song or pause/resume playback. Use Enter or the mouse to select
-a song, or Escape to close the popup.
+L opens the song popup. Space only starts/pauses playback, regardless of focus;
+it does not activate a focused control or select a song. Use Enter or the mouse
+to select a song, or Escape to close the popup.
 Arrow seeking remains available.
 
 Toggle **Highlight current line** off for equal emphasis across lyric lines.
@@ -157,24 +168,14 @@ fullscreen icon, or Escape to leave fullscreen. See
 [compact display requirements](../specs/features/timed-lyrics/revision-10.md).
 Live beat following and automatic tempo compensation remain outside this version.
 
-For local regression checks, `pnpm test:display` covers display/playback navigation
-and layout; `pnpm test:display-controls` covers tooltip, shortcut, touch restoration,
+For local regression checks, `pnpm test:plain` covers lyric preparation, persistence,
+scrolling and playback; `pnpm test:display-controls` covers tooltip, shortcut, touch restoration,
 fullscreen timer, and audio-error visibility edge cases after `pnpm build`.
 
-For a server project, save and confirm all songs, then choose **Save locally** in the sidebar.
-This stores an immutable timeline snapshot, every linked backing track and viewer
-files. A failed download cannot report successful preparation. Reopen through
-**Local projects → Open offline** on the same laptop and verify Start without internet.
-Snapshots are read-only and require neither original references nor a model.
-Session/project discovery times out after five seconds on a stalled connection
-so prepared projects remain accessible. Recognition downloads are outside this
-event guarantee. Keep the laptop awake and the audience tab in front. Reload
-returns to preparation.
-
-**Log out** clears private v2 drafts, downloaded references and prepared projects
-on that browser. It preserves old local sets. An offline snapshot also offers
-**Clear downloaded project**. Browser storage can be removed by the browser/user;
-server copies and exported backups remain separate.
+For a cloud project, save edits, then choose **Download for performance** and
+select a working folder. Reopen the local project from **Projects** and rehearse
+without internet. Local copies remain editable. Keep the laptop awake and the
+performance tab in front. Reload returns to Projects.
 
 ## Development and validation
 
@@ -182,14 +183,11 @@ server copies and exported backups remain separate.
 pnpm install --frozen-lockfile --ignore-scripts
 pnpm build
 pnpm test
-pnpm test:browser
-pnpm test:redesign
-pnpm test:display
-pnpm test:server
-pnpm test:lrclib
-pnpm test:lrclib:server
+pnpm test:workspace
+pnpm test:plain
+pnpm test:display-controls
+pnpm test:workspace:cloud
 backend/.venv/bin/python -m unittest discover -s backend/tests -v
-node tests/server-browser.mjs
 pnpm serve
 ```
 
@@ -212,3 +210,23 @@ LRCLIB search requirements: [revision 5](../specs/features/timed-lyrics/revision
 Plain lyrics and uniform scrolling: [revision 8](../specs/features/timed-lyrics/revision-8.md).
 Research and evidence: [research](../docs/timed-lyrics-research.md).
 Release instructions: [deployment](deploy/README.md).
+
+## Source organization
+
+- `app.js`: application state, navigation wiring and performance lifecycle.
+- `song-editor.js`: preparation forms, lyric import/search and cue editing.
+- `workspace-actions.js`: local/cloud user actions and migration.
+- `workspace-hub.js` and `hub.css`: project/library destinations and responsive UI.
+- `workspace-files.js`: ordinary-directory snapshots, audio integrity and recovery.
+- `local-workspace.js`: active folder session, staged media, save status and retry.
+- `cloud-transfers.js`: explicit transfers, revision baselines and project pins.
+- `ui.js`: shared DOM controls. Existing playback, portable archive, recognition,
+  LRCLIB and remote transport modules retain their domain responsibilities.
+
+The HTTP service remains split into API, configuration, credentials, backup and
+store modules; those boundaries remain useful at the current size. New local
+persistence belongs to the frontend directory adapter, not the cloud database.
+
+Workspace browser tests use an adapter that writes to real temporary OS folders;
+they verify fresh-context recovery and real API transfers without automating the
+native OS folder dialog. Permission and failure paths have focused adapter tests.

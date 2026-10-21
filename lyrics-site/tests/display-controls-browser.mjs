@@ -1,3 +1,6 @@
+import { installWorkspaceDirectory, connectTestWorkspace } from './workspace-test-directory.mjs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
@@ -6,6 +9,8 @@ const port = Number(process.env.LYRICS_DISPLAY_CONTROLS_PORT || 8117);
 const origin = `http://127.0.0.1:${port}`;
 const server = spawn(process.execPath, ['tools/serve.mjs'], { env: { ...process.env, LYRICS_PORT: String(port) }, stdio: 'pipe' });
 let browser;
+const testDirectories = [];
+async function directory(page) { const path = await mkdtemp(tmpdir() + '/kaada-display-'); testDirectories.push(path); await installWorkspaceDirectory(page, path); }
 
 function song(id, title, backing = '') {
   return {
@@ -21,13 +26,14 @@ function song(id, title, backing = '') {
 
 async function ready(page, songs) {
   await page.goto(`${origin}/lyrics/`);
-  await page.waitForSelector('#editor h1');
+  await page.waitForSelector('#hub-title');
+  await connectTestWorkspace(page);
   await page.locator('#set-file').setInputFiles({
     name: 'display.json', mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify({ schemaVersion: 1, id: 'display-controls', name: 'Проверка показа', songs })),
   });
   await page.waitForFunction(count => document.querySelectorAll('.song-item').length === count, songs.length);
-  await page.getByRole('button', { name: 'Режим показа', exact: true }).click();
+  await page.locator('#show-mode').click();
   await page.waitForSelector('#event-view:not([hidden])');
 }
 
@@ -40,9 +46,10 @@ try {
   browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome', headless: true });
 
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  const page = await context.newPage();
+  const page = await context.newPage(); await directory(page);
   await page.goto(`${origin}/lyrics/`);
-  await page.waitForSelector('#editor h1');
+  await page.waitForSelector('#hub-title');
+  await connectTestWorkspace(page);
   await page.evaluate(() => {
     document.querySelector('#event-view').hidden = false;
     document.querySelector('#preparation-view').hidden = true;
@@ -137,7 +144,10 @@ try {
   assert.equal(await fontSize(), beforeEditableShortcuts, 'font shortcuts do not trigger while editing text');
   const beforeInput = await states();
   await page.keyboard.press('Space'); await page.keyboard.press('m'); await page.keyboard.press('c'); await page.keyboard.press('f'); await page.keyboard.press('l');
-  assert.deepEqual(await states(), beforeInput, 'Space, M, C, F, and L do not trigger while editing text');
+  const afterInput = await states();
+  assert.notEqual(afterInput.start, beforeInput.start, 'Space controls playback regardless of focus (TL-R67)');
+  assert.deepEqual({ ...afterInput, start: beforeInput.start }, beforeInput, 'M, C, F, and L remain guarded while editing');
+  await page.keyboard.press('Space');
   assert.equal(await page.locator('#event-menu').evaluate(dialog => dialog.open), false, 'L does not open the library while editing text');
   await page.locator('#shortcut-guard-input').evaluate(input => input.remove());
 
@@ -170,7 +180,10 @@ try {
       dialog.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true }));
     }
   });
-  assert.deepEqual(await states(), beforeDialog, 'shortcuts do not trigger while a dialog is open');
+  const afterDialog = await states();
+  assert.notEqual(afterDialog.start, beforeDialog.start, 'Space controls playback while the menu is open (TL-R67)');
+  assert.deepEqual({ ...afterDialog, start: beforeDialog.start }, beforeDialog, 'other shortcuts remain guarded while a dialog is open');
+  await page.keyboard.press('Space');
   assert.equal(await fontSize(), fontBeforeDialog, 'font shortcuts do not trigger while a dialog is open');
   await page.locator('#event-menu-close').click();
   await page.waitForFunction(() => !document.querySelector('#event-menu').open);
@@ -239,7 +252,7 @@ try {
 
   // Touching the full, dimmed panel restores controls without seeking.
   const touchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-  const touch = await touchContext.newPage();
+  const touch = await touchContext.newPage(); await directory(touch);
   await ready(touch, [song('touch-ready', 'Проверка касания')]);
   await touch.locator('#fullscreen').tap();
   await touch.waitForFunction(() => Boolean(document.fullscreenElement) && document.querySelector('#event-view').classList.contains('is-fullscreen'));
@@ -256,7 +269,7 @@ try {
   await touchContext.close();
 
   // Audio failure in fullscreen pins both the explanation and recovery controls open.
-  const missing = await context.newPage();
+  const missing = await context.newPage(); await directory(missing);
   await ready(missing, [song('missing-backing', 'Файл отсутствует', 'not-present.wav')]);
   await missing.locator('#fullscreen').click();
   await missing.waitForFunction(() => Boolean(document.fullscreenElement) && document.querySelector('#event-view').classList.contains('is-fullscreen'));
@@ -277,4 +290,5 @@ try {
 } finally {
   if (browser) await browser.close();
   server.kill();
+  for (const path of testDirectories) await rm(path, { recursive: true, force: true });
 }

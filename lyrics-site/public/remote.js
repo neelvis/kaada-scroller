@@ -45,3 +45,6 @@ export async function downloadAudio(id) {
 }
 export async function importLegacy(payload) { return request('/imports', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } }); }
 export async function findMigration(key) { try { return await request(`/imports/${encodeURIComponent(key)}`); } catch (error) { if (error.status === 404) return null; throw error; } }
+
+export const createSong = payload => request('/songs', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
+export const saveSong = (id, payload) => request(`/songs/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });

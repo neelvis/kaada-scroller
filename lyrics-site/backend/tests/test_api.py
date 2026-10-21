@@ -56,6 +56,86 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(stale.status_code,409)
         self.assertEqual(self.client.delete(f"/songs/{first['songId']}",headers=headers).status_code,409)
 
+    def test_standalone_song_auth_and_validation(self):
+        data={"migrationKey":"local-song", "song":song()}
+        self.assertEqual(self.client.post("/songs",headers=self.headers,json=data).status_code,401)
+        self.assertEqual(self.client.put("/songs/unknown",headers=self.headers,json=data).status_code,401)
+        headers=self.login()
+        self.assertEqual(self.client.post("/songs",json=data).status_code,403)
+        self.assertEqual(self.client.put("/songs/unknown",json=data).status_code,403)
+        for invalid in (None, [], {}, {**data,"migrationKey":" "}, {**data,"migrationKey":42}, {**data,"migrationKey":"k"*301}, {**data,"song":{}}, {**data,"audioId":[]}, {**data,"backingAudioId":1}):
+            self.assertEqual(self.client.post("/songs",headers=headers,json=invalid).status_code,400)
+        for invalid in ({"song":song()}, {"revisionId":None,"song":song()}, {"revisionId":"","song":song()}, {"revisionId":"x","song":{}}):
+            self.assertEqual(self.client.put("/songs/unknown",headers=headers,json=invalid).status_code,400)
+        self.assertEqual(self.client.get("/library").json()["songs"],[])
+
+    def test_standalone_song_upload_retry_survives_restart_without_project(self):
+        headers=self.login(); data={"migrationKey":"local-song", "song":song()}
+        first=self.client.post("/songs",headers=headers,json=data)
+        self.assertEqual(first.status_code,201); entry=first.json()
+        self.assertNotEqual(entry["songId"],"local-id")
+        self.assertEqual(entry["song"]["id"],entry["songId"])
+        retry=self.client.post("/songs",headers=headers,json=data)
+        self.assertEqual(retry.status_code,200); self.assertEqual(retry.json(),entry)
+        store=self.client.app.state.store
+        self.client.app.state.store=type(store)(store.data_dir)
+        retry=self.client.post("/songs",headers=headers,json={**data,"song":song("Changed draft")})
+        self.assertEqual(retry.status_code,200); self.assertEqual(retry.json(),entry)
+        self.assertEqual(self.client.get("/projects").json()["projects"],[])
+        self.assertEqual(len(self.client.get("/library").json()["songs"]),1)
+        with store.read() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM song_revisions").fetchone()[0],1)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM song_uploads").fetchone()[0],1)
+        # Failure rolls back the retry key along with the song, allowing recovery.
+        missing={"migrationKey":"missing-audio", "song":song(), "audioId":"missing"}
+        self.assertEqual(self.client.post("/songs",headers=headers,json=missing).status_code,404)
+        self.assertEqual(self.client.post("/songs",headers=headers,json={**missing,"audioId":None}).status_code,201)
+
+    def test_library_update_retries_conflicts_and_project_pins(self):
+        headers=self.login()
+        original=self.client.post("/songs",headers=headers,json={"migrationKey":"library", "song":song()}).json()
+        project=self.client.post("/projects",headers=headers,json={"name":"Pinned"}).json()
+        pinned=self.client.put(f"/projects/{project['id']}",headers=headers,json={"revision":project["revision"],"name":"Pinned","songs":[original]}).json()
+        data={"revisionId":original["revisionId"],"song":song("Updated library")}
+        path=f"/songs/{original['songId']}"
+        update=self.client.put(path,headers=headers,json=data)
+        self.assertEqual(update.status_code,200); updated=update.json()
+        self.assertNotEqual(updated["revisionId"],original["revisionId"])
+        self.assertEqual(updated["song"]["id"],original["songId"])
+        self.assertEqual(self.client.put(path,headers=headers,json=data).json(),updated)
+        conflict=self.client.put(path,headers=headers,json={**data,"song":song("Independent local edit")})
+        self.assertEqual(conflict.status_code,409); self.assertEqual(conflict.json()["code"],"conflict")
+        self.assertEqual(self.client.get(path).json(),updated)
+        self.assertEqual(self.client.get(f"/projects/{pinned['id']}").json()["songs"],[original])
+        self.assertEqual(self.client.get("/library").json()["songs"][0]["revisionId"],updated["revisionId"])
+        # A lost original upload response keeps its original baseline after an update.
+        self.assertEqual(self.client.post("/songs",headers=headers,json={"migrationKey":"library","song":song()}).json(),original)
+        copied=self.client.post("/songs",headers=headers,json={"migrationKey":"conflict-copy","song":song("Independent local edit")}).json()
+        self.assertNotEqual(copied["songId"],original["songId"])
+        self.assertEqual(self.client.get(path).json(),updated)
+        self.assertEqual(self.client.put("/songs/unknown",headers=headers,json=data).status_code,404)
+        self.assertEqual(self.client.put(path,headers=headers,json={**data,"revisionId":copied["revisionId"]}).status_code,404)
+        with self.client.app.state.store.read() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM song_revisions WHERE song_id=?",(original["songId"],)).fetchone()[0],2)
+
+    def test_library_update_preserves_omitted_audio_and_can_clear_backing(self):
+        headers=self.login(); payload=io.BytesIO()
+        with wave.open(payload,"wb") as output:
+            output.setnchannels(1); output.setsampwidth(2); output.setframerate(8000); output.writeframes(b"\0\0"*8000)
+        audio=self.client.post("/audio",headers={**headers,"Content-Type":"audio/wav","X-Lyrics-Filename":"backing.wav"},content=payload.getvalue()).json()
+        original=self.client.post("/songs",headers=headers,json={"migrationKey":"with-audio", "song":song(),"audioId":audio["id"],"backingAudioId":audio["id"]}).json()
+        path=f"/songs/{original['songId']}"
+        self.assertEqual(original["song"]["backing"],{"fileName":"backing.wav"})
+        updated=self.client.put(path,headers=headers,json={"revisionId":original["revisionId"],"song":song("Retains audio")}).json()
+        self.assertEqual(updated["audioId"],audio["id"]); self.assertEqual(updated["backingAudioId"],audio["id"])
+        self.assertEqual(updated["song"]["backing"],{"fileName":"backing.wav"})
+        cleared=self.client.put(path,headers=headers,json={"revisionId":updated["revisionId"],"song":updated["song"],"audioId":None,"backingAudioId":None}).json()
+        self.assertIsNone(cleared["audioId"]); self.assertIsNone(cleared["backingAudioId"])
+        self.assertNotIn("backing",cleared["song"])
+        self.assertEqual(self.client.get(f"/audio/{audio['id']}").content,payload.getvalue())
+        missing=self.client.put(path,headers=headers,json={"revisionId":cleared["revisionId"],"song":cleared["song"],"backingAudioId":"missing"})
+        self.assertEqual(missing.status_code,404); self.assertEqual(self.client.get(path).json(),cleared)
+
     def test_audio_bounds_sniff_quota_and_range(self):
         headers=self.login()
         self.assertEqual(self.client.post("/audio",headers={**headers,"Content-Type":"audio/mpeg","X-Lyrics-Filename":"bad.mp3"},content=b"not audio").status_code,415)

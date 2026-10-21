@@ -114,6 +114,7 @@ function sanitizeSong(raw, songNumber) {
     autoScrollStartSeconds: raw.autoScrollStartSeconds === undefined ? 10 : raw.autoScrollStartSeconds,
     cues: raw.cues.map((cue, index) => sanitizeCue(cue, songNumber, index + 1)),
     reviewed: raw.reviewed,
+    ...(raw.mediaRevision === undefined ? {} : { mediaRevision: text(raw.mediaRevision, 'версия аудиофайлов', { max: 200 }) }),
     source: { kind: sourceKind, fileName: sourceFileName },
     ...(raw.backing === undefined ? {} : { backing: { fileName: text(raw.backing.fileName, `имя минусовки песни ${songNumber}`, { optional: true, max: 1000 }) } }),
   };
@@ -225,7 +226,7 @@ export function validateSong(song) {
   if (!String(song.title || '').trim()) errors.push('Укажите название песни.');
   if (!Number.isFinite(song.duration) || song.duration <= 0) errors.push('Укажите длительность песни больше нуля.');
   if (!Number.isFinite(song.delayMs)) errors.push('Задержка должна быть конечным числом миллисекунд.');
-  if (!Array.isArray(song.cues) || !song.cues.length) errors.push('Добавьте хотя бы одну строку текста.');
+  if (!Array.isArray(song.cues) || (!song.cues.length && !song.backing?.fileName)) errors.push('Добавьте текст или минусовку.');
   let previous = -Infinity;
   for (const [index, cue] of (song.cues || []).entries()) {
     const label = `Строка ${index + 1}`;
@@ -296,6 +297,7 @@ export function createSong(partial = {}) {
       type: cue?.type === 'rest' ? 'rest' : 'lyric',
     })),
     reviewed: false,
+    ...(typeof partial.mediaRevision === 'string' ? { mediaRevision: partial.mediaRevision } : {}),
     source: {
       kind: typeof partial.source?.kind === 'string' ? partial.source.kind : 'manual',
       fileName: typeof partial.source?.fileName === 'string' ? partial.source.fileName : '',

@@ -16,6 +16,7 @@ CONFIG = Path('/etc/nginx/sites-enabled/nasty-edu.online').resolve()
 MARKER = '# BEGIN KAADA LYRICS'
 REQUIRED = {'index.html', 'app.js', 'core.js', 'storage.js', 'styles.css',
             'recognition.js', 'recognition-worker.js', 'recognition-utils.js',
+            'workspace-files.js', 'local-workspace.js', 'workspace-hub.js', 'workspace-actions.js', 'song-editor.js', 'cloud-transfers.js', 'ui.js', 'hub.css',
             'sw.js', 'cache-manifest.js', 'vendor/transformers.js',
             'vendor/ort-wasm-simd-threaded.jsep.mjs', 'vendor/ort-wasm-simd-threaded.jsep.wasm'}
 LOCATION = '''    # BEGIN KAADA LYRICS

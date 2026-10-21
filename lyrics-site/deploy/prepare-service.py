@@ -11,6 +11,7 @@ import subprocess
 BASE = Path('/srv/nasty-edu-lyrics')
 STAGE = Path(__file__).resolve().parent
 REQUIRED = {'release/index.html', 'release/app.js', 'release/remote.js',
+            'release/workspace-files.js', 'release/local-workspace.js', 'release/workspace-hub.js', 'release/workspace-actions.js', 'release/song-editor.js', 'release/cloud-transfers.js', 'release/ui.js', 'release/hub.css',
             'release/sw.js', 'release/cache-manifest.js',
             'service/backend/app.py', 'service/backend/requirements-lock.txt', 'service/runtime/get-pip.py'}
 
