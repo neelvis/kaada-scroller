@@ -668,3 +668,26 @@ recovery, overlapping transfers and same-name audio change detection), plus
 R14-1/R14-2 (cancelled launch and stale source pins). The correction reviews
 reported no remaining material findings in the inspected scope. Older browser
 suites tied to superseded navigation were not claimed as passing.
+
+
+### Revision 14 publication
+
+Paired release `20261021_145916` was activated on 2026-10-21 from source commit
+`4492075db1a82af2ecafbdb89ce2f762e5ea7fa8`. All 54 staged file hashes were validated;
+public sources matched the committed revision. The release manifest SHA-256 is
+`cf025910615e51527082944f1e10611140d04c6236f16b5f3e00af86710842dc`.
+The branch `codex/local-cloud-workspace` was pushed before activation.
+
+Preparation installed the locked backend runtime without package-network access.
+Activation selected matching frontend/backend generations; the API service is
+active. Prior pair `20261017_093212` remains available for rollback.
+
+Post-deploy verification passed 36 HTTPS checks: top-level public-file hashes,
+JavaScript MIME types, lyrics/site health and unauthenticated rejection of private
+project/song/audio reads and standalone-song writes. A fresh installed-Chrome
+context passed Projects/Library navigation, anonymous local-work controls,
+service-worker offline-shell readiness, 320px layout and absence of runtime
+exceptions. Production private projects were not changed by these smoke checks.
+Authenticated transfers and offline audio were exercised against the isolated
+real test API, not against school data. Native picker and physical rehearsal gaps
+remain as stated above.

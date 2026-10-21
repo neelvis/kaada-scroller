@@ -1,7 +1,7 @@
 # Timed lyrics revision 14: projects, library and durable local files
 
 Feature ID: TL (extension)
-Status: Implemented and locally verified — deployment pending
+Status: Implemented, verified and deployed
 Revision: 14, 2026-10-17
 Baseline: [Specification](spec.md), [shared projects](revision-3.md),
 [preparation and portable audio](revision-6.md), revisions 8 and 10–13.
@@ -133,3 +133,7 @@ Technical support references:
 Approval: the user explicitly approved this draft with `да` on 2026-10-17,
 after the linked revision-14 draft and browser/storage scope were presented.
 The approved requirements are TL-R73–R81 and TL-AC59–AC63.
+
+Published on 2026-10-21 as paired release `20261021_145916`, built from commit
+`4492075`. HTTPS source hashes, API health/access checks and an isolated browser
+smoke check passed. Previous paired release `20261017_093212` is retained.

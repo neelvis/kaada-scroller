@@ -26,7 +26,7 @@ Accepted extension: [revision 12 — display keyboard and optional uniform scrol
 Accepted extension: [revision 13 — manual scrolling in display mode](revision-13.md)
 (implemented; browser verification pending).
 Accepted extension: [revision 14 — projects, library and durable local files](revision-14.md)
-(implemented and locally verified; deployment pending).
+(implemented, verified and deployed).
 Read the applicable extensions before using a superseded baseline rule.
 
 ## Purpose
