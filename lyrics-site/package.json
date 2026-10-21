@@ -17,8 +17,9 @@
     "test:server": "node tests/server-browser.mjs",
     "test:lrclib": "node tests/lrclib-browser.mjs",
     "test:lrclib:server": "node tests/lrclib-server-browser.mjs",
-    "test:workspace": "node tests/workspace-browser.mjs",
-    "test:workspace:cloud": "node tests/workspace-cloud-browser.mjs"
+    "test:workspace": "node tests/cloud-library-browser.mjs",
+    "test:workspace:cloud": "node tests/cloud-library-browser.mjs",
+    "test:cloud-library": "node tests/cloud-library-browser.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1"

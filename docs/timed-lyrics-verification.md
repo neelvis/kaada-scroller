@@ -691,3 +691,59 @@ exceptions. Production private projects were not changed by these smoke checks.
 Authenticated transfers and offline audio were exercised against the isolated
 real test API, not against school data. Native picker and physical rehearsal gaps
 remain as stated above.
+
+
+## Revision 16: cloud library and local project copies (2026-10-21)
+
+Approved with `подтверждаю` after the linked revision-16 draft. Implemented and
+verified locally; no commit, push or deployment was performed for this revision.
+Pre-existing revision-15 cue shifting, styles and deployment-guide changes were
+preserved. Earlier revision-14 transfer/pinning results above are historical;
+revision 16 supersedes their affected business behavior.
+
+Validation from `lyrics-site`:
+
+- `node --test tests/*.test.mjs`: 97 tests pass, including directory integrity,
+  permission/failure recovery, local-file switching, cloud-transfer retry and
+  in-flight save reconciliation.
+- `<API Python> -m unittest discover -s backend/tests -v`: 23 tests pass with
+  the locked API requirements. Tests cover latest project heads, stale-song
+  conflicts, atomic project writes, readiness, concurrent identity uniqueness,
+  cascading deletion, upload-key tombstones and shared-audio retention.
+- `node tools/build.mjs`: portable artifact builds successfully.
+- `LYRICS_TEST_PYTHON=<API Python> node tests/cloud-library-browser.mjs`: actual
+  temporary authenticated API, Chrome and a real-directory bridge pass. The
+  `test:workspace`, `test:workspace:cloud` and `test:cloud-library` scripts select
+  this canonical suite; older revision-14 browser files describe superseded UX.
+- `node tests/display-controls-browser.mjs`: existing tooltip, keyboard guard,
+  dimming, touch restoration and audio-error regression passes.
+- JavaScript syntax and scoped whitespace checks pass. Desktop and 320px
+  screenshots were visually inspected; no horizontal overflow at 1360/375/320px.
+
+| Criteria | Evidence |
+| --- | --- |
+| TL-AC66 | Ordinary library creation before a folder is selected, LRC preparation, readiness reset after title/text/timing edits, failed cloud save with draft retained and successful retry |
+| TL-AC67 | Project creation and explicit library selection reuse the cloud song identity; edits update the library and both projects; unchanged stale heads and conflicting edits have API/unit coverage |
+| TL-AC68 | Top-bar folder/subtitle and cancellation, durable snapshots/audio, cloud success followed by injected local-write failure, retry without another cloud revision; both hub and editor playback use local lyrics/backing without audio GET requests |
+| TL-AC69 | Title/artist/version filtering, optional version metadata, creation/filter order, ready play, disabled pointer/keyboard tooltip and responsive cards |
+| TL-AC70 | Duplicate and whitespace-only copy rejection, version-only distinct copy preserving the original, empty/absent version equivalence and concurrent server uniqueness |
+| TL-AC71 | Delete all occurrences across projects, retain other entries/order and local snapshots, reject stale song/project resurrection and preserve shared audio |
+
+Independent read-only review found two frontend data-loss risks: local promotion
+could adopt an earlier successful upload over a newer draft, and in-flight
+revision rebasing could attach a newer cloud baseline to retained stale content.
+Corrections preserve newer drafts, recover imported project bindings safely,
+check recovered cloud names/content for conflicts, adopt untouched latest songs
+and retain old baselines for divergent edits. Focused regression tests pass;
+independent rereview accepted the corrections. Backend review found no material
+issues. The final home-screen control-visibility delta was additionally checked
+in the final browser run.
+
+Native OS folder-picker interaction and selection between physical folders remain
+manual platform checks. Adapter/unit tests cover switching handles, revoked
+permission and missing/corrupt files; playback unit/display tests cover missing
+backing failures and explicit lyrics-only recovery. Multi-client conflict rules
+are exercised at API/unit level rather than through a simultaneous browser
+session. Real organizer recordings and physical projector rehearsal remain
+outside these synthetic fixtures. All test cloud writes used disposable local
+API data, never production library/projects.

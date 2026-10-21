@@ -103,3 +103,30 @@ test('project downloads keep cloud IDs unchanged and assign independent local me
     await assert.rejects(downloadProjectFiles({ ...cloud, songs: [{ song: source, backingAudioId: null }] }), /отсутствует в облаке/);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('lost import response retries retain newer edits and original song bindings after reorder', async () => {
+  const { connectWorkspace } = await import('../public/local-workspace.js');
+  const { createDirectoryFixture } = await import('./workspace-memory-fixture.mjs');
+  await connectWorkspace(createDirectoryFixture().handle);
+  const baseline = project(); baseline.songs.push(createSong({ id: 'local-second', title: 'Second' }));
+  const completed = { id: 'created', name: baseline.name, revision: 1, songs: baseline.songs.map((song, index) => ({ songId: `cloud-${index}`, revisionId: `r-${index}`, audioId: null, backingAudioId: null, song: { ...song, id: `cloud-${index}` } })) };
+  const current = structuredClone(baseline); current.songs.reverse(); current.songs[1].title = 'Changed after lost response'; current.name = 'New local name';
+  const originalFetch = globalThis.fetch, writes = [];
+  globalThis.fetch = async (url, options) => {
+    if (options.method === 'PUT') { const body = JSON.parse(options.body); writes.push(body); return new Response(JSON.stringify({ ...completed, name: body.name, revision: 2, songs: body.songs }), { headers: { 'Content-Type': 'application/json' } }); }
+    return new Response(JSON.stringify(completed), { headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const saved = await uploadLocalProject(current, null, () => {}, baseline);
+    assert.equal(saved.name, 'New local name'); assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].songs.map(entry => entry.songId), ['cloud-1', 'cloud-0']);
+    assert.equal(writes[0].songs[1].song.title, 'Changed after lost response');
+    assert.equal(writes[0].revision, 1);
+    completed.name = 'Concurrent cloud rename';
+    await assert.rejects(uploadLocalProject(current, null, () => {}, baseline), error => error.code === 'conflict');
+    assert.equal(writes.length, 1, 'a newer project name must not be overwritten on recovery');
+    completed.name = baseline.name; completed.songs[0].song.title = 'Concurrent cloud song edit';
+    await assert.rejects(uploadLocalProject(current, null, () => {}, baseline), error => error.code === 'conflict');
+    assert.equal(writes.length, 1, 'a newer song head must not be used to overwrite newer cloud content');
+  } finally { globalThis.fetch = originalFetch; }
+});

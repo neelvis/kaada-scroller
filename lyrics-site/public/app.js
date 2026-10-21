@@ -1,12 +1,12 @@
 import { createSong, cueAt, uniformScrollProgress, validateSong } from './core.js';
-import { loadSet } from './storage.js';
-import { getAudio, getBacking, localState, connectedWorkspace, saveWorkspace, retryWorkspaceSave, onWorkspaceStatus, duplicateSong } from './local-workspace.js';
+import { getAudio, getBacking, localState, connectedWorkspace, saveWorkspace, retryWorkspaceSave, onWorkspaceStatus } from './local-workspace.js';
 import { $, node, button, iconTextButton, toast, plural, input } from './ui.js';
 import { createWorkspaceHub } from './workspace-hub.js';
 import { createSongEditor } from './song-editor.js';
 import { createWorkspaceActions } from './workspace-actions.js';
-import { uploadLocalSong } from './cloud-transfers.js';
+import { uploadLocalProject, projectLink } from './cloud-transfers.js';
 import { Playback } from './playback.js';
+import { sameEntryContent, reconcileProjectSave } from './save-reconciliation.js';
 import { exportPortableSet, importPortableSet } from './portable.js';
 import * as remote from './remote.js';
 import { clearPrivateProjectCache, getDraft, getPrivateAudio, openCachedProject, preparedProjects, removeDraft, saveDraft } from './offline-projects.js';
@@ -42,13 +42,14 @@ let project = null;
 let projectEntries = new Map();
 let remoteDirty = false;
 let remoteFailed = false;
+let pendingLocalRefresh = null;
+let saveBusy = false;
+const copyAttempts = new Map();
 let editGeneration = 0;
 let offlineProjectOpen = false;
 let onlineSongOpen = false;
 let librarySongs = [];
-let libraryRequest = 0;
 let librarySelection = 0;
-let libraryMessage = '';
 const sourceGeneration = new Map();
 let workspaceGeneration = 0;
 let backingPreviewId = null;
@@ -61,7 +62,7 @@ backingPreview.preload = 'metadata';
 let privateMutationChain = Promise.resolve();
 function privateMutation(operation) { const next = privateMutationChain.then(operation, operation); privateMutationChain = next.catch(() => {}); return next; }
 
-const { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, createLocalProject, submitLocalProject, createLocalSong, refreshHubCloud, readiness, uploadItem, downloadItem, removeLocalItem, copyLocalItem, migrateBrowserData, adoptLocalLibraryVersion, chooseDirectory, ensureDirectory } = createWorkspaceActions({
+const { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, createLocalProject, submitLocalProject, createLocalSong, refreshHubCloud, readiness, downloadItem, removeLocalItem, chooseDirectory } = createWorkspaceActions({
   state: {
     get set() { return set; }, set set(value) { set = value; },
     get legacySet() { return legacySet; }, set legacySet(value) { legacySet = value; },
@@ -82,7 +83,7 @@ const { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, c
     get librarySongs() { return librarySongs; }, set librarySongs(value) { librarySongs = value; }
   },
   resources: { els, get hub() { return hub; } },
-  actions: { cancelRecognition, clearAudioPreview, render, openProject, openLocalSong, addSong, backingKey },
+  actions: { cancelRecognition, clearAudioPreview, render, openProject, createLibrarySong, backingKey },
 });
 
 const { renderEditor, cancelLrclib, resetPreparation, resetEditorTab, refreshConnectivity } = createSongEditor({
@@ -91,6 +92,7 @@ const { renderEditor, cancelLrclib, resetPreparation, resetEditorTab, refreshCon
     get legacySet() { return legacySet; },
     get localProjectId() { return localProjectId; },
     get offlineProjectOpen() { return offlineProjectOpen; },
+    get onlineSongOpen() { return onlineSongOpen; },
     get persistChain() { return persistChain; }, set persistChain(value) { persistChain = value; },
     get project() { return project; },
     get projectEntries() { return projectEntries; },
@@ -100,43 +102,39 @@ const { renderEditor, cancelLrclib, resetPreparation, resetEditorTab, refreshCon
     get workspaceGeneration() { return workspaceGeneration; }
   },
   resources: { els, previewPlayer, backingPreview, recognition, tapHistory, sourceGeneration },
-  actions: { currentSong, status, changeSong, render, showLibrary, addSong, clearAudioPreview, clearBackingPreview, setAudioPreview, setBackingPreview, entryFor, privateMutation, backingKey, markRemoteDirty, persist, syncLocalLibrary, adoptLatest, displayTime },
+  actions: { currentSong, status, changeSong, render, showLibrary, addSong, clearAudioPreview, clearBackingPreview, setAudioPreview, setBackingPreview, entryFor, privateMutation, backingKey, markRemoteDirty, persist, syncLocalLibrary, saveLibrarySong, deleteLibrarySong, displayTime },
 });
 
 function currentSong() { return set.songs.find((song) => song.id === selectedId) || null; }
 function status(song) { if (song.reviewed && !validateSong(song).length) return 'Готова'; if (song.cues.length) return 'Нужно проверить'; return 'Не подготовлена'; }
 function changeSong(songId, change) {
-  if (onlineSongOpen) return;
   if (offlineProjectOpen) { toast('Подготовленный снимок открыт только для показа. Для редактирования нужен сервер.'); return; }
   const index = set.songs.findIndex((song) => song.id === songId); if (index < 0) return;
   const next = change(set.songs[index]); if (!next) return;
   set = { ...set, songs: set.songs.map((song, i) => i === index ? next : song) };
-  if (project) markRemoteDirty(); else persist();
+  if (project || onlineSongOpen || localProjectId) markRemoteDirty();
 }
-function markRemoteDirty() { remoteDirty = true; remoteFailed = false; editGeneration += 1; if (project) privateMutation(() => saveDraft(project, projectPayload())).catch(() => {}); updateRemoteState(); }
+function markRemoteDirty() { remoteDirty = true; remoteFailed = false; editGeneration += 1; if (project) { const owner = structuredClone(project), payload = projectPayload(); privateMutation(() => saveDraft(owner, payload)).catch(() => {}); } updateRemoteState(); }
 function updateRemoteState() {
+  els.remote.hidden = els.prep.hidden;
   els.clearDownloaded.hidden = !offlineProjectOpen;
-  if (onlineSongOpen) { els.remote.textContent = 'В облаке · просмотр'; els.save.hidden = true; $('#prepare-offline').hidden = true; $('#add-library-song').disabled = true; $('#prepare-offline').disabled = true; return; }
-  const libraryButton = $('#add-library-song');
-  if (libraryButton) libraryButton.disabled = offlineProjectOpen || onlineSongOpen;
+  $('#add-library-song').disabled = !sessionActive || offlineProjectOpen;
   $('#export-set').hidden = false; $('#import-set').hidden = false;
-  const prepareButton = $('#prepare-offline');
-  if (prepareButton) prepareButton.textContent = 'Скачать для выступления';
-  if (prepareButton) prepareButton.hidden = !project;
-  if (prepareButton) prepareButton.disabled = !project || !sessionActive || offlineProjectOpen || remoteDirty;
-  if (!project) { els.remote.textContent = `На этом устройстве · ${savedStatus}`; els.save.hidden = true; return; }
-  els.save.hidden = false;
-  els.remote.textContent = remoteFailed ? 'Сохранение не удалось — черновик сохранён' : remoteDirty ? 'Есть несохранённые изменения' : 'Сохранено на сервере';
-  els.save.disabled = !remoteDirty || !sessionActive || offlineProjectOpen;
+  const prepare = $('#prepare-offline'); prepare.textContent = 'Сохранить локально';
+  prepare.hidden = !project; prepare.disabled = !project || !sessionActive || offlineProjectOpen || remoteDirty || saveBusy;
+  els.save.hidden = els.prep.hidden || onlineSongOpen || (!project && !localProjectId);
+  els.save.disabled = saveBusy || !sessionActive || offlineProjectOpen || (!remoteDirty && pendingLocalRefresh !== project?.id);
+  els.remote.textContent = pendingLocalRefresh && pendingLocalRefresh === project?.id ? 'В облаке сохранено · локальную копию нужно обновить' : remoteFailed ? 'Сохранение не удалось · изменения ожидают повтора' : remoteDirty ? 'Есть несохранённые изменения' : onlineSongOpen ? 'В облаке' : project ? 'Сохранено в облаке' : localProjectId ? 'Локальная копия' : '';
 }
+
 function persist() {
-  const snapshot = structuredClone(set);
-  const state = structuredClone(localState());
-  if (localProjectId) state.projects = state.projects.map(item => item.id === localProjectId ? snapshot : item);
-  else { legacySet = snapshot; state.library = snapshot.songs; }
+  if (!localProjectId) return Promise.resolve();
+  const snapshot = structuredClone(set), state = structuredClone(localState());
+  state.projects = state.projects.map(item => item.id === localProjectId ? snapshot : item);
   persistChain = persistChain.catch(() => {}).then(() => saveWorkspace(state)).catch(error => toast(error.message));
   return persistChain;
 }
+
 function clearAudioPreview() {
   clearBackingPreview();
   audioGeneration += 1;
@@ -184,41 +182,138 @@ function adoptProject(next, { preserveSelection = false } = {}) {
   cancelLrclib();
   onlineSongOpen = false;
   project = next;
+  const local = localState().projects.find(item => localState().links[`project:${item.id}`]?.id === next.id);
+  const link = local && localState().links[`project:${local.id}`];
+  if (link && (link.revision !== next.revision || link.entries?.length !== next.songs.length || next.songs.some((entry, index) => link.entries?.[index]?.revisionId !== entry.revisionId))) pendingLocalRefresh = next.id;
   projectEntries = new Map((next.songs || []).map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null }]));
   set = { schemaVersion: 1, id: next.id, name: next.name, songs: (next.songs || []).map(entry => entry.song) };
   selectedId = set.songs.some(song => song.id === previousSelection) ? previousSelection : (set.songs[selectedIndex]?.id || null);
   remoteDirty = false; remoteFailed = false; updateRemoteState(); render();
 }
 function rebaseSavedProjectMetadata(saved, sent) {
-  project = saved;
-  const returned = saved.songs || [];
-  const sentSongs = sent.songs || [];
-  const byLocalId = new Map(set.songs.map(song => [song.id, song]));
-  returned.forEach((entry, index) => {
-    const before = sentSongs[index]?.song;
-    const current = before && byLocalId.get(before.id);
-    if (!current) return;
-    if (entry.song?.id && entry.song.id !== current.id) {
-      const oldId = current.id; current.id = entry.song.id; if (selectedId === oldId) selectedId = current.id; projectEntries.delete(oldId);
-    }
-    projectEntries.set(current.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null });
+  const result = reconcileProjectSave(set.songs, projectEntries, sent, saved, selectedId);
+  project = saved; set = { ...set, songs: result.songs }; projectEntries = result.entries; selectedId = result.selectedId;
+}
+
+function changedProjectSongs() {
+  return set.songs.filter(song => {
+    const entry = entryFor(song), base = project?.songs.find(item => item.songId === entry.songId && item.revisionId === entry.revisionId);
+    return !base || !sameEntryContent(base, { ...entry, song });
   });
 }
 async function saveRemoteProject() {
-  if (!project || !sessionActive || !remoteDirty) return;
-  const generation = editGeneration; const savingProjectId = project.id; const draft = projectPayload();
-  try { const saved = await remote.saveProject(savingProjectId, draft); if (!sessionActive || project?.id !== savingProjectId) return; if (generation !== editGeneration) { rebaseSavedProjectMetadata(saved, draft); remoteDirty = true; await privateMutation(() => saveDraft(project, projectPayload())); updateRemoteState(); toast('Сервер сохранил предыдущую версию. Новые правки остались в черновике.'); return; } await privateMutation(() => removeDraft(savingProjectId)); adoptProject(saved, { preserveSelection: true }); toast('Проект сохранён на сервере.'); refreshLibrary(); }
-  catch (error) { if (!sessionActive || project?.id !== savingProjectId) return; remoteFailed = true; updateRemoteState(); if (error.code === 'conflict') toast('На сервере есть более новая версия. Черновик оставлен; откройте проект заново или сохраните после сверки.'); else toast(error.message); }
+  if (saveBusy || !sessionActive || (!project && !localProjectId)) return;
+  if ((project ? changedProjectSongs() : set.songs).some(song => validateSong(song).length)) return toast('Подтвердите готовность изменённых песен перед сохранением.');
+  const generation = editGeneration, owner = project?.id, localId = localProjectId, workspace = workspaceGeneration;
+  saveBusy = true; updateRemoteState();
+  try {
+    if (!project) {
+      const snapshot = structuredClone(set), link = localState().links[`project:${localId}`];
+      const pendingKey = `pending-project:${localId}`;
+      let baseline = localState().links[pendingKey];
+      if (!link && !baseline) {
+        baseline = snapshot;
+        const staged = structuredClone(localState()); staged.links[pendingKey] = snapshot;
+        await saveWorkspace(staged);
+      }
+      const saved = await uploadLocalProject(snapshot, link, () => {}, baseline);
+      if (!sessionActive || workspaceGeneration !== workspace) return;
+      // Record the exact successful cloud result before a later local refresh can fail.
+      const next = structuredClone(localState());
+      next.projects = next.projects.map(item => item.id === localId ? snapshot : item);
+      next.links[`project:${localId}`] = projectLink(snapshot, saved);
+      delete next.links[pendingKey];
+      pendingLocalRefresh = saved.id;
+      await saveWorkspace(next);
+      if (!sessionActive || workspaceGeneration !== workspace) return;
+      if (generation !== editGeneration) {
+        remoteDirty = true; toast('Предыдущая версия сохранена в облаке. Новые правки остались в редакторе.'); return;
+      }
+      adoptProject(saved, { preserveSelection: true });
+    } else if (remoteDirty) {
+      const draft = projectPayload(), saved = await remote.saveProject(owner, draft);
+      if (!sessionActive || project?.id !== owner || workspaceGeneration !== workspace) return;
+      const local = localState().projects.find(item => localState().links[`project:${item.id}`]?.id === saved.id);
+      if (local) pendingLocalRefresh = saved.id;
+      if (generation !== editGeneration) {
+        rebaseSavedProjectMetadata(saved, draft); remoteDirty = true;
+        await privateMutation(() => saveDraft(project, projectPayload()));
+        toast('Предыдущая версия сохранена в облаке. Новые правки ожидают сохранения.'); return;
+      }
+      await privateMutation(() => removeDraft(owner)); adoptProject(saved, { preserveSelection: true });
+    }
+    if (pendingLocalRefresh && pendingLocalRefresh === project?.id) {
+      if (!await downloadItem('project', pendingLocalRefresh, { quiet: true })) { updateRemoteState(); return; }
+      pendingLocalRefresh = null;
+    }
+    toast('Проект сохранён в облаке' + (connectedWorkspace() ? '. Локальная копия обновлена, если она была сохранена.' : '.'));
+    await refreshHubCloud();
+  } catch (error) { remoteFailed = true; toast(error.message); }
+  finally { saveBusy = false; updateRemoteState(); }
 }
+async function saveLibrarySong(copy = false) {
+  const song = currentSong();
+  if (saveBusy || !sessionActive || !song) return;
+  if (validateSong(song).length) return toast('Подтвердите готовность песни перед сохранением.');
+  const identity = item => [item.title, item.artist, item.version].map(value => (value || '').trim());
+  const snapshot = structuredClone(song), original = { ...entryFor(song) }, generation = editGeneration, workspace = workspaceGeneration;
+  saveBusy = true;
+  try {
+    const key = `${snapshot.id}:${generation}`, retryCopy = copyAttempts.has(key);
+    if (copy && !retryCopy) {
+      const { songs } = await remote.listLibrary();
+      if (songs.some(item => JSON.stringify(identity(item)) === JSON.stringify(identity(snapshot)))) return toast('Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.');
+    }
+    if (!copyAttempts.has(key)) copyAttempts.set(key, `song-copy-${crypto.randomUUID()}`);
+    const payload = { song: snapshot, audioId: original.audioId ?? null, backingAudioId: original.backingAudioId ?? null };
+    let saved = copy || !original.songId
+      ? await remote.createSong({ ...payload, migrationKey: copy ? copyAttempts.get(key) : snapshot.id })
+      : await remote.saveSong(original.songId, { ...payload, revisionId: original.revisionId });
+    if (!sessionActive || workspace !== workspaceGeneration) return;
+    if (!copy && !original.songId && !sameEntryContent(saved, payload)) {
+      saved = await remote.saveSong(saved.songId, { ...payload, revisionId: saved.revisionId });
+      if (!sessionActive || workspace !== workspaceGeneration) return;
+    }
+    if (!copy && generation === editGeneration && onlineSongOpen) {
+      projectEntries = new Map([[saved.song.id, saved]]); set = { ...set, songs: [saved.song] }; selectedId = saved.song.id; remoteDirty = false;
+    } else if (!copy && onlineSongOpen && currentSong()?.id === snapshot.id) {
+      const result = reconcileProjectSave(set.songs, projectEntries, { songs: [{ ...original, song: snapshot }] }, { songs: [saved] }, selectedId);
+      set = { ...set, songs: result.songs }; projectEntries = result.entries; selectedId = result.selectedId;
+    }
+    toast(copy ? 'Копия сохранена в облачной библиотеке.' : 'Песня сохранена в облаке.');
+    await refreshHubCloud(); render();
+  } catch (error) { toast(error.message); }
+  finally { saveBusy = false; updateRemoteState(); }
+}
+async function deleteLibrarySong(song = currentSong()) {
+  const id = song && entryFor(song).songId;
+  if (id) return removeCloudSong(id);
+  if (!confirm('Удалить несохранённую песню?')) return;
+  remoteDirty = false; set = { ...set, songs: [] }; selectedId = null; render();
+}
+async function removeCloudSong(id) {
+  if (!sessionActive || !confirm('Удалить песню из облачной библиотеки и всех облачных проектов? Локальные копии останутся до обновления.')) return;
+  try {
+    await remote.deleteSong(id);
+    if (onlineSongOpen && entryFor(currentSong() || {}).songId === id) { cancelRecognition(); clearAudioPreview(); remoteDirty = false; set = { ...set, songs: [] }; selectedId = null; projectEntries.clear(); }
+    await refreshHubCloud(); render(); toast('Песня удалена из библиотеки и облачных проектов.');
+  } catch (error) { toast(error.message); }
+}
+async function removeCloudProject(id) {
+  if (!sessionActive || !confirm('Удалить облачный проект? Песни останутся в библиотеке, локальная копия останется в папке.')) return;
+  try { const current = await remote.getProject(id); await remote.deleteProject(id, current.revision); await refreshHubCloud(); }
+  catch (error) { toast(error.message); }
+}
+
 async function openProject(id, { cached = false } = {}) {
   if (cached && localStorage.getItem('lyrics-v2-pending-logout')) return toast('Сначала завершите очистку данных выхода: откройте приложение заново.');
-  if (remoteDirty && !confirm('Есть несохранённые изменения. Открыть другой проект без сохранения?')) return;
+  if (remoteDirty && !confirm('Есть несохранённые изменения. Открыть другой проект без сохранения?')) return false;
   resetEditorTab();
   const fromDisplay = !els.event.hidden;
   if (fromDisplay) playback.stop();
   cancelRecognition(); const workspaceRun = workspaceGeneration; const sessionAtStart = sessionActive; clearAudioPreview();
   try { const next = cached ? await openCachedProject(id) : await remote.getProject(id); if (workspaceGeneration !== workspaceRun || sessionActive !== sessionAtStart) return; if (!next) throw new Error('Подготовленный снимок не найден.'); offlineProjectOpen = cached; adoptProject(next); if (!cached) { const draft = await getDraft(id); if (workspaceGeneration !== workspaceRun || sessionActive !== sessionAtStart) return; if (draft && confirm('Для этого проекта есть несохранённый черновик на этом устройстве. Открыть его?')) { project = draft.project; projectEntries = new Map(draft.payload.songs.map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null }])); set = { ...set, name: draft.payload.name, songs: draft.payload.songs.map(entry => entry.song) }; selectedId = null; remoteDirty = true; updateRemoteState(); render(); } } toast(cached ? 'Открыт подготовленный автономный снимок.' : 'Проект открыт.'); }
-  catch (error) { toast(error.message); return; }
+  catch (error) { toast(error.message); return false; }
   if (fromDisplay) {
     const ready = set.songs.find(song => !validateSong(song).length);
     if (ready) { selectedId = ready.id; render(); launchEvent(ready); }
@@ -230,6 +325,7 @@ async function openProject(id, { cached = false } = {}) {
       $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true; $('#event-mute').disabled = true;
     }
   }
+  return true;
 }
 function refreshOfflineProjectEntry() { $('#offline-projects').hidden = true; $('#event-offline-projects').hidden = true; }
 async function showLibrary() {
@@ -239,41 +335,31 @@ async function showLibrary() {
 let librarySearchRequest = 0;
 let selectedLibrarySongs = new Map();
 async function searchLibrary() {
-  const query = $('#library-search').value.trim().toLowerCase();
-  const list = $('#library-list'); list.replaceChildren();
-  const candidates = legacySet.songs.filter(song => `${song.title} ${song.artist}`.toLowerCase().includes(query));
-  for (const song of candidates) {
-    const check = input('', 'checkbox', { 'aria-label': song.title || 'Без названия' }); check.checked = selectedLibrarySongs.has(song.id);
-    check.addEventListener('change', () => { if (check.checked) selectedLibrarySongs.set(song.id, song); else selectedLibrarySongs.delete(song.id); });
-    list.append(node('label', { className: 'project-row' }, [check, node('span', { text: `${song.title || 'Без названия'}${song.artist ? ` — ${song.artist}` : ''}` })]));
-  }
-  if (!candidates.length) list.append(node('p', { className: 'hint', text: 'Нет подходящих песен. Скачайте облачную песню в библиотеке или создайте новую.' }));
+  const request = ++librarySearchRequest, query = $('#library-search').value.trim().toLowerCase(), list = $('#library-list');
+  list.replaceChildren(); if (!sessionActive) { list.append(node('p', { text: 'Войдите для доступа к библиотеке.' })); return; }
+  try {
+    const result = await remote.listLibrary(query);
+    if (request !== librarySearchRequest || !sessionActive) return;
+    for (const item of result.songs) {
+      const check = input('', 'checkbox', { 'aria-label': item.title || 'Без названия' }); check.checked = selectedLibrarySongs.has(item.id);
+      check.addEventListener('change', () => { if (check.checked) selectedLibrarySongs.set(item.id, item); else selectedLibrarySongs.delete(item.id); });
+      list.append(node('label', { className: 'project-row' }, [check, node('span', { text: [item.title || 'Без названия', item.artist, item.version].filter(Boolean).join(' — ') })]));
+    }
+    if (!result.songs.length) list.append(node('p', { className: 'hint', text: 'Нет подходящих песен.' }));
+  } catch (error) { if (request === librarySearchRequest && sessionActive) list.append(node('p', { text: error.message })); }
 }
 async function addSelectedLibrarySongs() {
-  if (!connectedWorkspace() && !project) return toast('Выберите рабочую папку.');
+  if (!project || !sessionActive) return;
   try {
-    for (const song of selectedLibrarySongs.values()) {
-      if (project) {
-        const entry = await uploadLocalSong(song, localState().links[`song:${song.id}`]);
-        if (set.songs.some(item => item.id === entry.song.id)) continue;
-        set = { ...set, songs: [...set.songs, entry.song] }; projectEntries.set(entry.song.id, entry); selectedId = entry.song.id;
-      } else {
-        const copy = await duplicateSong(song);
-        localState().links[`pin:${copy.id}`] = song.id;
-        set = { ...set, songs: [...set.songs, copy] }; selectedId = copy.id;
-      }
+    for (const item of selectedLibrarySongs.values()) {
+      const entry = await remote.getSong(item.id);
+      if (set.songs.some(song => entryFor(song).songId === entry.songId)) continue;
+      set = { ...set, songs: [...set.songs, entry.song] }; projectEntries.set(entry.song.id, entry); selectedId = entry.song.id;
     }
-    selectedLibrarySongs.clear();
-    if (project) markRemoteDirty(); else await persist();
-    $('#library-dialog').close(); render();
+    selectedLibrarySongs.clear(); markRemoteDirty(); $('#library-dialog').close(); render();
   } catch (error) { toast(error.message); }
 }
-async function adoptLatest(song) {
-  if (localProjectId) return adoptLocalLibraryVersion(song);
-  const current = entryFor(song); if (!current.songId || !sessionActive || offlineProjectOpen) return;
-  if (!confirm('Применить последнюю версию из библиотеки к этому проекту? Текущий закреплённый таймлайн сменится только здесь.')) return;
-  try { const latest = await remote.getSong(current.songId); set = { ...set, songs: set.songs.map(item => item.id === song.id ? latest.song : item) }; projectEntries.delete(song.id); projectEntries.set(latest.song.id, { songId: latest.songId, revisionId: latest.revisionId, audioId: latest.audioId, backingAudioId: latest.backingAudioId ?? null }); selectedId = latest.song.id; markRemoteDirty(); render(); } catch (error) { toast(error.message); }
-}
+
 function setAudioPreview(song) {
   if (audioSongId === song.id) return;
   clearAudioPreview(); audioSongId = song.id;
@@ -284,30 +370,9 @@ function setAudioPreview(song) {
   }).catch((error) => toast(`Не удалось открыть запись: ${error.message}`));
 }
 
-async function refreshLibrary() {
-  const request = ++libraryRequest;
-  librarySongs = []; libraryMessage = 'Загрузка…'; renderLibrary();
-  if (!sessionActive) return;
-  try {
-    const result = await remote.listLibrary();
-    if (!sessionActive || request !== libraryRequest) return;
-    librarySongs = result.songs || []; libraryMessage = '';
-  } catch (error) {
-    if (!sessionActive || request !== libraryRequest) return;
-    libraryMessage = error.message;
-  }
-  renderLibrary();
-}
-function openLocalSong(id) {
-  localProjectId = null; showPreparation();
-  librarySelection += 1;
-  if (project && remoteDirty && !confirm('Перейти в локальную библиотеку? Изменения проекта останутся в черновике.')) return;
-  cancelRecognition(); clearAudioPreview();
-  onlineSongOpen = false; project = null; offlineProjectOpen = false; projectEntries.clear();
-  remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = id; render();
-}
 async function openLibrarySong(id) {
-  if (!sessionActive) return;
+  if (!sessionActive) return false;
+  if (remoteDirty && !confirm('Есть несохранённые изменения. Открыть песню без сохранения?')) return false;
   const request = ++librarySelection, workspace = workspaceGeneration;
   try {
     const entry = await remote.getSong(id);
@@ -316,43 +381,27 @@ async function openLibrarySong(id) {
     localProjectId = null; showPreparation(); project = null; offlineProjectOpen = false; onlineSongOpen = true; remoteDirty = false;
     projectEntries = new Map([[entry.song.id, entry]]);
     set = { schemaVersion: 1, id: 'online-library', name: 'Онлайн-библиотека', songs: [entry.song] };
-    selectedId = entry.song.id; render();
-  } catch (error) { if (sessionActive && request === librarySelection) toast(error.message); }
-}
-function renderLibrary() {
-  $('#online-library').hidden = !sessionActive;
-  const list = $('#online-song-list'); list.replaceChildren();
-  if (!sessionActive) return;
-  for (const item of librarySongs) {
-    const control = button(`${item.title || 'Без названия'}${item.artist ? ` — ${item.artist}` : ''}`, 'song-select', () => openLibrarySong(item.id));
-    list.append(node('div', { className: 'library-song' }, [control]));
-  }
-  if (!list.children.length) list.append(node('p', { className: 'hint', text: libraryMessage || 'В онлайн-библиотеке пока нет песен.' }));
+    selectedId = entry.song.id; render(); return true;
+  } catch (error) { if (sessionActive && request === librarySelection) toast(error.message); return false; }
 }
 function renderList() {
-  els.list.replaceChildren();
-  const localList = $('#local-song-list'); localList.replaceChildren();
-  $('#project-songs').hidden = !project && !localProjectId;
+  els.list.replaceChildren(); $('#local-song-list').replaceChildren();
+  $('#project-songs').hidden = !project && !localProjectId; $('#local-library').hidden = true; $('#online-library').hidden = true;
   els.count.textContent = `${set.songs.length} ${plural(set.songs.length, 'песня', 'песни', 'песен')}`;
-  const songs = project || localProjectId ? set.songs : legacySet.songs;
-  songs.forEach((song, index) => {
-    const ready = song.reviewed && !validateSong(song).length;
-    const local = !project && !localProjectId;
-    const select = node('button', { type: 'button', className: 'song-select', onclick: () => { if (local) openLocalSong(song.id); else { librarySelection += 1; selectedId = song.id; resetEditorTab(); render(); } } }, [
+  if (!project && !localProjectId) return;
+  set.songs.forEach((song, index) => {
+    const ready = !validateSong(song).length;
+    const select = node('button', { type: 'button', className: 'song-select', onclick: () => { selectedId = song.id; resetEditorTab(); render(); } }, [
       node('span', { className: `song-dot${ready ? ' ready' : ''}`, 'aria-hidden': true }),
-      node('span', { className: 'song-item-copy' }, [node('span', { className: 'song-item-title', text: song.title || 'Без названия' }), node('span', { className: 'song-item-status', text: status(song) })])
+      node('span', { className: 'song-item-copy' }, [node('span', { className: 'song-item-title', text: song.title || 'Без названия' }), ...(song.artist ? [node('span', { className: 'song-item-status', text: song.artist })] : []), ...(song.version ? [node('span', { className: 'song-item-status', text: song.version })] : []), node('span', { className: 'song-item-status', text: status(song) })])
     ]);
-    const move = (direction) => { const target = index + direction; if (target < 0 || target >= songs.length) return; if (local && onlineSongOpen) openLocalSong(song.id); const reordered = [...set.songs]; [reordered[index], reordered[target]] = [reordered[target], reordered[index]]; set = { ...set, songs: reordered }; if (project) markRemoteDirty(); else persist(); render(); };
+    const move = direction => { const target = index + direction; if (target < 0 || target >= set.songs.length) return; const songs = [...set.songs]; [songs[index], songs[target]] = [songs[target], songs[index]]; set = { ...set, songs }; markRemoteDirty(); render(); };
     const up = iconTextButton('↑', 'Переместить песню выше', 'song-reorder', () => move(-1)); up.disabled = index === 0;
-    const down = iconTextButton('↓', 'Переместить песню ниже', 'song-reorder', () => move(1)); down.disabled = index === songs.length - 1;
-    (project || localProjectId ? els.list : localList).append(node('div', { className: `song-item${!onlineSongOpen && song.id === selectedId ? ' active' : ''}` }, [select, node('div', { className: 'song-reorder-wrap' }, [up, down])]));
+    const down = iconTextButton('↓', 'Переместить песню ниже', 'song-reorder', () => move(1)); down.disabled = index === set.songs.length - 1;
+    els.list.append(node('div', { className: `song-item${song.id === selectedId ? ' active' : ''}` }, [select, node('div', { className: 'song-reorder-wrap' }, [up, down])]));
   });
-  if (project) for (const song of legacySet.songs) localList.append(node('div', { className: 'library-song' }, [button(song.title || 'Без названия', 'song-select', () => openLocalSong(song.id))]));
-  if (!localList.children.length) localList.append(node('p', { className: 'hint', text: 'Локальных песен пока нет. Добавьте песню или импортируйте набор.' }));
-  renderLibrary();
-  $('#local-library').hidden = Boolean(project || localProjectId);
-  $('#online-library').hidden = true;
 }
+
 function updateSetNameMarquee() {
   const clip = $('#set-name-clip');
   const measure = $('#set-name-measure');
@@ -367,8 +416,28 @@ function updateSetNameMarquee() {
   clip.classList.toggle('is-overflowing', overflowing);
   if (overflowing) marquee.style.setProperty('--marquee-duration', `${Math.max(8, textWidth / 24)}s`);
 }
-function render() { $('#add-library-song').hidden = !project && !localProjectId; $('#back-home').textContent = localProjectId || project ? '← Проекты' : '← Библиотека'; $('#local-save-status').textContent = savedStatus; $('#upload-current').hidden = !sessionActive || Boolean(project) || onlineSongOpen; renderList(); els.setName.value = set.name || 'Мой набор'; els.setName.disabled = offlineProjectOpen || onlineSongOpen || (!project && !localProjectId); updateSetNameMarquee(); $('#add-song').disabled = offlineProjectOpen; $('#show-mode').disabled = !set.songs.length; renderEditor(); updateRemoteState(); if (offlineProjectOpen || onlineSongOpen) { [...els.editor.querySelectorAll('input,textarea,select,button')].forEach(control => { control.disabled = true; }); [...els.list.querySelectorAll('.song-reorder')].forEach(control => control.disabled = true); } }
-function addSong() { if (!connectedWorkspace() && !project) { toast('Сначала выберите рабочую папку.'); return; } if (onlineSongOpen) openLocalSong(null); resetEditorTab(); const song = createSong({ language: 'ru' }); set = { ...set, songs: [...set.songs, song] }; selectedId = song.id; if (project) markRemoteDirty(); else persist(); render(); }
+function render() {
+  $('#add-library-song').hidden = !project && !localProjectId;
+  $('#back-home').textContent = localProjectId || project ? '← Проекты' : '← Библиотека';
+  $('#local-save-status').textContent = localProjectId ? savedStatus : '';
+  $('#upload-current').hidden = true; $('#show-mode').hidden = !project && !localProjectId;
+  renderList(); els.setName.value = set.name || 'Библиотека песен';
+  els.setName.disabled = offlineProjectOpen || onlineSongOpen || (!project && !localProjectId);
+  updateSetNameMarquee(); $('#add-song').disabled = offlineProjectOpen || !sessionActive;
+  $('#show-mode').disabled = !set.songs.length; renderEditor(); updateRemoteState();
+  if (offlineProjectOpen) { [...els.editor.querySelectorAll('input,textarea,select,button')].forEach(control => { control.disabled = true; }); }
+}
+function createLibrarySong() {
+  if (!sessionActive) return toast('Войдите, чтобы создать песню в облачной библиотеке.');
+  if (remoteDirty && !confirm('Есть несохранённые изменения. Создать песню без их сохранения?')) return;
+  cancelRecognition(); clearAudioPreview(); resetEditorTab(); localProjectId = null; project = null; onlineSongOpen = true; offlineProjectOpen = false; projectEntries.clear();
+  const song = createSong({ language: 'ru' }); set = { schemaVersion: 1, id: 'online-library', name: 'Библиотека песен', songs: [song] }; selectedId = song.id;
+  markRemoteDirty(); showPreparation(); render();
+}
+function addSong() {
+  if (!project) return createLibrarySong();
+  resetEditorTab(); const song = createSong({ language: 'ru' }); set = { ...set, songs: [...set.songs, song] }; selectedId = song.id; markRemoteDirty(); render();
+}
 
 $('#show-mode').addEventListener('click', () => {
   const song = currentSong() || set.songs.find(song => !validateSong(song).length) || set.songs[0];
@@ -376,12 +445,23 @@ $('#show-mode').addEventListener('click', () => {
 });
 
 function launchEvent(song) {
+  let localPlayback = false;
+  if (project) {
+    const local = localState().projects.find(item => localState().links[`project:${item.id}`]?.id === project.id);
+    if (local) {
+      const link = localState().links[`project:${local.id}`], songId = entryFor(song).songId;
+      const mapping = link.entries.find(item => item.songId === songId);
+      const snapshot = mapping && local.songs.find(item => item.id === mapping.localId);
+      if (!snapshot) { toast('Песни нет в локальной копии. Сохраните проект локально перед запуском.'); return; }
+      song = snapshot; localPlayback = true;
+    }
+  }
   if (validateSong(song).length) { toast('Для показа песня должна быть подготовлена и подтверждена.'); return; }
   playback.dispose(); previewPlayer.pause(); backingPreview.pause(); document.querySelectorAll('.toast').forEach(item => item.remove());
   $('#home-view').hidden = true; $('.topbar').hidden = true; els.prep.hidden = true; els.event.hidden = false; els.eventName.textContent = song.title;
   eventState = { song: structuredClone(song), frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0 };
   $('#event-progress').disabled = false;
-  const owner = project, entry = { ...entryFor(song) }, offline = offlineProjectOpen;
+  const owner = localPlayback ? null : project, entry = localPlayback ? {} : { ...entryFor(song) }, offline = offlineProjectOpen;
   let loaded = null;
   const loader = () => loaded ||= loadBacking(song, owner, entry, offline).catch(error => { loaded = null; throw error; });
   buildAudience(); playback.arm(song.duration, song.backing?.fileName || entry.backingAudioId ? loader : null);
@@ -603,11 +683,9 @@ async function importFile(file) {
     for (const song of imported.songs) {
       const copy = structuredClone(song); copy.id = `song-${crypto.randomUUID()}`; local.songs.push(copy);
       if (backingAudio.has(song.id)) audio.set(`backing:${copy.id}`, backingAudio.get(song.id));
-      const libraryCopy = structuredClone(copy); libraryCopy.id = `song-${crypto.randomUUID()}`;
-      if (backingAudio.has(song.id)) audio.set(`backing:${libraryCopy.id}`, backingAudio.get(song.id));
-      next.library.push(libraryCopy); next.links[`pin:${copy.id}`] = libraryCopy.id;
+
     }
-    next.projects.push(local); await saveWorkspace(next, audio); syncLocalLibrary(); await openLocalProject(local.id);
+    next.projects.push(local); await saveWorkspace(next, audio); syncLocalLibrary(); await openLocalProject(local.id); markRemoteDirty();
     toast('Проект, песни и минусовки сохранены в рабочую папку.');
   } catch (error) { toast(error.message); }
   finally { transferUi(false); }
@@ -618,7 +696,7 @@ function initOffline() {
   navigator.serviceWorker.addEventListener('message', ({ data }) => {
     if (data?.type !== 'OFFLINE_READY') return;
     offlineShellReady = Boolean(data.ready);
-    els.offline.textContent = offlineShellReady ? 'Приложение доступно без интернета' : 'Автономная оболочка ещё готовится';
+    els.offline.textContent = offlineShellReady ? 'Оболочка приложения сохранена' : 'Оболочка приложения готовится';
     hub.render();
   });
   navigator.serviceWorker.ready.then(registration => registration.active?.postMessage({ type: 'CHECK_OFFLINE' })).catch(() => {});
@@ -638,7 +716,7 @@ async function signOut() {
   playback.dispose();
   cancelRecognition(); clearAudioPreview();
   localStorage.setItem('lyrics-v2-pending-logout', '1');
-  localProjectId = null; cloudProjects = []; sessionActive = false; onlineSongOpen = false; librarySongs = []; libraryRequest += 1; librarySelection += 1; $('#library-dialog').close(); $('#library-list').replaceChildren(); project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateSessionUi(); render(); els.login.disabled = true;
+  localProjectId = null; cloudProjects = []; sessionActive = false; onlineSongOpen = false; librarySongs = []; librarySelection += 1; $('#library-dialog').close(); $('#library-list').replaceChildren(); project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateSessionUi(); render(); els.login.disabled = true;
   let cleared = true; await privateMutation(() => clearPrivateProjectCache()).catch(() => { cleared = false; });
   let revoked = true; try { await remote.logout(); if (cleared) localStorage.removeItem('lyrics-v2-pending-logout'); } catch { revoked = false; }
   els.login.disabled = false;
@@ -648,7 +726,7 @@ async function clearDownloadedProjectData() {
   if (!offlineProjectOpen || !confirm('Очистить загруженный проект и его черновики с этого устройства?')) return;
   cancelRecognition(); clearAudioPreview(); await privateMutation(() => clearPrivateProjectCache()).catch(error => toast(error.message)); project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateRemoteState(); render(); refreshOfflineProjectEntry(); toast('Загруженный проект очищен с этого устройства.');
 }
-$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#prepare-offline').addEventListener('click', () => project ? downloadItem('project', project.id) : toast('Проект сохраняется в рабочую папку автоматически.')); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); $('#export-set').addEventListener('click', downloadSet); $('#import-set').addEventListener('click', () => $('#set-file').click()); $('#set-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project) markRemoteDirty(); else persist(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => changeAudienceFont(4)); $('#font-down').addEventListener('click', () => changeAudienceFont(-4));
+$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#prepare-offline').addEventListener('click', () => project ? downloadItem('project', project.id) : toast('Проект сохраняется в рабочую папку автоматически.')); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); $('#export-set').addEventListener('click', downloadSet); $('#import-set').addEventListener('click', () => $('#set-file').click()); $('#set-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project || localProjectId || onlineSongOpen) markRemoteDirty(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => changeAudienceFont(4)); $('#font-down').addEventListener('click', () => changeAudienceFont(-4));
 $('#library').addEventListener('click', () => hub.show('library'));
 $('#projects').addEventListener('click', showProjects);
 $('#event-menu-toggle').addEventListener('click', showEventMenu);
@@ -744,30 +822,32 @@ els.clearDownloaded.addEventListener('click', clearDownloadedProjectData);
 const hub = createWorkspaceHub({
   state: () => ({ ...localState(), cloudProjects, cloudSongs: librarySongs, session: sessionActive, message: hubMessage }),
   actions: {
-    leaveEditor: () => { if (!els.event.hidden) exitEvent(); cancelRecognition(); clearAudioPreview(); },
+    leaveEditor: () => { if (!els.event.hidden) exitEvent(); cancelRecognition(); clearAudioPreview(); els.save.hidden = true; els.remote.hidden = true; },
     refresh: refreshHubCloud, createProject: createLocalProject, createSong: createLocalSong,
-    openProject: openLocalProject, openSong: id => { syncLocalLibrary(); openLocalSong(id); },
+    openProject: openLocalProject,
     openCloudProject: id => openProject(id), openCloudSong: openLibrarySong,
-    upload: uploadItem, download: downloadItem, copy: copyLocalItem, remove: removeLocalItem, readiness,
-    play: async id => { if (!await openLocalProject(id)) return; const song = set.songs.find(item => !validateSong(item).length); if (song) launchEvent(song); else toast('Сначала подготовьте песни проекта.'); },
+    download: downloadItem, remove: removeLocalItem, readiness, removeCloudSong, removeCloudProject,
+    playCloudSong: async id => { if (await openLibrarySong(id)) { const song = currentSong(); if (song) launchEvent(song); } },
+    playCloudProject: async id => { if (!await openProject(id)) return; const song = set.songs.find(item => !validateSong(item).length); if (song) { selectedId = song.id; launchEvent(song); } else toast('Сначала подготовьте песни проекта.'); },
+    play: async id => { if (!await openLocalProject(id, { playbackOnly: true })) return; const song = set.songs.find(item => !validateSong(item).length); if (song) launchEvent(song); else toast('Сначала подготовьте песни проекта.'); },
   },
 });
-onWorkspaceStatus(text => { savedStatus = text; $('#local-save-status').textContent = text; $('#retry-local-save').hidden = !text.startsWith('Не сохранено:'); $('#workspace-retry').hidden = !text.startsWith('Не сохранено:'); updateRemoteState(); });
-for (const id of ['#retry-local-save', '#workspace-retry']) $(id).addEventListener('click', async () => {
+onWorkspaceStatus(text => { savedStatus = text; $('#local-save-status').textContent = text; $('#retry-local-save').hidden = !text.startsWith('Не сохранено:'); if ($('#workspace-retry')) $('#workspace-retry').hidden = !text.startsWith('Не сохранено:'); updateRemoteState(); });
+for (const id of ['#retry-local-save', '#workspace-retry']) $(id)?.addEventListener('click', async () => {
   try { await retryWorkspaceSave(); syncLocalLibrary(); hub.render(); render(); }
   catch (error) { toast(error.message); }
 });
 $('#create-local-project-form').addEventListener('submit', submitLocalProject);
 $('#cancel-local-project').addEventListener('click', () => $('#create-local-project-dialog').close());
 $('#workspace-connect').addEventListener('click', chooseDirectory);
-$('#migrate-browser').addEventListener('click', migrateBrowserData);
+
 $('#back-home').addEventListener('click', () => hub.show(localProjectId || project ? 'projects' : 'library'));
-$('#upload-current').addEventListener('click', () => uploadItem(localProjectId ? 'project' : 'song', localProjectId || selectedId));
+
 $('#library-add-selected').addEventListener('click', addSelectedLibrarySongs);
 $('#library-create-new').addEventListener('click', () => { $('#library-dialog').close(); addSong(); });
 window.addEventListener('beforeunload', event => { if ((savedStatus.startsWith('Сохранение') || savedStatus.startsWith('Не сохранено:')) && connectedWorkspace() || remoteDirty) { event.preventDefault(); event.returnValue = ''; } });
 
-try { const stored = await loadSet(); if (stored) { set = stored; legacySet = stored; selectedId = null; } } catch (error) { toast(`Не удалось открыть сохранённый набор: ${error.message}`); }
+syncLocalLibrary(); set = legacySet;
 updateSessionUi(); render(); initOffline();
 await restoreDirectory(); hub.show('projects');
 try { if (localStorage.getItem('lyrics-v2-pending-logout')) { await privateMutation(() => clearPrivateProjectCache()); try { await remote.session(); await remote.logout(); localStorage.removeItem('lyrics-v2-pending-logout'); } catch (error) { if (error.status === 401) localStorage.removeItem('lyrics-v2-pending-logout'); } } else { await remote.session(); sessionActive = true; } } catch {} updateSessionUi(); render(); refreshOfflineProjectEntry(); if (sessionActive) refreshHubCloud();

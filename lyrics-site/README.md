@@ -1,82 +1,70 @@
 # Timed lyrics
 
-A portable browser application for assembling performance projects and playing
-backing tracks and/or timed lyrics. Local projects and the song library live in a
-user-selected folder; the private API provides explicit cloud transfer. The same
+A portable browser application for preparing songs and assembling performance
+projects with backing tracks and/or timed lyrics. The cloud library is the source
+of current songs; cloud projects use those songs and resolve their latest saved
+versions when opened. A selected folder stores local project snapshots. The same
 public artifact runs at `/lyrics/` or an origin's root.
 
-The current redesign follows [revision 14](../specs/features/timed-lyrics/revision-14.md).
+The current workflow follows [revision 16](../specs/features/timed-lyrics/revision-16.md).
 Validation and publication evidence is recorded in the
 [verification report](../docs/timed-lyrics-verification.md). Representative sung
 recordings and a projector rehearsal remain organizer checks.
 
-## Projects and durable local files
+## Cloud library, projects and local copies
 
-Open **Projects** to assemble a performance, or **Song library** to prepare reusable
-songs. Both sections work without signing in. The local location label is
-`На этом устройстве`; filters select all items, local items or cloud items.
+Sign in to use **Song library** and cloud projects. Create and edit library songs
+in the cloud. In the editor, **Сохранить в облаке** updates the current song;
+**Сохранить копию** creates a separate library song and leaves the original
+unchanged. Copies must have a distinct combination of title, artist and recording
+version after trimming outer whitespace; changing any one field allows a copy.
+Both save actions require a confirmed, valid song. The optional **Recording
+version** field describes the audio take and appears on cards when nonempty.
 
-For local work, use desktop Chrome or Edge over HTTPS (localhost is supported for
-development). Choose a working folder with **Choose folder**. Local project JSON,
-library data and audio are ordinary files under `kaada-workspace/` in that folder.
-Browser storage only remembers the directory handle and retains legacy data for
-explicit migration. If permission expires, reconnect the same folder; use
-**Retry saving** to finish an interrupted save. Unsupported browsers explain the
-restriction and retain cloud access and explicit portable transfer where available.
+Open **Projects** to assemble a performance from the current library songs. Saving
+a song edit from a project updates that same library song, so other projects use
+the saved version when next opened. Saving a copy from a project adds a separate
+library song without changing project membership. **Remove from project** removes
+only that occurrence. Deleting a song from the cloud library removes every
+occurrence from cloud projects while preserving their other songs and order.
 
-Local edits save automatically. Wait for **Saved** before closing the browser.
-Pending and failed writes are visible; failed saves retain the draft and staged
-media in the active session for retry. An unsaved draft is not guaranteed to
-survive closing the browser. Immutable snapshots and last-written commit markers
-preserve previous complete versions. Copy the whole `kaada-workspace` directory
-for a backup; its snapshots and audio belong together. Old snapshots/audio are
-retained for recovery, so storage usage grows over time.
+The top bar has a **Локальная копия** control for the project folder; when a folder
+is connected, its name appears below the control. Use desktop Chrome or Edge over
+HTTPS (localhost is supported for development). Local project data and backing
+audio are stored under `kaada-workspace/` in that folder; the library remains
+cloud-based. The app does not provide a local-library migration control or
+per-song upload/update actions.
 
-1. Choose **Create project**, enter a name and select local or cloud storage.
-   Local is the default; cloud creation requires login.
-2. Choose **From library**, select several songs and add them together, or create
-   a song in the project. Drag-free up/down controls change the performance order.
+**Save** writes cloud project changes and, when that project already has a local
+copy, updates its local snapshot as well. Use **Save locally** to create the first
+local copy in the selected folder. Cloud and local results are reported
+separately; failed work remains available for retry. A local snapshot contains
+the last successfully saved project and backing files. When a saved local project
+is opened, playback reads its lyrics and backing audio from that snapshot without
+requesting cloud audio during launch or playback. Cloud library edits appear in a
+local snapshot after the project is saved again. Internet access is needed for
+the normal cloud workflow; fully disconnected operation is not guaranteed.
+
+Local project data uses immutable snapshots and commit markers so interrupted
+writes can be recovered. Copy the whole `kaada-workspace` directory for a backup;
+its snapshots and audio belong together. Older snapshots and audio are retained
+for recovery, so storage use grows over time.
+
+1. Create or open a cloud project. Cloud access and writes require sign-in.
+2. Add songs from the cloud library or create a song in the project. Up/down
+   controls change performance order.
 3. Prepare the song's text, optional backing track and timing. Existing LRCLIB,
    own LRC and plain-text tabs remain available. Durations use `MM:SS`.
 4. Confirm readiness. A song can contain lyrics, backing audio, or both. Configured
    missing backing audio is a playback failure with an explicit lyrics-only option.
-5. Choose **Launch** to open performance mode. Local readiness verifies the files;
-   the offline-ready label additionally requires a cached application shell.
-
-Projects keep selected song versions. Adding a library song copies its metadata
-and audio identity into the project; editing or removing the library song does not
-alter that pinned version. **Update from library** explicitly adopts the latest
-local library version. **Save song to library** preserves a prepared project song
-for reuse. Removing a project song does not delete library content.
-
-## Cloud transfer and migration
-
-Signing in reveals the shared cloud library and projects without uploading local
-work. Choose **Upload to cloud** explicitly for a song or project; projects include
-all required backing tracks. Standalone song uploads do not create a project.
-Linked uploads update their existing cloud object; **Create separate copy** makes
-an independent local object for a separate upload. Retry keys prevent duplicate
-creation after interrupted responses. If an update response was lost, a subsequent
-attempt may report a changed cloud revision; download that revision for comparison.
-
-**Download for performance** saves project data and backing files into the selected
-working folder. Downloading a newer cloud version preserves the existing local
-version as a separate copy. Simultaneous local/cloud edits never silently overwrite
-either side. Location and version badges describe local changes, a newer cloud
-version or changes on both sides. Signing out preserves deliberate folder downloads,
-while private online-only playback and browser-private drafts/caches are cleared.
-
-Use **Migrate previous data** to copy legacy browser-local songs and downloaded
-snapshots into the folder. Original browser data remains intact; repeated migration
-skips completed sources. Missing backing files fail visibly and do not publish a
-partially migrated snapshot. Existing cloud projects remain available.
+5. Choose **Launch** to open performance mode. A selected local copy is refreshed
+   when the project is saved, not by downloading assets on every launch.
 
 **Import** accepts portable ZIP projects with backing files and older JSON sets;
-JSON sets containing backing labels need their files relinked. Import creates a
-new local project and independent library versions. **Export** creates one portable
-ZIP with every linked backing file; original vocal recordings and private cloud
-identifiers are excluded. Export fails rather than silently omitting a required
-backing file.
+JSON sets containing backing labels need their files relinked. **Export** creates
+one portable ZIP with every linked backing file; original vocal recordings and
+private cloud identifiers are excluded. Export fails rather than silently omitting
+a required backing file.
 
 ## Find an existing LRC
 
@@ -97,9 +85,9 @@ The button is disabled when ordinary lyrics are unavailable. Replacing existing 
 confirmation; invalid LRC leaves the song unchanged. The original/backing audio,
 delay, recording-version description and existing metadata are preserved. For synchronized LRC, only
 blank title/artist and missing duration are filled. A differing duration remains
-visible after import. Check every line and confirm readiness again; shared
-projects still require explicit **Save**. Prepared offline playback uses the
-saved timeline and does not contact LRCLIB.
+visible after import. Check every line and confirm readiness again; save cloud
+project changes with **Save**. Prepared playback uses the saved timeline and does
+not contact LRCLIB.
 
 Network/service errors retain your work. After a rate limit, the client honors
 the service's requested waiting interval; there are no automatic retry loops.
@@ -107,7 +95,8 @@ When available, HTTP codes are shown with an explanation and a suggested next
 step. A service-unavailable response keeps its own explanation even when it
 requests a waiting interval. If a network or browser access failure hides the
 response, the notice explains that the status and exact cause are unavailable.
-Manual LRC/text import remains available in editable local sets without internet.
+Manual LRC/text import does not require an LRCLIB request; saving cloud changes
+requires the cloud service.
 Revision 5 is published in paired release `20261012_202705`.
 
 ## Show the lyrics
@@ -172,10 +161,10 @@ For local regression checks, `pnpm test:plain` covers lyric preparation, persist
 scrolling and playback; `pnpm test:display-controls` covers tooltip, shortcut, touch restoration,
 fullscreen timer, and audio-error visibility edge cases after `pnpm build`.
 
-For a cloud project, save edits, then choose **Download for performance** and
-select a working folder. Reopen the local project from **Projects** and rehearse
-without internet. Local copies remain editable. Keep the laptop awake and the
-performance tab in front. Reload returns to Projects.
+For a cloud project with a selected local copy folder, use **Save** to update both
+the cloud project and local snapshot. Reopen the saved project to rehearse from its
+local files. Keep the laptop awake and the performance tab in front. Reload returns
+to Projects.
 
 ## Development and validation
 
@@ -186,10 +175,13 @@ pnpm test
 pnpm test:workspace
 pnpm test:plain
 pnpm test:display-controls
-pnpm test:workspace:cloud
+pnpm test:cloud-library
 backend/.venv/bin/python -m unittest discover -s backend/tests -v
 pnpm serve
 ```
+
+`pnpm test:workspace` and `pnpm test:workspace:cloud` are aliases for
+`pnpm test:cloud-library`, which runs `tests/cloud-library-browser.mjs`.
 
 The preview serves identical artifacts at `/lyrics/` and `/` on port 8094.
 Browser checks use installed Chrome by default (`PLAYWRIGHT_CHANNEL` can override).
@@ -203,9 +195,10 @@ model/runtime assets are deliberately excluded from the offline event shell.
 Legacy IndexedDB is `kaada-lyrics-v1`; private drafts/snapshots are isolated in
 `kaada-lyrics-v2`. Use `LYRICS_API_PORT=8096 pnpm serve` to proxy a local API; imported HTML-like wording is rendered as text.
 
-Requirements: [TL baseline](../specs/features/timed-lyrics/spec.md) and
-[revision 3](../specs/features/timed-lyrics/revision-3.md), extended by
-[revision 4](../specs/features/timed-lyrics/revision-4.md).
+Requirements: [TL baseline](../specs/features/timed-lyrics/spec.md),
+[revision 3](../specs/features/timed-lyrics/revision-3.md),
+[revision 4](../specs/features/timed-lyrics/revision-4.md), and
+[revision 16](../specs/features/timed-lyrics/revision-16.md).
 LRCLIB search requirements: [revision 5](../specs/features/timed-lyrics/revision-5.md).
 Plain lyrics and uniform scrolling: [revision 8](../specs/features/timed-lyrics/revision-8.md).
 Research and evidence: [research](../docs/timed-lyrics-research.md).
@@ -215,11 +208,12 @@ Release instructions: [deployment](deploy/README.md).
 
 - `app.js`: application state, navigation wiring and performance lifecycle.
 - `song-editor.js`: preparation forms, lyric import/search and cue editing.
-- `workspace-actions.js`: local/cloud user actions and migration.
+- `workspace-actions.js`: cloud project saves and local snapshot selection.
 - `workspace-hub.js` and `hub.css`: project/library destinations and responsive UI.
 - `workspace-files.js`: ordinary-directory snapshots, audio integrity and recovery.
 - `local-workspace.js`: active folder session, staged media, save status and retry.
-- `cloud-transfers.js`: explicit transfers, revision baselines and project pins.
+- `cloud-transfers.js`: portable project import/export and revision-aware cloud
+  transport helpers.
 - `ui.js`: shared DOM controls. Existing playback, portable archive, recognition,
   LRCLIB and remote transport modules retain their domain responsibilities.
 

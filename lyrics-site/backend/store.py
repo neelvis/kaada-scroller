@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import sqlite3
 import uuid
@@ -14,7 +15,8 @@ from .backup import backup, sha256
 
 class Conflict(Exception): pass
 class Missing(Exception): pass
-class Referenced(Exception): pass
+class DuplicateSong(Exception): pass
+class InvalidSong(Exception): pass
 
 
 class Store:
@@ -73,6 +75,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS songs(id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS song_revisions(id TEXT PRIMARY KEY, song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE, audio_id TEXT REFERENCES audio(id), backing_audio_id TEXT REFERENCES audio(id), body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS song_uploads(migration_key TEXT PRIMARY KEY, revision_id TEXT NOT NULL REFERENCES song_revisions(id) ON DELETE CASCADE);
+            CREATE TABLE IF NOT EXISTS deleted_song_uploads(migration_key TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, migration_key TEXT UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS project_entries(project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, position INTEGER NOT NULL, song_id TEXT NOT NULL REFERENCES songs(id), revision_id TEXT NOT NULL REFERENCES song_revisions(id), PRIMARY KEY(project_id,position));
             CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires_at INTEGER NOT NULL);
@@ -141,7 +144,9 @@ class Store:
 
     def full_project(self, db: sqlite3.Connection, project_id: str) -> dict[str, Any]:
         project = self.project_row(db, project_id)
-        rows = db.execute("SELECT r.* FROM project_entries e JOIN song_revisions r ON r.id=e.revision_id WHERE e.project_id=? ORDER BY e.position", (project_id,)).fetchall()
+        rows = db.execute("""SELECT r.* FROM project_entries e JOIN song_revisions r ON r.song_id=e.song_id
+            WHERE e.project_id=? AND r.rowid=(SELECT MAX(head.rowid) FROM song_revisions head WHERE head.song_id=e.song_id)
+            ORDER BY e.position""", (project_id,)).fetchall()
         return {"id": project["id"], "name": project["name"], "revision": project["revision"], "songs": [self.entry(row) for row in rows]}
 
     def create_project(self, name: str, migration_key: str | None = None) -> dict[str, Any]:
@@ -156,25 +161,30 @@ class Store:
             return [{"id": r["id"], "name": r["name"], "revision": r["revision"], "songCount": r["song_count"]} for r in rows]
 
     def library(self, query: str) -> list[dict[str, Any]]:
-        pattern = f"%{query.lower()}%"
         with self.read() as db:
             rows = db.execute("""SELECT r.* FROM song_revisions r JOIN (SELECT song_id, MAX(rowid) latest FROM song_revisions GROUP BY song_id) l ON l.song_id=r.song_id AND l.latest=r.rowid ORDER BY r.rowid DESC""").fetchall()
         result=[]
         for row in rows:
             song=json.loads(row["body"])
-            if query and query.lower() not in (str(song.get("title", "")) + " " + str(song.get("artist", ""))).lower(): continue
-            result.append({"id": row["song_id"], "title": song.get("title", ""), "artist": song.get("artist", ""), "version": song.get("version", ""), "revisionId": row["id"], "reviewed": bool(song.get("reviewed")), "hasAudio": bool(row["audio_id"]), "hasBackingAudio": bool(row["backing_audio_id"])})
+            if query and query.lower() not in " ".join(str(song.get(field, "")) for field in ("title", "artist", "version")).lower(): continue
+            try:
+                self._validate_ready(song)
+                valid=True
+            except InvalidSong:
+                valid=False
+            result.append({"id": row["song_id"], "title": song.get("title", ""), "artist": song.get("artist", ""), "version": song.get("version", ""), "revisionId": row["id"], "reviewed": song.get("reviewed") is True, "valid":valid, "hasAudio": bool(row["audio_id"]), "hasBackingAudio": bool(row["backing_audio_id"])})
         return result
 
     def get_song(self, song_id: str) -> dict[str, Any]:
         with self.read() as db:
-            row=db.execute("SELECT * FROM song_revisions WHERE song_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1", (song_id,)).fetchone()
+            row=db.execute("SELECT * FROM song_revisions WHERE song_id=? ORDER BY rowid DESC LIMIT 1", (song_id,)).fetchone()
             if not row: raise Missing()
             return self.entry(row)
 
     def create_song(self, migration_key: str, raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """Commit a standalone upload and its retry key together, without a project."""
         with self.tx() as db:
+            if db.execute("SELECT 1 FROM deleted_song_uploads WHERE migration_key=?", (migration_key,)).fetchone(): raise Missing()
             existing=db.execute("SELECT revision_id FROM song_uploads WHERE migration_key=?", (migration_key,)).fetchone()
             if existing: return self.entry(self.revision(db, existing["revision_id"])), False
             # Uploading a separate copy must never resolve a caller-supplied cloud ID.
@@ -187,19 +197,8 @@ class Store:
         """Advance the library head only from the version the caller reviewed."""
         with self.tx() as db:
             prior=self.revision(db, revision_id, song_id)
-            latest=db.execute("SELECT * FROM song_revisions WHERE song_id=? ORDER BY rowid DESC LIMIT 1", (song_id,)).fetchone()
-            audio_id=raw.get("audioId", prior["audio_id"])
-            backing_audio_id=raw.get("backingAudioId", prior["backing_audio_id"])
-            for candidate in (audio_id, backing_audio_id):
-                if candidate and not db.execute("SELECT 1 FROM audio WHERE id=?", (candidate,)).fetchone(): raise Missing()
-            song=self._with_backing_metadata(db, {**raw["song"], "id":song_id}, backing_audio_id)
-            canonical=json.dumps(song, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-            # A response may have been lost after commit. Replaying the same update
-            # returns its existing head instead of creating another revision.
-            if latest["body"] == canonical and latest["audio_id"] == audio_id and latest["backing_audio_id"] == backing_audio_id:
-                return self.entry(latest)
-            if latest["id"] != revision_id: raise Conflict()
-            return self.entry(self._new_revision(db, song_id, audio_id, backing_audio_id, song))
+            entry={**raw, "songId":song_id, "revisionId":revision_id, "audioId":raw.get("audioId", prior["audio_id"])}
+            return self.entry(self._resolve_entry(db, entry))
 
     def delete_project(self, project_id: str, revision: int) -> None:
         with self.tx() as db:
@@ -210,7 +209,12 @@ class Store:
     def delete_song(self, song_id: str) -> list[str]:
         with self.tx() as db:
             if not db.execute("SELECT 1 FROM songs WHERE id=?", (song_id,)).fetchone(): raise Missing()
-            if db.execute("SELECT 1 FROM project_entries WHERE song_id=?", (song_id,)).fetchone(): raise Referenced()
+            affected=[r[0] for r in db.execute("SELECT DISTINCT project_id FROM project_entries WHERE song_id=?", (song_id,))]
+            db.execute("DELETE FROM project_entries WHERE song_id=?", (song_id,))
+            db.executemany("UPDATE projects SET revision=revision+1 WHERE id=?", [(project_id,) for project_id in affected])
+            # Keep retry keys after deletion: a lost upload response must not
+            # turn a stale retry into a fresh song with a new identity.
+            db.execute("INSERT OR IGNORE INTO deleted_song_uploads SELECT u.migration_key FROM song_uploads u JOIN song_revisions r ON r.id=u.revision_id WHERE r.song_id=?", (song_id,))
             audio_ids=[r[0] for r in db.execute("""SELECT DISTINCT audio_id FROM song_revisions WHERE song_id=? AND audio_id IS NOT NULL
                 UNION SELECT DISTINCT backing_audio_id FROM song_revisions WHERE song_id=? AND backing_audio_id IS NOT NULL""", (song_id, song_id))]
             db.execute("DELETE FROM songs WHERE id=?", (song_id,))
@@ -296,13 +300,18 @@ class Store:
         song_id, revision_id=raw.get("songId"),raw.get("revisionId")
         if song_id and revision_id:
             prior=self.revision(db, revision_id, song_id)
+            latest=db.execute("SELECT * FROM song_revisions WHERE song_id=? ORDER BY rowid DESC LIMIT 1", (song_id,)).fetchone()
             # Clients from revision 3 do not know this field.  Their saves must not
             # silently unlink a backing selected by a newer client.
             backing_audio_id=raw["backingAudioId"] if "backingAudioId" in raw else prior["backing_audio_id"]
             if backing_audio_id and not db.execute("SELECT 1 FROM audio WHERE id=?", (backing_audio_id,)).fetchone(): raise Missing()
-            song=self._with_backing_metadata(db, song, backing_audio_id)
+            song=self._with_backing_metadata(db, {**song, "id":song_id}, backing_audio_id)
             canonical=json.dumps(song, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-            if prior["body"] == canonical and prior["audio_id"] == audio_id and prior["backing_audio_id"] == backing_audio_id: return prior
+            # Structural project edits may carry an unchanged older song. Resolve
+            # that to its current head without publishing the old content again.
+            if prior["body"] == canonical and prior["audio_id"] == audio_id and prior["backing_audio_id"] == backing_audio_id: return latest
+            if latest["body"] == canonical and latest["audio_id"] == audio_id and latest["backing_audio_id"] == backing_audio_id: return latest
+            if latest["id"] != revision_id: raise Conflict()
             return self._new_revision(db, song_id, audio_id, backing_audio_id, song)
         if song_id or revision_id: raise Missing()
         backing_audio_id=raw.get("backingAudioId")
@@ -324,6 +333,31 @@ class Store:
         return song
 
     def _new_revision(self, db: sqlite3.Connection, song_id: str, audio_id: str | None, backing_audio_id: str | None, song: dict[str, Any]) -> sqlite3.Row:
+        self._validate_ready(song)
+        identity=tuple((song.get(field) or "").strip() for field in ("title", "artist", "version"))
+        # BEGIN IMMEDIATE serializes this check and insert across processes. Only
+        # current heads participate; historical and pre-existing duplicates stay.
+        for row in db.execute("SELECT r.song_id,r.body FROM song_revisions r WHERE r.rowid=(SELECT MAX(h.rowid) FROM song_revisions h WHERE h.song_id=r.song_id) AND r.song_id<>?", (song_id,)):
+            other=json.loads(row["body"])
+            if tuple(str(other.get(field) or "").strip() for field in ("title", "artist", "version")) == identity: raise DuplicateSong()
         revision_id=str(uuid.uuid4()); body=json.dumps(song, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         db.execute("INSERT INTO song_revisions(id,song_id,audio_id,backing_audio_id,body) VALUES(?,?,?,?,?)", (revision_id,song_id,audio_id,backing_audio_id,body))
         return self.revision(db, revision_id)
+
+    @staticmethod
+    def _validate_ready(song: dict[str, Any]) -> None:
+        def finite(value: Any) -> bool:
+            return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        if not isinstance(song.get("title"), str) or not song["title"].strip(): raise InvalidSong()
+        if any(song.get(field) is not None and not isinstance(song[field], str) for field in ("artist", "version")): raise InvalidSong()
+        if song.get("reviewed") is not True or not finite(song.get("duration")) or song["duration"] <= 0 or not finite(song.get("delayMs")): raise InvalidSong()
+        cues=song.get("cues")
+        backing=song.get("backing")
+        if not isinstance(cues, list) or (not cues and not (isinstance(backing, dict) and backing.get("fileName"))): raise InvalidSong()
+        previous=-math.inf
+        for cue in cues:
+            if not isinstance(cue, dict) or cue.get("type") not in ("lyric", "rest") or not isinstance(cue.get("text"), str) or not cue["text"].strip(): raise InvalidSong()
+            if song.get("ignoreTimecodes") is True: continue
+            start=cue.get("start")
+            if not finite(start) or start < 0 or start >= song["duration"] or start <= previous: raise InvalidSong()
+            previous=start

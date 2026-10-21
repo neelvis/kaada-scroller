@@ -29,8 +29,10 @@
         <span class="remote-state" id="remote-state" aria-live="polite">Локальный набор</span>
         <nav class="primary-nav" aria-label="Основные разделы">
           <button class="button quiet nav-button is-active" id="projects" type="button" aria-current="page">Проекты</button>
-          <button class="button quiet nav-button" id="library" type="button" aria-controls="online-library local-library">Библиотека песен</button>
+          <button class="button quiet nav-button" id="library" type="button" aria-controls="hub-list">Библиотека песен</button>
         </nav>
+        <div class="local-copy-control"><button class="button quiet workspace-connect has-tooltip" id="workspace-connect" type="button" data-tooltip="папка для сохранения проектов для офлайн-работы" aria-describedby="workspace-copy-description">Локальная копия</button><span class="visually-hidden" id="workspace-copy-description">папка для сохранения проектов для офлайн-работы</span><span id="workspace-status" class="workspace-status" aria-live="polite"></span></div>
+        <button id="workspace-retry" class="button quiet" type="button" hidden>Повторить сохранение</button>
         <button class="button quiet event-icon-button has-tooltip action-icon-button" id="save-project" type="button" aria-label="Сохранить" data-tooltip="Сохранить" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-save"/></svg></button>
         <button class="button quiet account-button" id="login" type="button">Войти</button>
         <button class="button quiet account-button" id="logout" type="button" hidden>Выйти</button>
@@ -45,25 +47,19 @@
       <div class="hub-wrap">
         <div class="hub-heading">
           <div class="hub-heading-copy">
-            <p class="eyebrow">Рабочее пространство</p>
             <h1 id="hub-title">Ваши проекты</h1>
-            <p id="hub-description">Соберите песни и минусовки для выступления. Проекты и библиотека доступны на этом устройстве и в облаке.</p>
-          </div>
-          <div class="hub-workspace">
-            <button class="button quiet workspace-connect" id="workspace-connect" type="button">Выбрать папку</button>
-            <span id="workspace-status" class="workspace-status" aria-live="polite">Папка не выбрана</span><button id="workspace-retry" class="button quiet" type="button" hidden>Повторить сохранение</button>
-            <button class="button quiet migration-link" id="migrate-browser" type="button">Перенести прежние данные</button>
+            <p id="hub-description">Соберите программу и запускайте музыку и тексты на выступлении.</p>
           </div>
         </div>
+        <div class="hub-create-row"><button class="button primary hub-create" id="hub-create" type="button">Создать проект</button></div>
         <div class="hub-toolbar">
           <label class="hub-search-wrap"><span class="visually-hidden">Поиск по проектам</span><input id="hub-search" type="search" placeholder="Найти проект" autocomplete="off"></label>
-          <label class="visually-hidden" for="hub-filter">Расположение проектов</label>
+          <label class="visually-hidden" id="hub-filter-label" for="hub-filter">Расположение проектов</label>
           <select id="hub-filter" aria-label="Расположение проектов">
             <option value="all">Все</option>
             <option value="local">На этом устройстве</option>
             <option value="cloud">В облаке</option>
           </select>
-          <button class="button primary hub-create" id="hub-create" type="button">Создать проект</button>
         </div>
         <div class="hub-list" id="hub-list" aria-live="polite" aria-busy="false"></div>
         <p class="hub-message" id="hub-message" aria-live="polite"></p>
@@ -133,10 +129,10 @@
       </dialog>
     </section>
   </main>
-  <dialog id="create-local-project-dialog"><form id="create-local-project-form"><h2>Новый проект</h2><label class="field">Название проекта<input id="local-project-name" maxlength="120" required placeholder="Например, Осенний концерт"></label><label class="field">Где хранить<select id="new-project-location"><option value="local">На этом устройстве</option><option value="cloud">В облаке</option></select></label><p class="hint">На этом устройстве проект и его файлы сохраняются в выбранной рабочей папке.</p><div class="dialog-actions"><button class="button quiet" type="button" id="cancel-local-project">Отмена</button><button class="button primary" type="submit">Создать проект</button></div></form></dialog>
+  <dialog id="create-local-project-dialog"><form id="create-local-project-form"><h2>Новый проект</h2><label class="field">Название проекта<input id="local-project-name" maxlength="120" required placeholder="Например, Осенний концерт"></label><input id="new-project-location" type="hidden" value="cloud"><p class="hint">Проект сохраняется в облаке. Локальную копию можно сохранить в выбранную папку.</p><div class="dialog-actions"><button class="button quiet" type="button" id="cancel-local-project">Отмена</button><button class="button primary" type="submit">Создать проект</button></div></form></dialog>
   <dialog id="confirm-dialog"><form method="dialog"><h2 id="confirm-title">Заменить текст?</h2><p id="confirm-text"></p><div class="dialog-actions"><button class="button quiet" value="cancel">Отмена</button><button class="button primary" id="confirm-ok" value="confirm">Заменить</button></div></form></dialog>
   <dialog id="login-dialog"><form id="login-form"><h2>Вход организатора</h2><p>Введите общий пароль школы. Он не сохраняется в браузере.</p><label class="field">Пароль<input id="login-password" type="password" autocomplete="current-password" required></label><p class="dialog-error" id="login-error" hidden></p><div class="dialog-actions"><button class="button quiet" value="cancel" formmethod="dialog">Отмена</button><button class="button primary" type="submit">Войти</button></div></form></dialog>
-  <dialog id="library-dialog"><form method="dialog"><h2>Общая библиотека</h2><p>Добавьте уже сохранённую песню в проект. У проекта останется выбранная версия таймлайна.</p><label class="field">Поиск<input id="library-search" placeholder="Название или исполнитель"></label><div id="library-list" class="project-list"></div><div class="dialog-actions"><button class="button quiet" value="cancel">Закрыть</button><button class="button quiet" id="library-create-new" type="button">Новая песня</button><button class="button primary" id="library-add-selected" type="button">Добавить выбранные</button></div></form></dialog>
+  <dialog id="library-dialog"><form method="dialog"><h2>Общая библиотека</h2><p>Добавьте сохранённую песню в проект. При открытии проект использует её актуальные изменения из библиотеки.</p><label class="field">Поиск<input id="library-search" placeholder="Название, исполнитель или версия записи"></label><div id="library-list" class="project-list"></div><div class="dialog-actions"><button class="button quiet" value="cancel">Закрыть</button><button class="button quiet" id="library-create-new" type="button">Новая песня</button><button class="button primary" id="library-add-selected" type="button">Добавить выбранные</button></div></form></dialog>
   <template id="empty-state"><div class="empty-state"><span class="empty-note">♪</span><h1 data-empty-title></h1><p data-empty-copy></p><button class="button primary" type="button" data-add-song hidden>Добавить песню</button><button class="button primary" type="button" data-empty-login hidden>Войти организатору</button><button class="button quiet" type="button" data-empty-project hidden>Создать проект</button></div></template>
   <script type="module" src="./app.js"></script>
 </body>

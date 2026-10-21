@@ -13,3 +13,5 @@
 | TL revision 12 | Display keyboard and optional uniform scrolling | Implemented and deployed — UI verification pending | [Requirements](features/timed-lyrics/revision-12.md) |
 | TL revision 13 | Manual scrolling in display mode | Implemented; browser verification pending | [Requirements](features/timed-lyrics/revision-13.md) |
 | TL revision 14 | Projects, library and durable local files | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-14.md) |
+| TL revision 15 | Shift cue times in song preparation | Implemented — verification pending | [Requirements](features/timed-lyrics/revision-15.md) |
+| TL revision 16 | Cloud library and local project copies | Implemented and locally verified — not deployed | [Requirements](features/timed-lyrics/revision-16.md) |

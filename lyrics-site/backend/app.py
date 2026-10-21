@@ -21,7 +21,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from .config import Settings, decode_scrypt
-from .store import Conflict, Missing, Referenced, Store
+from .store import Conflict, DuplicateSong, InvalidSong, Missing, Store
 
 MAX_UPLOAD = 150 * 1024 * 1024
 MAX_DURATION = 20 * 60
@@ -141,6 +141,8 @@ async def project(request: Request) -> Response:
         if not all(valid_entry(e) for e in entries): raise ValueError()
         return JSONResponse(store.save_project(project_id,data["revision"],name,entries))
     except Conflict: return error("Проект уже изменён другим организатором. Загрузите новую версию перед повторной попыткой.","conflict",409)
+    except DuplicateSong: return error("Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.","duplicate_song",409)
+    except InvalidSong: return error("Подтвердите готовность песни и проверьте её текст, длительность и таймлайн.","not_ready",400)
     except Missing: return error("Проект, песня, версия или запись не найдены.","not_found",404)
     except (ValueError,KeyError,AttributeError,TypeError,json.JSONDecodeError): return error("Проверьте название, версию и список песен.","invalid",400)
 
@@ -158,6 +160,8 @@ async def songs(request: Request) -> Response:
         entry, created=request.app.state.store.create_song(key, data)
         return JSONResponse(entry,status_code=201 if created else 200)
     except Missing: return error("Указанная запись не найдена.","not_found",404)
+    except DuplicateSong: return error("Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.","duplicate_song",409)
+    except InvalidSong: return error("Подтвердите готовность песни и проверьте её текст, длительность и таймлайн.","not_ready",400)
     except (ValueError,KeyError,AttributeError,TypeError,json.JSONDecodeError): return error("Проверьте ключ переноса и песню.","invalid",400)
 
 async def song(request: Request) -> Response:
@@ -173,7 +177,8 @@ async def song(request: Request) -> Response:
         audio_ids=store.delete_song(song_id)
         for audio_id in audio_ids: (store.audio_dir / audio_id).unlink(missing_ok=True)
         return Response(status_code=204)
-    except Referenced: return error("Нельзя удалить песню: она есть в проекте.","referenced",409)
+    except DuplicateSong: return error("Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.","duplicate_song",409)
+    except InvalidSong: return error("Подтвердите готовность песни и проверьте её текст, длительность и таймлайн.","not_ready",400)
     except Conflict: return error("Песня уже изменена. Загрузите новую версию или сохраните отдельную копию.","conflict",409)
     except Missing: return error("Песня не найдена.","not_found",404)
     except (ValueError,KeyError,AttributeError,TypeError,json.JSONDecodeError): return error("Проверьте версию и песню.","invalid",400)
@@ -259,6 +264,8 @@ async def imports(request: Request) -> Response:
         project, created=store.import_project(key,name,entries)
         return JSONResponse(project,status_code=201 if created else 200)
     except Conflict: return error("Импорт уже изменён.","conflict",409)
+    except DuplicateSong: return error("Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.","duplicate_song",409)
+    except InvalidSong: return error("Подтвердите готовность песни и проверьте её текст, длительность и таймлайн.","not_ready",400)
     except Missing: return error("Указанная запись не найдена.","not_found",404)
     except (ValueError,KeyError,AttributeError,TypeError,json.JSONDecodeError): return error("Проверьте ключ переноса и песни.","invalid",400)
 

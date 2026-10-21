@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 import wave
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,7 +21,7 @@ from backend.app import create_app
 
 
 def song(title="Song"):
-    return {"schemaVersion":1,"id":"local-id","title":title,"artist":"Artist","version":"original","language":"ru","duration":2,"delayMs":0,"reviewed":False,"source":{"kind":"manual","fileName":""},"cues":[{"id":"c1","start":0,"text":"text","type":"lyric"}]}
+    return {"schemaVersion":1,"id":"local-id","title":title,"artist":"Artist","version":"original","language":"ru","duration":2,"delayMs":0,"reviewed":True,"source":{"kind":"manual","fileName":""},"cues":[{"id":"c1","start":0,"text":"text","type":"lyric"}]}
 
 
 class ApiTest(unittest.TestCase):
@@ -38,7 +39,7 @@ class ApiTest(unittest.TestCase):
         response=self.client.post("/login",headers=self.headers,json={"password":"organizer password"})
         self.assertEqual(response.status_code,200); return {**self.headers,"X-Lyrics-CSRF":response.json()["csrf"]}
 
-    def test_auth_csrf_and_project_conflict_and_pins(self):
+    def test_auth_csrf_and_project_conflict_and_latest_heads(self):
         self.assertEqual(self.client.get("/projects").status_code,401)
         self.assertEqual(self.client.post("/login",json={"password":"wrong"}).status_code,403)
         headers=self.login()
@@ -51,10 +52,10 @@ class ApiTest(unittest.TestCase):
         changed=dict(first); changed["song"]=dict(first["song"],title="Changed")
         updated=self.client.put(f"/projects/{saved['id']}",headers=headers,json={"revision":saved["revision"],"name":"Class","songs":[changed]}).json()
         self.assertNotEqual(updated["songs"][0]["revisionId"],other["songs"][0]["revisionId"])
-        self.assertEqual(self.client.get(f"/projects/{other['id']}").json()["songs"][0]["song"]["title"],"Song")
+        self.assertEqual(self.client.get(f"/projects/{other['id']}").json()["songs"][0]["song"]["title"],"Changed")
         stale=self.client.put(f"/projects/{updated['id']}",headers=headers,json={"revision":saved["revision"],"name":"x","songs":[]})
         self.assertEqual(stale.status_code,409)
-        self.assertEqual(self.client.delete(f"/songs/{first['songId']}",headers=headers).status_code,409)
+        self.assertEqual(self.client.delete(f"/songs/{first['songId']}",headers=headers).status_code,204)
 
     def test_standalone_song_auth_and_validation(self):
         data={"migrationKey":"local-song", "song":song()}
@@ -87,11 +88,11 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM song_revisions").fetchone()[0],1)
             self.assertEqual(db.execute("SELECT COUNT(*) FROM song_uploads").fetchone()[0],1)
         # Failure rolls back the retry key along with the song, allowing recovery.
-        missing={"migrationKey":"missing-audio", "song":song(), "audioId":"missing"}
+        missing={"migrationKey":"missing-audio", "song":song("Recovered audio"), "audioId":"missing"}
         self.assertEqual(self.client.post("/songs",headers=headers,json=missing).status_code,404)
         self.assertEqual(self.client.post("/songs",headers=headers,json={**missing,"audioId":None}).status_code,201)
 
-    def test_library_update_retries_conflicts_and_project_pins(self):
+    def test_library_update_retries_conflicts_and_project_heads(self):
         headers=self.login()
         original=self.client.post("/songs",headers=headers,json={"migrationKey":"library", "song":song()}).json()
         project=self.client.post("/projects",headers=headers,json={"name":"Pinned"}).json()
@@ -106,7 +107,7 @@ class ApiTest(unittest.TestCase):
         conflict=self.client.put(path,headers=headers,json={**data,"song":song("Independent local edit")})
         self.assertEqual(conflict.status_code,409); self.assertEqual(conflict.json()["code"],"conflict")
         self.assertEqual(self.client.get(path).json(),updated)
-        self.assertEqual(self.client.get(f"/projects/{pinned['id']}").json()["songs"],[original])
+        self.assertEqual(self.client.get(f"/projects/{pinned['id']}").json()["songs"],[updated])
         self.assertEqual(self.client.get("/library").json()["songs"][0]["revisionId"],updated["revisionId"])
         # A lost original upload response keeps its original baseline after an update.
         self.assertEqual(self.client.post("/songs",headers=headers,json={"migrationKey":"library","song":song()}).json(),original)
@@ -135,6 +136,143 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.get(f"/audio/{audio['id']}").content,payload.getvalue())
         missing=self.client.put(path,headers=headers,json={"revisionId":cleared["revisionId"],"song":cleared["song"],"backingAudioId":"missing"})
         self.assertEqual(missing.status_code,404); self.assertEqual(self.client.get(path).json(),cleared)
+
+    def test_project_save_uses_latest_heads_and_rejects_conflicting_song_edits_atomically(self):
+        headers=self.login()
+        original=self.client.post("/songs",headers=headers,json={"migrationKey":"shared", "song":song()}).json()
+        def project(name):
+            result=self.client.post("/projects",headers=headers,json={"name":name}).json()
+            return self.client.put(f"/projects/{result['id']}",headers=headers,json={"revision":result["revision"],"name":name,"songs":[original]}).json()
+        first=project("First"); second=project("Second")
+        changed={**original, "song":{**original["song"], "cues":[{"id":"c1","start":1,"text":"new lyric","type":"lyric"}]}}
+        saved=self.client.put(f"/projects/{first['id']}",headers=headers,json={**first,"songs":[changed]}).json()
+        latest=saved["songs"][0]
+        self.assertEqual(self.client.get(f"/songs/{original['songId']}").json(),latest)
+        self.assertEqual(self.client.get(f"/projects/{second['id']}").json()["songs"],[latest])
+        # The second editor has only reordered/renamed its old project. Its
+        # unchanged song baseline must not revert the first editor's lyric.
+        structural=self.client.put(f"/projects/{second['id']}",headers=headers,json={**second,"name":"Renamed","songs":[original,original]})
+        self.assertEqual(structural.status_code,200)
+        self.assertEqual(structural.json()["songs"],[latest,latest])
+        stale_edit={**original,"song":{**original["song"],"title":"Conflicting edit"}}
+        conflict=self.client.put(f"/projects/{second['id']}",headers=headers,json={**structural.json(),"name":"Must roll back","songs":[{"song":song("Must roll back")},stale_edit]})
+        self.assertEqual(conflict.status_code,409)
+        self.assertEqual(self.client.get(f"/projects/{second['id']}").json(),structural.json())
+        self.assertEqual(len(self.client.get("/library").json()["songs"]),1)
+
+    def test_cloud_writes_require_ready_valid_changed_songs(self):
+        headers=self.login()
+        for index,invalid in enumerate((
+            {**song(),"reviewed":False}, {**song(),"title":" "}, {**song(),"duration":0},
+            {**song(),"delayMs":None}, {**song(),"cues":[]},
+            {**song(),"cues":[{"start":2,"text":"late","type":"lyric"}]},
+            {**song(),"cues":[{"start":1,"text":"one","type":"lyric"},{"start":1,"text":"two","type":"rest"}]},
+            {**song(),"cues":[{"start":0,"text":" ","type":"lyric"}]},
+        )):
+            response=self.client.post("/songs",headers=headers,json={"migrationKey":f"invalid-{index}","song":invalid})
+            self.assertEqual(response.status_code,400); self.assertEqual(response.json()["code"],"not_ready")
+        original=self.client.post("/songs",headers=headers,json={"migrationKey":"ready", "song":song()}).json()
+        draft={**original,"song":{**original["song"],"reviewed":False,"title":"Pending"}}
+        response=self.client.put(f"/songs/{original['songId']}",headers=headers,json=draft)
+        self.assertEqual(response.status_code,400); self.assertEqual(response.json()["code"],"not_ready")
+        project=self.client.post("/projects",headers=headers,json={"name":"Ready"}).json()
+        response=self.client.put(f"/projects/{project['id']}",headers=headers,json={**project,"songs":[draft]})
+        self.assertEqual(response.status_code,400)
+        self.assertEqual(self.client.get(f"/projects/{project['id']}").json(),project)
+        self.assertEqual(self.client.get(f"/songs/{original['songId']}").json(),original)
+        # Existing unready legacy heads can still be included unchanged.
+        store=self.client.app.state.store
+        legacy={**original["song"],"reviewed":False}
+        with store.tx() as db: db.execute("UPDATE song_revisions SET body=? WHERE id=?",(json.dumps(legacy,ensure_ascii=False,sort_keys=True,separators=(",",":")),original["revisionId"]))
+        original["song"]=legacy
+        response=self.client.put(f"/projects/{project['id']}",headers=headers,json={**project,"songs":[original]})
+        self.assertEqual(response.status_code,200)
+        listing=self.client.get("/library").json()["songs"][0]
+        self.assertFalse(listing["reviewed"]); self.assertFalse(listing["valid"])
+
+    def test_song_identity_uniqueness_is_trimmed_exact_and_serialized(self):
+        headers=self.login()
+        original=self.client.post("/songs",headers=headers,json={"migrationKey":"original", "song":song()}).json()
+        duplicate={**song(),"title":" Song ","artist":" Artist ","version":" original "}
+        response=self.client.post("/songs",headers=headers,json={"migrationKey":"duplicate", "song":duplicate})
+        self.assertEqual(response.status_code,409); self.assertEqual(response.json()["code"],"duplicate_song")
+        for field,value in (("title","song"),("artist","Other"),("version","Live")):
+            response=self.client.post("/songs",headers=headers,json={"migrationKey":field, "song":{**song(),field:value}})
+            self.assertEqual(response.status_code,201)
+        changed={**original,"song":{**original["song"],"version":"Live"}}
+        self.assertEqual(self.client.put(f"/songs/{original['songId']}",headers=headers,json=changed).status_code,409)
+        # Empty and omitted optional values have identical semantic identities.
+        empty={**song("Empty"),"artist":"", "version":""}
+        self.assertEqual(self.client.post("/songs",headers=headers,json={"migrationKey":"empty", "song":empty}).status_code,201)
+        empty.pop("artist"); empty.pop("version")
+        self.assertEqual(self.client.post("/songs",headers=headers,json={"migrationKey":"absent", "song":empty}).status_code,409)
+        # Separate connections compete for the same identity; the transaction
+        # permits one create and rejects the other without leaving empty songs.
+        store=self.client.app.state.store
+        from backend.store import DuplicateSong
+        def create(key):
+            try: return store.create_song(key,{"song":song("Concurrent")})[1]
+            except DuplicateSong: return False
+        with ThreadPoolExecutor(max_workers=2) as pool: results=list(pool.map(create,["race-one","race-two"]))
+        self.assertEqual(sorted(results),[False,True])
+        self.assertEqual(len(self.client.get("/library?q=original").json()["songs"]),4)
+        self.assertEqual(len(self.client.get("/library?q=Live").json()["songs"]),1)
+
+    def test_delete_library_song_removes_all_cloud_occurrences_and_blocks_stale_retry(self):
+        headers=self.login()
+        def create(key): return self.client.post("/songs",headers=headers,json={"migrationKey":key,"song":song(key)}).json()
+        removed=create("Removed"); one=create("One"); two=create("Two")
+        projects=[]
+        for name,entries in (("First",[removed,one,removed,two]),("Second",[two,removed,removed,one])):
+            project=self.client.post("/projects",headers=headers,json={"name":name}).json()
+            projects.append(self.client.put(f"/projects/{project['id']}",headers=headers,json={**project,"songs":entries}).json())
+        self.assertEqual(self.client.delete(f"/songs/{removed['songId']}",headers=headers).status_code,204)
+        self.assertEqual(self.client.get(f"/songs/{removed['songId']}").status_code,404)
+        for stale,expected in zip(projects,([one,two],[two,one])):
+            current=self.client.get(f"/projects/{stale['id']}").json()
+            self.assertEqual(current["songs"],expected); self.assertEqual(current["revision"],stale["revision"]+1)
+            self.assertEqual(self.client.put(f"/projects/{stale['id']}",headers=headers,json=stale).status_code,409)
+            self.assertEqual(self.client.put(f"/projects/{stale['id']}",headers=headers,json={**current,"songs":[removed]}).status_code,404)
+        self.assertEqual(self.client.put(f"/songs/{removed['songId']}",headers=headers,json=removed).status_code,404)
+        self.assertEqual(self.client.post("/songs",headers=headers,json={"migrationKey":"Removed","song":song("Removed")}).status_code,404)
+        # Removing a project entry alone keeps its library head.
+        current=self.client.get(f"/projects/{projects[0]['id']}").json()
+        self.assertEqual(self.client.put(f"/projects/{current['id']}",headers=headers,json={**current,"songs":[]}).status_code,200)
+        self.assertEqual(self.client.get(f"/songs/{one['songId']}").status_code,200)
+
+    def test_existing_semantic_duplicates_are_not_merged_on_restart(self):
+        headers=self.login()
+        first=self.client.post("/songs",headers=headers,json={"migrationKey":"first", "song":song("First")}).json()
+        second=self.client.post("/songs",headers=headers,json={"migrationKey":"second", "song":song("Second")}).json()
+        store=self.client.app.state.store
+        # Reproduce a pre-revision-16 library whose separate heads already share
+        # metadata. Initialization preserves both identities and their content.
+        legacy={**second["song"],"title":"First"}
+        with store.tx() as db: db.execute("UPDATE song_revisions SET body=? WHERE id=?",(json.dumps(legacy,ensure_ascii=False,sort_keys=True,separators=(",",":")),second["revisionId"]))
+        self.client.app.state.store=type(store)(store.data_dir)
+        self.assertEqual(len(self.client.get("/library").json()["songs"]),2)
+        self.assertEqual(self.client.get(f"/songs/{first['songId']}").json(),first)
+        self.assertEqual(self.client.get(f"/songs/{second['songId']}").json()["song"],legacy)
+        edited={**first,"song":{**first["song"],"delayMs":50}}
+        self.assertEqual(self.client.put(f"/songs/{first['songId']}",headers=headers,json=edited).status_code,409)
+
+    def test_delete_referenced_song_cleans_only_unshared_audio(self):
+        headers=self.login()
+        def upload(frames):
+            payload=io.BytesIO()
+            with wave.open(payload,"wb") as output:
+                output.setnchannels(1); output.setsampwidth(2); output.setframerate(8000); output.writeframes(b"\0\0"*frames)
+            return self.client.post("/audio",headers={**headers,"Content-Type":"audio/wav","X-Lyrics-Filename":"backing.wav"},content=payload.getvalue()).json()["id"]
+        shared=upload(8000); unique=upload(16000)
+        removed=self.client.post("/songs",headers=headers,json={"migrationKey":"removed", "song":song("Removed"),"audioId":unique,"backingAudioId":shared}).json()
+        retained=self.client.post("/songs",headers=headers,json={"migrationKey":"retained", "song":{**song("Backing only"),"cues":[]},"backingAudioId":shared}).json()
+        project=self.client.post("/projects",headers=headers,json={"name":"Audio"}).json()
+        self.assertEqual(self.client.put(f"/projects/{project['id']}",headers=headers,json={**project,"songs":[removed,retained]}).status_code,200)
+        self.assertEqual(self.client.delete(f"/songs/{removed['songId']}",headers=headers).status_code,204)
+        self.assertEqual(self.client.get(f"/audio/{unique}").status_code,404)
+        self.assertEqual(self.client.get(f"/audio/{shared}").status_code,200)
+        self.assertEqual(self.client.delete(f"/songs/{retained['songId']}",headers=headers).status_code,204)
+        self.assertEqual(self.client.get(f"/audio/{shared}").status_code,404)
 
     def test_audio_bounds_sniff_quota_and_range(self):
         headers=self.login()
@@ -225,7 +363,7 @@ class ApiTest(unittest.TestCase):
         finally:
             import shutil; shutil.rmtree(restored,ignore_errors=True)
 
-    def test_backing_track_persists_pins_replaces_and_removes(self):
+    def test_backing_track_persists_latest_replaces_and_removes(self):
         headers=self.login()
         def upload(name, seconds):
             payload=io.BytesIO()
@@ -240,13 +378,13 @@ class ApiTest(unittest.TestCase):
         entry=first["songs"][0]
         self.assertEqual(entry["backingAudioId"],backing_one["id"])
         self.assertEqual(entry["song"]["backing"],{"fileName":"backing-one.wav"})
-        # A second project pins the first arrangement while the first project changes.
+        # A second project resolves the current library arrangement automatically.
         pinned_project=self.client.post("/projects",headers=headers,json={"name":"Pinned"}).json()
         pinned=self.client.put(f"/projects/{pinned_project['id']}",headers=headers,json={"revision":pinned_project["revision"],"name":"Pinned","songs":[entry]}).json()
         replacement=dict(entry); replacement["backingAudioId"]=backing_two["id"]
         changed=self.client.put(f"/projects/{first['id']}",headers=headers,json={"revision":first["revision"],"name":"Backing","songs":[replacement]}).json()
         self.assertEqual(changed["songs"][0]["song"]["backing"],{"fileName":"backing-two.wav"})
-        self.assertEqual(self.client.get(f"/projects/{pinned['id']}").json()["songs"][0]["backingAudioId"],backing_one["id"])
+        self.assertEqual(self.client.get(f"/projects/{pinned['id']}").json()["songs"][0]["backingAudioId"],backing_two["id"])
         # A revision-3 client omits the new ID and metadata; its save retains both.
         old_client=dict(changed["songs"][0]); old_client.pop("backingAudioId"); old_client["song"]=dict(old_client["song"]); old_client["song"].pop("backing")
         old_saved=self.client.put(f"/projects/{changed['id']}",headers=headers,json={"revision":changed["revision"],"name":"Backing","songs":[old_client]}).json()
@@ -256,7 +394,7 @@ class ApiTest(unittest.TestCase):
         no_backing=self.client.put(f"/projects/{old_saved['id']}",headers=headers,json={"revision":old_saved["revision"],"name":"Backing","songs":[removed]}).json()
         self.assertIsNone(no_backing["songs"][0]["backingAudioId"])
         self.assertNotIn("backing",no_backing["songs"][0]["song"])
-        # The old pinned revision still accounts for and serves the replaced audio.
+        # Historical library revisions still account for and serve replaced audio.
         self.assertEqual(self.client.get(f"/audio/{backing_one['id']}").content,backing_bytes)
 
     def test_backing_audio_cleanup_and_backup_restore(self):

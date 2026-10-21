@@ -20,7 +20,7 @@
 
 #show-mode{width:100%;margin-bottom:14px;flex-shrink:0}
 
-.audience-lines.uniform-scroll{transition:none}.audience-lines.manual-scroll{transition:transform .35s ease}.ignore-timecodes{display:flex;align-items:center;gap:8px;margin-top:14px}.ignore-timecodes input{width:auto}.auto-scroll-settings{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}.auto-scroll-settings[hidden],.auto-scroll-settings input[hidden]{display:none}.auto-scroll-label{margin:0}.auto-scroll-settings input.auto-scroll-delay{width:7ch;padding:7px 8px}
+.audience-lines.uniform-scroll{transition:none}.audience-lines.manual-scroll{transition:transform .35s ease}.ignore-timecodes{display:flex;align-items:center;gap:8px;margin-top:14px}.ignore-timecodes input{width:auto}.cue-ignore-timecodes{margin-bottom:14px}.auto-scroll-settings{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}.auto-scroll-settings[hidden],.auto-scroll-settings input[hidden]{display:none}.auto-scroll-label{margin:0}.auto-scroll-settings input.auto-scroll-delay{width:7ch;padding:7px 8px}.time-shift-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0}.time-shift-controls label{color:var(--upcoming);font-size:13px}.time-shift-controls input{width:9ch;padding:8px;border-radius:8px;background:#0a222d;border:1px solid var(--line);color:var(--text)}
 
 /* Revision 10: one control row, dimmed in fullscreen while idle. */
 .event-view{position:relative}

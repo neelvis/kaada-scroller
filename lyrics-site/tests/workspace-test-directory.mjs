@@ -78,5 +78,5 @@ export async function installWorkspaceDirectory(page, directoryPath) {
 
 export async function connectTestWorkspace(page) {
   await page.locator('#workspace-connect').click();
-  await page.waitForFunction(() => document.querySelector('#workspace-status')?.textContent.includes('Папка:'));
+  await page.waitForFunction(() => Boolean(document.querySelector('#workspace-status')?.textContent.trim()));
 }

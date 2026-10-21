@@ -262,3 +262,20 @@ with JavaScript MIME for the application bundle. Both live links point to
 `20261015_134546`; previous pair `20261015_115537` remains available for
 rollback. Browser UI and authenticated/offline workflows were not exercised.
 Close and reopen existing lyrics tabs to adopt the new shell.
+
+### Fractional cue-time shift
+
+Paired release `20261021_151151` on 2026-10-21 adds a fractional-seconds
+`Подвинуть время` control to song preparation and spacing below the
+ignore-timecodes checkbox. The API source and locked runtime are unchanged; no
+data migration was needed. All 92 frontend unit tests and the plain-scroll
+browser scenario passed before release. Production checks returned 200 for the
+lyrics page, API health, main site and main health endpoint; anonymous project
+and audio requests returned 401. JavaScript, CSS, MJS and WASM assets returned
+200 with their expected MIME types. An isolated production-browser smoke check
+applied a fractional offset, confirmed persistence and readiness invalidation,
+and measured 65 px between the ignore-timecodes checkbox and first cue row. Both
+live links point to `20261021_151151`; the previous pair `20261021_145916`
+remains available for rollback. Authenticated cloud save/reopen and offline
+Start were not exercised. Close and reopen existing lyrics tabs to adopt the
+new shell.

@@ -1,4 +1,5 @@
 import * as remote from './remote.js';
+import { sameEntryContent } from './save-reconciliation.js';
 import { getAudio, getBacking } from './local-workspace.js';
 
 export function contentFingerprint(value) { return JSON.stringify(value); }
@@ -19,14 +20,21 @@ async function uploadEntry(song) {
   if (original) audioId = (await remote.uploadAudio(new File([original], song.source?.fileName || 'recording.mp3', { type: original.type }))).id;
   return { song, backingAudioId, audioId };
 }
-export async function uploadLocalProject(local, link, progress = () => {}) {
+export async function uploadLocalProject(local, link, progress = () => {}, retryBaseline = null) {
   if (link) {
     const current = await remote.getProject(link.id);
     if (current.revision !== link.revision) throw new remote.RemoteError('В облаке другая версия. Сохраните отдельную копию или скачайте её для сравнения.', { code: 'conflict' });
   } else {
     // The import key is persisted with the local project before any request.
     const found = await remote.findMigration(local.id);
-    if (found) return found;
+    if (found) {
+      if (!retryBaseline) return found;
+      if (found.name !== retryBaseline.name || found.songs.length !== retryBaseline.songs.length || found.songs.some((entry, index) => !sameEntryContent(entry, { ...entry, song: retryBaseline.songs[index] }))) {
+        throw new remote.RemoteError('Проект уже создан, но его песни изменились в облаке. Черновик сохранён; откройте облачный проект для сверки.', { code: 'conflict' });
+      }
+      if (contentFingerprint(local) === contentFingerprint(retryBaseline)) return found;
+      link = projectLink(retryBaseline, found);
+    }
   }
   const songs = [];
   for (const [index, song] of local.songs.entries()) {
