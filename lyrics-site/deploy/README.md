@@ -304,3 +304,23 @@ writes or browser errors. Authenticated cloud writes were verified against the
 disposable local test API; private school songs/projects were not changed by
 smoke checks. Close and reopen existing tabs to adopt the new shell. Native OS
 folder-picker interaction remains a manual platform check.
+
+
+### Cue ordering, interludes and library sorting
+
+Paired release `20261021_235101` on 2026-10-22 publishes revision 17 from
+application commit `bfd76a8`, pushed to `codex/local-cloud-workspace`. It adds
+row drag/arrows, row-level `+ ♪` interlude insertion, three spaced animated notes
+in timed display and six library sort orders with original creation dates.
+Backend metadata changes introduce no schema migration; pinned runtime inputs
+are unchanged. Independent review accepted all 58 staged manifest hashes and
+committed/generated file inventories. The previous pair `20261021_161630`
+remains available for rollback.
+
+All 110 frontend unit tests, 24 API tests, the authenticated feature/cloud-library
+browser suites and display-controls regression passed locally. Activation, paired
+link/service checks, 42 production HTTPS source/health/access/MIME checks and an
+isolated production browser passed. The live browser verified row insertion,
+three notes, local-directory ZIP/backing playback, keyboard pause and narrow
+layout without production API writes. Private school data was not changed by
+smoke checks. Close and reopen existing tabs to adopt the new cached shell.

@@ -817,4 +817,19 @@ Local verification:
 
 Browser tests use installed Chrome and a real-file directory adapter, not the
 native OS folder chooser. Physical projector readability and event rehearsal
-remain organizer checks. Production publication evidence follows after activation.
+remain organizer checks.
+
+Production publication: application commit `bfd76a8` was pushed to
+`origin/codex/local-cloud-workspace` and paired release `20261021_235101` activated
+on 2026-10-22 (release identifier uses UTC). Independent exact-package review
+accepted all 58 manifest hashes plus source/generated/runtime inventory; manifest
+SHA-256 is `0d53dd1dc19c48fa40f0eed26f1aec49a95d1260dbc5135df88bd3805d4caf8b`.
+Remote preparation and activation passed; frontend and backend links both select
+this release and the API service is active. Previous pair `20261021_161630` is
+retained for rollback. All 42 HTTPS source/health/access/MIME checks passed.
+An isolated anonymous production browser verified the sort selector, published
+row-level `+ ♪` placement and insertion estimate, exactly three spaced active
+notes after seeking, real local-directory ZIP/backing playback, keyboard pause
+and 320px layout. It blocked production API writes and reported none. Private
+school songs/projects were not modified; authenticated writes were covered by
+the disposable local API suites. Close/reopen existing tabs for the new shell.

@@ -1,7 +1,7 @@
 # Timed lyrics revision 17: cue ordering, interludes and library sorting
 
 Feature ID: TL (extension)
-Status: Implemented and locally verified — publication pending
+Status: Implemented, verified and deployed
 Revision: 17, 2026-10-21
 Baseline: [Specification](spec.md), [preparation refinements](revision-11.md),
 [cue shifting](revision-15.md), and [cloud library](revision-16.md).
@@ -118,7 +118,7 @@ text. `lyrics-site/public/core.js` enforces strictly increasing starts.
 `lyrics-site/backend/store.py` already stores the original `songs.created_at`;
 the library UI is in `lyrics-site/public/workspace-hub.js`.
 
-Proposed decisions requiring approval with this draft: moving rows preserves
+Approved decisions reviewed with the original draft: moving rows preserves
 their timestamps; interlude estimates use the preceding interval, a 5-second
 single-predecessor fallback, or zero; estimates never silently shift later
 lyrics. Interludes use the existing rest cue with a start and next-cue/end
@@ -127,8 +127,8 @@ boundary. No material decision remains hidden in implementation.
 Approval: the user explicitly replied `Подтверждаю` after reviewing this draft
 on 2026-10-21. Reviewed draft SHA-256:
 `97ee7f1e92c6a503b542c6b0817086107b0185b12c910f865fe33c530c4cbc07`.
-Implementation of TL-R94–R99 and TL-AC72–AC75 is authorized. Commits, push and
-deployment are not authorized by this approval.
+The original approval authorized TL-R94–R99 and TL-AC72–AC75 implementation;
+commit, push and deployment were authorized separately below.
 
 Follow-up authorization: on 2026-10-22 the user explicitly requested completion,
 commit, push and deployment, with the row-level `+ ♪` insertion button and three
@@ -148,3 +148,13 @@ covered by cue/core and existing portable round-trip tests. Independent source
 review has no unresolved material findings. Publication and regressions are
 recorded in the [verification report](../../../docs/timed-lyrics-verification.md).
 Native OS folder selection and physical projector rehearsal remain manual checks.
+
+Published on 2026-10-22 as paired release `20261021_235101` from application
+commit `bfd76a8` on `codex/local-cloud-workspace`. All 58 staged manifest hashes
+and committed sources were independently accepted; runtime inputs are unchanged
+and no schema migration was needed. Activation and all 42 production HTTPS
+source/health/access/MIME checks passed. An isolated production browser verified
+the row `+ ♪` placement, an inserted interlude, three spaced notes, local backing
+playback, keyboard pause and narrow layout without production API writes.
+Previous pair `20261021_161630` remains available for rollback. Close and reopen
+existing tabs to adopt the new cached shell.

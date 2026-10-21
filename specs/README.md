@@ -15,4 +15,4 @@
 | TL revision 14 | Projects, library and durable local files | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-14.md) |
 | TL revision 15 | Shift cue times in song preparation | Implemented — verification pending | [Requirements](features/timed-lyrics/revision-15.md) |
 | TL revision 16 | Cloud library and local project copies | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-16.md) |
-| TL revision 17 | Cue ordering, interludes and library sorting | Implemented and locally verified — publication pending | [Requirements](features/timed-lyrics/revision-17.md) |
+| TL revision 17 | Cue ordering, interludes and library sorting | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-17.md) |
