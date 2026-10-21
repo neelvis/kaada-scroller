@@ -279,3 +279,28 @@ live links point to `20261021_151151`; the previous pair `20261021_145916`
 remains available for rollback. Authenticated cloud save/reopen and offline
 Start were not exercised. Close and reopen existing lyrics tabs to adopt the
 new shell.
+
+
+### Cloud library and local project copies
+
+Paired release `20261021_161630` on 2026-10-21 publishes revision 16 from
+application commit `0c6f5b5`. Projects now resolve current cloud library songs;
+confirmed song edits update the library, project Save also refreshes existing
+local copies, and library deletion removes all cloud project occurrences. The
+UI provides the top-bar local-copy directory control, recording versions,
+identity-checked song copies and per-card playback.
+
+The backend adds only the `deleted_song_uploads` retry-key table. Independent
+old/new/old store initialization confirmed additive-schema rollback compatibility;
+existing songs/projects are not rewritten during startup. All 55 staged hashes
+and locked runtime inputs were independently checked. Activation selected both
+new links and the API remains active. The previous pair `20261021_151151` is
+retained for rollback through its paired activator.
+
+All 39 production HTTPS source/health/access/MIME checks passed. An isolated
+production browser passed anonymous library gating, local directory-backed ZIP
+import/backing playback, keyboard pause and narrow layout without production API
+writes or browser errors. Authenticated cloud writes were verified against the
+disposable local test API; private school songs/projects were not changed by
+smoke checks. Close and reopen existing tabs to adopt the new shell. Native OS
+folder-picker interaction remains a manual platform check.

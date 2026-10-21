@@ -696,7 +696,8 @@ remain as stated above.
 ## Revision 16: cloud library and local project copies (2026-10-21)
 
 Approved with `подтверждаю` after the linked revision-16 draft. Implemented and
-verified locally; no commit, push or deployment was performed for this revision.
+verified locally, then committed and deployed following the explicit user
+instruction `Коммит, деплой`.
 Pre-existing revision-15 cue shifting, styles and deployment-guide changes were
 preserved. Earlier revision-14 transfer/pinning results above are historical;
 revision 16 supersedes their affected business behavior.
@@ -747,3 +748,30 @@ are exercised at API/unit level rather than through a simultaneous browser
 session. Real organizer recordings and physical projector rehearsal remain
 outside these synthetic fixtures. All test cloud writes used disposable local
 API data, never production library/projects.
+
+
+### Revision 16 production publication
+
+Application commit `0c6f5b59aa6af92fbcb46a98bca279c35156773a` was pushed on
+`codex/local-cloud-workspace`. Paired release `20261021_161630` was independently
+reviewed: all 55 manifest entries match, committed public/backend sources and
+deployment scripts match exactly, and 12 wheels plus the pip bootstrap match the
+committed lock/pin. Manifest SHA-256:
+`2d0378b793d4c1f0dbab53669da8b5b425f77c7949866ea097c00015f845a927`.
+An isolated old/new/old store initialization verified additive-schema rollback
+compatibility and SQLite integrity. The new table only retains deleted upload
+retry keys; existing private songs/projects are not migrated or rewritten.
+
+Remote preparation installed locked wheels without package-network access.
+Activation selected matching frontend/API `20261021_161630`; the API service is
+active and prior pair `20261021_151151` remains retained for rollback. All 39 HTTPS
+checks passed: top-level public-file hashes, site/API health, anonymous private
+project/library/song/audio rejection and MJS/WASM MIME types.
+
+An isolated anonymous Chrome context using the production release passed the new
+cloud-library navigation, removed legacy controls, creation gating, top-bar local
+folder/subtitle, real temporary-directory ZIP import, local lyric/backing Start
+without cloud audio requests, Space pause and 320px layout. There were no uncaught
+browser errors and no production API write requests. Authenticated cloud writes
+were exercised against the disposable local API, not private school data. Native
+OS folder-dialog and physical rehearsal boundaries remain as stated above.

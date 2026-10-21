@@ -29,7 +29,7 @@ Accepted extension: [revision 14 — projects, library and durable local files](
 (implemented, verified and deployed).
 Read the applicable extensions before using a superseded baseline rule.
 Accepted extension: [revision 16 — cloud library and local project copies](revision-16.md)
-(implemented and locally verified; supersedes affected storage/version rules).
+(implemented, verified and deployed; supersedes affected storage/version rules).
 
 ## Purpose
 

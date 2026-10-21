@@ -1,7 +1,7 @@
 # Timed lyrics revision 16: cloud library and local project copies
 
 Feature ID: TL (extension)
-Status: Implemented and locally verified — not deployed
+Status: Implemented, verified and deployed
 Revision: 16, 2026-10-21
 Baseline: [Specification](spec.md), [shared projects](revision-3.md),
 [projects and durable files](revision-14.md), and [cue shifting](revision-15.md).
@@ -162,8 +162,11 @@ backend and frontend reviews have no unresolved material findings. Supplemental
 display-control regression also passes. See the
 [verification report](../../../docs/timed-lyrics-verification.md#revision-16-cloud-library-and-local-project-copies-2026-10-21).
 Native OS directory-dialog interaction remains a manual platform check; tests
-use an adapter that writes real temporary directory files. No production data
-was changed and this revision has not been deployed.
+use an adapter that writes real temporary directory files. Published as paired
+release `20261021_161630` from application commit `0c6f5b5` on 2026-10-21.
+Production source hashes, health/access/MIME checks and an isolated browser smoke
+check passed. Private school songs/projects were not modified by smoke checks;
+previous pair `20261021_151151` remains available for rollback.
 
 Delivery authorization: on 2026-10-21 the user explicitly requested
 `Коммит, деплой`, authorizing the commit and production release of this change.
