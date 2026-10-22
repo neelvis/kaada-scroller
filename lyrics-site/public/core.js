@@ -96,6 +96,7 @@ function sanitizeSong(raw, songNumber) {
   if (typeof raw.reviewed !== 'boolean') throw importError(`песня ${songNumber}: reviewed должен быть true или false.`);
   if (raw.ignoreTimecodes !== undefined && typeof raw.ignoreTimecodes !== 'boolean') throw importError(`песня ${songNumber}: ignoreTimecodes должен быть true или false.`);
   if (raw.autoScrollEnabled !== undefined && typeof raw.autoScrollEnabled !== 'boolean') throw importError(`песня ${songNumber}: autoScrollEnabled должен быть true или false.`);
+  if (raw.includeBackingInShow !== undefined && typeof raw.includeBackingInShow !== 'boolean') throw importError(`песня ${songNumber}: includeBackingInShow должен быть true или false.`);
   if (raw.autoScrollStartSeconds !== undefined && (!Number.isSafeInteger(raw.autoScrollStartSeconds) || raw.autoScrollStartSeconds < 0)) {
     throw importError(`песня ${songNumber}: время начала автоскролла должно быть неотрицательным целым числом.`);
   }
@@ -111,6 +112,7 @@ function sanitizeSong(raw, songNumber) {
     delayMs: raw.delayMs,
     ignoreTimecodes: raw.ignoreTimecodes === true,
     autoScrollEnabled: raw.autoScrollEnabled !== false,
+    includeBackingInShow: raw.includeBackingInShow !== false,
     autoScrollStartSeconds: raw.autoScrollStartSeconds === undefined ? 10 : raw.autoScrollStartSeconds,
     cues: raw.cues.map((cue, index) => sanitizeCue(cue, songNumber, index + 1)),
     reviewed: raw.reviewed,
@@ -287,6 +289,7 @@ export function createSong(partial = {}) {
     delayMs: finiteNumber(partial.delayMs, 0),
     ignoreTimecodes: partial.ignoreTimecodes === true,
     autoScrollEnabled: partial.autoScrollEnabled !== false,
+    includeBackingInShow: partial.includeBackingInShow !== false,
     autoScrollStartSeconds: Number.isSafeInteger(partial.autoScrollStartSeconds) && partial.autoScrollStartSeconds >= 0
       ? partial.autoScrollStartSeconds
       : 10,

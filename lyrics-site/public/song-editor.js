@@ -8,7 +8,8 @@ import * as remote from './remote.js';
 import { insertRestCue, moveCueToBoundary } from './cue-editing.js';
 
 export function createSongEditor(context) {
-  const { els, previewPlayer, backingPreview, backingPreviewId, recognition, sourceGeneration } = context.resources;
+  const resources = context.resources;
+  const { els, previewPlayer, backingPreview, recognition, sourceGeneration } = resources;
   const { currentSong, status, changeSong, render, showLibrary, addSong, clearAudioPreview, clearBackingPreview, setAudioPreview, setBackingPreview, entryFor, privateMutation, backingKey, markRemoteDirty, persist, displayTime } = context.actions;
   const recognitionProfiles = new Map();
   const backingGeneration = new Map();
@@ -19,6 +20,155 @@ export function createSongEditor(context) {
   let editorTabSongId = null;
   let lrclibState = null;
   let committingCueBeforeRender = false;
+  let capturedCueTime = null;
+  let assignmentSongId = null;
+  let selectedAssignmentCueId = null;
+  const playerProgress = input('0', 'range', { className: 'backing-player-progress', min: '0', max: '0', step: '0.01', 'aria-label': 'Позиция музыки' });
+  const playerElapsed = node('span', { className: 'backing-player-time', text: '0:00.00' });
+  const playerDuration = node('span', { className: 'backing-player-time', text: '0:00.00' });
+  const playerControls = node('div', { className: 'backing-player-controls' });
+  const assignmentDialog = node('dialog', { className: 'cue-assignment-dialog', 'aria-labelledby': 'cue-assignment-title' });
+  const assignmentForm = node('form', { className: 'cue-assignment-form' });
+  const assignmentRows = node('div', { className: 'cue-assignment-rows', role: 'radiogroup', 'aria-label': 'Строка для отметки' });
+  const shiftOption = node('div', { className: 'cue-assignment-shift' });
+  const assignmentSave = button('Сохранить', 'button primary', () => {});
+  const assignmentCancel = button('Отмена', 'button quiet', () => assignmentDialog.close());
+  let shiftFollowing = null;
+  const iconButton = (symbol, tooltip, action, className = '') => {
+    const control = button('', `button quiet event-icon-button has-tooltip backing-player-button ${className}`, action);
+    control.setAttribute('aria-label', tooltip); control.setAttribute('data-tooltip', tooltip); control.title = tooltip;
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('class', 'backing-player-icon'); icon.setAttribute('aria-hidden', 'true');
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', `#${symbol}`); icon.append(use);
+    control.append(icon);
+    return control;
+  };
+  const playPause = iconButton('player-icon-play', 'Воспроизвести', () => {
+    if (backingPreview.paused) backingPreview.play().catch(error => toast(`Не удалось воспроизвести музыку: ${error.message}`));
+    else backingPreview.pause();
+  }, 'backing-player-play-pause');
+  const stop = iconButton('player-icon-stop', 'Остановить', () => {
+    backingPreview.pause();
+    if (Number.isFinite(backingPreview.duration)) backingPreview.currentTime = 0;
+  });
+  const seekBy = amount => {
+    const duration = Number.isFinite(backingPreview.duration) ? backingPreview.duration : Number(currentSong()?.duration) || 0;
+    backingPreview.currentTime = Math.max(0, Math.min(duration, backingPreview.currentTime + amount));
+  };
+  const seekBack = iconButton('player-icon-back', 'Назад на 0,5 секунды', () => seekBy(-0.5));
+  const seekForward = iconButton('player-icon-forward', 'Вперёд на 0,5 секунды', () => seekBy(0.5));
+  const speedButtons = [
+    ['player-icon-speed-half', 0.5, 'Скорость 0,5×'],
+    ['player-icon-speed-one', 1, 'Скорость 1×'],
+    ['player-icon-speed-two', 2, 'Скорость 2×'],
+  ].map(([icon, rate, label]) => {
+    const control = iconButton(icon, label, () => { backingPreview.playbackRate = rate; updatePlayerControls(); }, 'backing-player-speed');
+    control.dataset.rate = String(rate);
+    control.setAttribute('aria-pressed', String(rate === 1));
+    return control;
+  });
+  const assignTime = iconButton('player-icon-clock', 'назначить текущее время строке', openCueAssignment);
+  playerControls.append(playPause, stop, seekBack, seekForward, ...speedButtons, assignTime);
+  const player = node('div', { className: 'backing-player' }, [
+    backingPreview,
+    node('div', { className: 'backing-player-progress-row' }, [playerElapsed, playerProgress, playerDuration]),
+    playerControls,
+    assignmentDialog,
+  ]);
+  assignmentSave.addEventListener('click', event => {
+    event.preventDefault();
+    const latest = currentSong();
+    if (!latest || latest.id !== assignmentSongId || !selectedAssignmentCueId || !Number.isFinite(capturedCueTime)) return;
+    const selectedIndex = latest.cues.findIndex(cue => cue.id === selectedAssignmentCueId);
+    if (selectedIndex < 0) return;
+    const selectedCue = latest.cues[selectedIndex];
+    const shouldShift = Boolean(shiftFollowing?.checked && Number.isFinite(selectedCue.start));
+    const difference = shouldShift ? capturedCueTime - selectedCue.start : 0;
+    estimatedRestStarts.delete(`${latest.id}/${selectedCue.id}`);
+    const cues = latest.cues.map((cue, index) => {
+      if (index === selectedIndex) return { ...cue, start: capturedCueTime };
+      if (shouldShift && index > selectedIndex && Number.isFinite(cue.start)) {
+        estimatedRestStarts.delete(`${latest.id}/${cue.id}`);
+        return { ...cue, start: cue.start + difference };
+      }
+      return cue;
+    });
+    changeSong(latest.id, song => invalidateChanged(song, { cues }));
+    assignmentDialog.close();
+    render();
+  });
+  assignmentForm.addEventListener('submit', event => { event.preventDefault(); });
+  assignmentForm.append(
+    node('h2', { id: 'cue-assignment-title', text: 'Назначить время строке' }),
+    node('p', { className: 'hint cue-assignment-captured-time' }),
+    assignmentRows,
+    shiftOption,
+    node('div', { className: 'dialog-actions' }, [assignmentCancel, assignmentSave]),
+  );
+  assignmentDialog.append(assignmentForm);
+  playerProgress.addEventListener('input', () => {
+    const position = Number(playerProgress.value);
+    if (Number.isFinite(position) && Number.isFinite(backingPreview.duration)) backingPreview.currentTime = position;
+  });
+  for (const event of ['loadedmetadata', 'durationchange', 'timeupdate', 'play', 'pause', 'ended', 'ratechange', 'loadstart', 'emptied']) backingPreview.addEventListener(event, updatePlayerControls);
+  updatePlayerControls();
+
+  function updatePlayerControls() {
+    const duration = Number.isFinite(backingPreview.duration) ? backingPreview.duration : Number(currentSong()?.duration) || 0;
+    const position = Number.isFinite(backingPreview.currentTime) ? backingPreview.currentTime : 0;
+    playerElapsed.textContent = formatTime(position);
+    playerDuration.textContent = formatTime(duration);
+    playerProgress.max = String(Math.max(0, duration));
+    playerProgress.value = String(Math.min(position, duration));
+    const ready = Boolean(backingPreview.src) && backingPreview.readyState >= 1;
+    playerProgress.disabled = !ready || duration <= 0;
+    playerProgress.setAttribute('aria-valuetext', `${formatTime(position)} из ${formatTime(duration)}`);
+    const playing = !backingPreview.paused && !backingPreview.ended;
+    const playTooltip = playing ? 'Пауза' : 'Воспроизвести';
+    const playIcon = playPause.querySelector('use');
+    playIcon.setAttribute('href', `#player-icon-${playing ? 'pause' : 'play'}`);
+    playPause.setAttribute('aria-label', playTooltip); playPause.setAttribute('data-tooltip', playTooltip); playPause.title = playTooltip;
+    for (const control of playerControls.querySelectorAll('button')) control.disabled = !ready;
+    for (const control of speedButtons) control.setAttribute('aria-pressed', String(Number(control.dataset.rate) === backingPreview.playbackRate));
+  }
+
+  function openCueAssignment() {
+    const song = currentSong();
+    if (!song?.backing?.fileName || !backingPreview.src || backingPreview.readyState < 1) { toast('Музыка ещё не готова к разметке.'); return; }
+    assignmentSongId = song.id;
+    capturedCueTime = backingPreview.currentTime;
+    selectedAssignmentCueId = null;
+    shiftFollowing = null;
+    assignmentRows.replaceChildren(); shiftOption.replaceChildren();
+    assignmentDialog.querySelector('.cue-assignment-captured-time').textContent = `Время музыки: ${formatTime(capturedCueTime)}`;
+    assignmentSave.disabled = true;
+    song.cues.forEach((cue, index) => {
+      const radio = input('', 'radio', { name: 'cue-assignment-row', value: cue.id, 'aria-label': `Строка ${index + 1}: ${cue.text}` });
+      radio.addEventListener('change', () => {
+        if (!radio.checked) return;
+        selectedAssignmentCueId = cue.id;
+        assignmentSave.disabled = false;
+        shiftOption.replaceChildren(); shiftFollowing = null;
+        if (Number.isFinite(cue.start)) {
+          const difference = capturedCueTime - cue.start;
+          const sign = difference >= 0 ? '+' : '';
+          const delta = `${sign}${difference.toFixed(2).replace('.', ',')} сек`;
+          shiftFollowing = input('', 'checkbox', { 'aria-label': `Передвинуть следующие строки на ${delta}` });
+          shiftOption.append(node('label', { className: 'ignore-timecodes has-tooltip', 'data-tooltip': `Передвинуть следующие строки на ${delta}`, title: `Передвинуть следующие строки на ${delta}` }, [shiftFollowing, node('span', { text: `Передвинуть следующие строки на ${delta}` })]));
+        }
+      });
+      const currentTime = Number.isFinite(cue.start) ? formatTime(cue.start) : 'Не задано';
+      const cueType = cue.type === 'rest' ? 'Проигрыш' : 'Текст';
+      assignmentRows.append(node('label', { className: 'cue-assignment-row' }, [
+        radio,
+        node('span', { className: 'cue-assignment-number', text: String(index + 1) }),
+        node('span', { className: 'cue-assignment-text', text: cue.text }),
+        node('span', { className: 'cue-assignment-time', text: currentTime }),
+        node('span', { className: `cue-assignment-type${cue.type === 'rest' ? ' is-rest' : ''}`, text: cueType }),
+      ]));
+    });
+    assignmentDialog.showModal();
+  }
   function lrclibContext() { return JSON.stringify([context.state.workspaceGeneration, context.state.set.id, context.state.project?.id, context.state.selectedId, context.state.sessionActive, context.state.offlineProjectOpen]); }
   function cancelLrclib() { lrclibState?.controller?.abort(); if (lrclibState) lrclibState.token += 1; lrclibState = null; }
   function resetPreparation({ preserveDrafts = false } = {}) { cancelLrclib(); if (!preserveDrafts) importDrafts.clear(); editorTabSongId = null; }
@@ -143,7 +293,16 @@ export function createSongEditor(context) {
         clearBackingPreview(); changeSong(song.id, s => invalidateChanged(s, { backing: { fileName: selected.name }, mediaRevision: crypto.randomUUID() })); render();
       } catch (error) { if (current()) { toast(`Не удалось сохранить музыку: ${error.message}`); render(); } }
     });
-    return node('section', { className: 'section-card backing-card' }, [node('h2', { text: 'Музыка' }), node('p', { className: 'hint', text: 'Необязательно. Запускается вместе с текстом; MP3/WAV до 150 МБ и 20 минут;' }), node('div', { className: 'action-row' }, [choose, node('span', { className: 'file-name', text: song.backing?.fileName || 'Без музыки' }), remove]), file, ...(song.backing?.fileName ? [backingPreview] : [])]);
+    const content = [node('h2', { text: 'Музыка' }), node('p', { className: 'hint', text: 'Необязательно. Запускается вместе с текстом; MP3/WAV до 150 МБ и 20 минут; Добавленную музыку можно использовать для разметки текста.' }), node('div', { className: 'action-row' }, [choose, node('span', { className: 'file-name', text: song.backing?.fileName || 'Без музыки' }), remove]), file];
+    if (song.backing?.fileName) {
+      const includeInShow = node('input', { type: 'checkbox', checked: song.includeBackingInShow !== false });
+      includeInShow.addEventListener('change', () => {
+        changeSong(song.id, current => ({ ...current, includeBackingInShow: includeInShow.checked }));
+      });
+      const tooltip = 'если вы добавили музыку только для разметки, снимите выбор, чтобы музыка не воспроизводилась по умолчанию';
+      content.push(node('label', { className: 'ignore-timecodes has-tooltip backing-show-option', 'data-tooltip': tooltip, title: tooltip }, [includeInShow, node('span', { text: 'включать музыку в показ' })]), player);
+    }
+    return node('section', { className: 'section-card backing-card' }, content);
   }
 
   async function checkBackingFile(file) {
@@ -330,12 +489,7 @@ export function createSongEditor(context) {
       changeSong(song.id, () => moved);
       pendingCueRender = false; render(); focusCue(cueId, focusControl);
     };
-    const tapCue = index => {
-      if (!song.backing?.fileName) return;
-      if (!backingPreview.src || backingPreviewId !== `${project?.id || 'local'}:${song.id}:${entryFor(song).backingAudioId || song.backing.fileName}`) { toast('Сначала запустите музыку.'); return; }
-      changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((cue, i) => i === index ? { ...cue, start: backingPreview.currentTime } : cue) })); render();
-    };
-    card.append(node('div', { className: 'cue-toolbar' }, [node('div', {}, [node('h2', { text: 'Строки таймлайна' }), node('p', { className: 'hint', text: 'Время — начало строки. Отмечайте начало кнопкой с часами у строки.' })])]));
+    card.append(node('div', { className: 'cue-toolbar' }, [node('div', {}, [node('h2', { text: 'Строки таймлайна' }), node('p', { className: 'hint', text: 'Время — начало строки. Назначайте время строке кнопкой с часами у плеера.' })])]));
     const ignore = input('', 'checkbox', { id: 'ignore-timecodes' });
     ignore.checked = song.ignoreTimecodes === true;
     ignore.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, ignoreTimecodes: ignore.checked })); render(); });
@@ -421,8 +575,6 @@ export function createSongEditor(context) {
     song.cues.forEach((cue, index) => { const time = input(cue.start == null ? '' : formatTime(cue.start), 'text', { className: 'cue-time', 'aria-label': `Время строки ${index + 1}` }); const text = input(cue.text, 'text', { className: 'cue-text', 'aria-label': `Текст строки ${index + 1}` }); const type = node('select', { className: 'cue-type', 'aria-label': `Тип строки ${index + 1}` }); type.append(node('option', { value: 'lyric', text: 'Текст' }), node('option', { value: 'rest', text: 'Проигрыш' })); type.value = cue.type;
       const initialValues = new Map([[time, time.value], [text, text.value], [type, type.value]]);
       const update = event => { if (event.target.value === initialValues.get(event.target)) return; initialValues.set(event.target, event.target.value); if (event.target === time || type.value !== 'rest') estimatedRestStarts.delete(estimateKey(cue.id)); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map(item => item.id === cue.id ? { ...item, start: event.target === time ? parseTime(time.value) : item.start, text: text.value, type: type.value } : item) })); if (deferCueRender) pendingCueRender = true; else render(); }; time.addEventListener('change', update); text.addEventListener('change', update); type.addEventListener('change', update);
-      const retapLabel = song.backing?.fileName ? `Отметить строку ${index + 1} по текущему времени музыки` : 'загрузите музыку для разметки строк по мере воспроизведения';
-      const retap = button('◷', 'button quiet has-tooltip cue-retap', () => { estimatedRestStarts.delete(estimateKey(cue.id)); tapCue(index); }); retap.setAttribute('aria-label', retapLabel); retap.setAttribute('data-tooltip', retapLabel); retap.title = retapLabel; retap.disabled = !song.backing?.fileName;
       const insertRestAfter = cueActionButton('+ ♪', 'button quiet cue-insert-rest', () => insertRest(current => {
         const currentIndex = current.cues.findIndex(item => item.id === cue.id);
         return currentIndex < 0 ? -1 : currentIndex + 1;
@@ -446,7 +598,7 @@ export function createSongEditor(context) {
       up.disabled = index === 0; up.setAttribute('aria-label', `Поднять строку ${index + 1}`);
       const down = cueActionButton('↓', 'button quiet cue-move-down', () => moveCue(cue.id, current => current.cues.findIndex(item => item.id === cue.id) + 2, '.cue-move-down'));
       down.disabled = index === song.cues.length - 1; down.setAttribute('aria-label', `Опустить строку ${index + 1}`);
-      const row = node('div', { className: `cue-row${cue.type === 'rest' ? ' rest' : ''}`, 'data-cue-id': cue.id }, [node('div', { className: 'cue-reorder' }, [handle, up, down]), time, text, type, insertRestAfter, retap, remove]);
+      const row = node('div', { className: `cue-row${cue.type === 'rest' ? ' rest' : ''}`, 'data-cue-id': cue.id }, [node('div', { className: 'cue-reorder' }, [handle, up, down]), time, text, type, insertRestAfter, remove]);
       if (cue.type === 'rest') {
         const estimated = estimatedRestStarts.has(estimateKey(cue.id));
         const end = song.cues[index + 1]?.start;

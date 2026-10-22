@@ -102,7 +102,7 @@ try {
   assert.equal(await page.locator('.status-pill.ready').count(), 1, 'same-position drop retains confirmation');
   assert.equal(await page.locator('.cue-toolbar .cue-add-rest').count(), 0);
   assert.equal(await row(page, restId).locator('.cue-insert-rest').innerText(), '+ ♪');
-  assert.deepEqual(await row(page, restId).evaluate(row => [...row.children].filter(el => el.matches('.cue-type,.cue-insert-rest,.cue-retap')).map(el => el.classList.contains('cue-type') ? 'type' : el.classList.contains('cue-insert-rest') ? 'insert' : 'time')), ['type', 'insert', 'time']);
+  assert.deepEqual(await row(page, restId).evaluate(row => [...row.children].filter(el => el.matches('.cue-type,.cue-insert-rest')).map(el => el.classList.contains('cue-type') ? 'type' : 'insert')), ['type', 'insert']);
   await library(page); assert.equal(await sort.inputValue(), 'title-desc');
   const listed = await page.evaluate(async () => (await (await import('./remote.js')).listLibrary()).songs);
   assert.equal(listed.find(item => item.id === songs[0].songId).createdAt, '2020-01-01T00:00:00Z');

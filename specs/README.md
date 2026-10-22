@@ -19,3 +19,5 @@
 | TL revision 20 | Direct card navigation and display library controls | Deployed — UI acceptance pending | [Requirements](features/timed-lyrics/revision-20.md) |
 | TL revision 21 | Library status, project media and song editing | Implemented — UI acceptance pending | [Requirements](features/timed-lyrics/revision-21.md) |
 | TL revision 22 | Preparation toolbar actions and grouping | Implemented — UI acceptance pending | [Requirements](features/timed-lyrics/revision-22.md) |
+| TL revision 23 | Backing player controls and cue assignment | Implemented — deployment pending | [Requirements](features/timed-lyrics/revision-23.md) |
+| TL revision 24 | Backing music in display mode | Implemented — deployment pending | [Requirements](features/timed-lyrics/revision-24.md) |

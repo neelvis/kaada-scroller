@@ -1,6 +1,6 @@
 .cue-table .cue-row {
-  grid-template-columns: 108px 96px minmax(100px, 1fr) 128px 46px 34px 34px;
-  grid-template-areas: "reorder time text type insert retap remove" "note note note note note note note";
+  grid-template-columns: 108px 96px minmax(100px, 1fr) 128px 46px 34px;
+  grid-template-areas: "reorder time text type insert remove" "note note note note note note";
   align-items: center;
   min-width: 0;
 }
@@ -13,7 +13,6 @@
 .cue-row .cue-text { grid-area: text; min-width: 0; }
 .cue-row .cue-type { grid-area: type; display: block; min-width: 0; }
 .cue-row .cue-insert-rest { grid-area: insert; min-height: 36px; white-space: nowrap; }
-.cue-row .cue-retap { grid-area: retap; min-height: 36px; }
 .cue-row .cue-remove { grid-area: remove; min-height: 36px; }
 .cue-row .cue-note { grid-area: note; font-size: 12px; color: var(--muted); margin: 0; }
 .cue-row .cue-estimate { color: var(--accent); }
@@ -28,7 +27,7 @@
 @media (max-width: 1150px) {
   .cue-table .cue-row {
     grid-template-columns: minmax(0, 1fr) 46px 50px;
-    grid-template-areas: "reorder reorder remove" "time time time" "type insert retap" "text text text" "note note note";
+    grid-template-areas: "reorder reorder remove" "time time time" "type insert ." "text text text" "note note note";
     padding: 8px;
     border: 1px solid var(--line);
     border-radius: 9px;

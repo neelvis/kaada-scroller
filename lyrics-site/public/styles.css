@@ -140,3 +140,44 @@
 @media(max-width:500px){.toolbar-group{gap:3px;padding-left:6px}.toolbar-status{display:none}.primary-nav.toolbar-group{flex:1 1 auto}.toolbar-group .nav-button{font-size:11px;padding:7px 6px}#show-mode{width:34px;height:34px;padding:5px}}
 @media(max-width:780px){.toolbar-status .remote-state{display:block;max-width:110px;font-size:10px}}
 @media(max-width:500px){.toolbar-status{display:flex}.toolbar-status .offline-state{display:none}.toolbar-status .remote-state{max-width:78px;font-size:9px}}
+
+/* Backing player controls and cue assignment. */
+.backing-player{width:100%;padding:10px 2px 2px}
+#backing-preview{display:none}
+.backing-player-progress-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;min-height:28px}
+.backing-player-time{min-width:62px;color:var(--upcoming);font-size:12px;font-variant-numeric:tabular-nums}
+.backing-player-progress{width:100%;height:22px;margin:0;accent-color:var(--accent);cursor:pointer}
+.backing-player-controls{display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;margin-top:7px}
+.backing-player-button{position:relative;width:38px;height:38px;padding:7px;color:var(--upcoming)}
+.backing-player-button:hover,.backing-player-button[aria-pressed=true]{color:var(--accent);border-color:var(--accent);background:rgba(35,192,235,.08)}
+.backing-player-button:disabled{opacity:.4;cursor:default}
+.backing-player-button .backing-player-icon{display:block;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.backing-player-button .backing-player-icon use{fill:inherit;stroke:inherit}
+.backing-player-speed{width:46px;padding:5px}
+.backing-player-speed .backing-player-icon{width:32px;fill:currentColor;stroke:none}
+.cue-assignment-dialog{width:min(760px,calc(100vw - 24px));max-width:none;max-height:min(85vh,760px);overflow:auto}
+.cue-assignment-form{display:flex;flex-direction:column;gap:12px;padding:20px}
+.cue-assignment-form h2{margin:0;font-size:20px}
+.cue-assignment-form .hint{margin:0}
+.cue-assignment-rows{display:flex;flex-direction:column;gap:5px;max-height:min(52vh,460px);overflow:auto}
+.cue-assignment-row{display:grid;grid-template-columns:24px 32px minmax(0,1fr) 86px 96px;align-items:center;gap:9px;min-height:44px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:rgba(7,26,36,.5);cursor:pointer}
+.cue-assignment-row:has(input:checked){border-color:var(--accent);background:rgba(35,192,235,.09)}
+.cue-assignment-row input{width:auto;margin:0;accent-color:var(--accent)}
+.cue-assignment-number,.cue-assignment-time,.cue-assignment-type{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.cue-assignment-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cue-assignment-type{text-align:right}
+.cue-assignment-type.is-rest{font-style:italic}
+.cue-assignment-shift:empty{display:none}
+.cue-assignment-shift .ignore-timecodes{margin:0}
+.cue-assignment-form .dialog-actions{margin-top:3px}
+.cue-assignment-form .dialog-actions button:disabled{opacity:.45;cursor:default}
+@media(max-width:500px){
+  .backing-player-progress-row{gap:7px}
+  .backing-player-time{min-width:54px;font-size:11px}
+  .backing-player-controls{gap:4px}
+  .backing-player-button{width:34px;height:36px;padding:5px}
+  .backing-player-speed{width:43px}
+  .cue-assignment-form{padding:15px}
+  .cue-assignment-row{grid-template-columns:22px 24px minmax(0,1fr) 70px;gap:6px;padding:6px}
+  .cue-assignment-type{grid-column:3 / 5;text-align:left;font-size:11px}
+}

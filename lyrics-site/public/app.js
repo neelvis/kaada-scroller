@@ -59,8 +59,9 @@ let backingPreviewUrl = null;
 let backingPreviewGeneration = 0;
 const backingPreview = document.createElement('audio');
 backingPreview.id = 'backing-preview';
-backingPreview.controls = true;
+backingPreview.controls = false;
 backingPreview.preload = 'metadata';
+backingPreview.setAttribute('aria-hidden', 'true');
 let privateMutationChain = Promise.resolve();
 function privateMutation(operation) { const next = privateMutationChain.then(operation, operation); privateMutationChain = next.catch(() => {}); return next; }
 
@@ -217,6 +218,7 @@ function clearAudioPreview() {
 function clearBackingPreview() {
   backingPreviewGeneration += 1;
   backingPreview.pause(); backingPreview.removeAttribute('src'); backingPreview.load();
+  backingPreview.playbackRate = 1;
   if (backingPreviewUrl) URL.revokeObjectURL(backingPreviewUrl);
   backingPreviewId = null; backingPreviewUrl = null;
 }
@@ -662,6 +664,7 @@ function launchEvent(song) {
   let loaded = null;
   const loader = () => loaded ||= loadBacking(song, owner, entry, offline).catch(error => { loaded = null; throw error; });
   buildAudience(); playback.arm(song.duration, song.backing?.fileName || entry.backingAudioId ? loader : null);
+  playback.mute(song.includeBackingInShow === false);
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
   applyHighlight(); updateEvent();
   restoreEventControls();
