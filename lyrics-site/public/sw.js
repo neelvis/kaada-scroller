@@ -1,7 +1,7 @@
 importScripts('./cache-manifest.js');
 const BASE = new URL(self.registration.scope);
 const PREFIX = `kaada-lyrics-shell-${encodeURIComponent(BASE.pathname)}-`;
-const CACHE = PREFIX + self.LYRICS_VERSION;
+const CACHE = PREFIX + self.LYRICS_VERSION + '-__LYRICS_VERSION__';
 const SHELL = self.LYRICS_SHELL.map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));

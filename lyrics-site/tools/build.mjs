@@ -19,6 +19,9 @@ await cp(resolve(root, 'node_modules/@huggingface/transformers/LICENSE'), resolv
 const names = (await readdir(dist)).filter(name => !['vendor', 'sw.js', 'cache-manifest.js'].includes(name)).sort();
 const hash = createHash('sha256');
 for (const name of names) hash.update(name).update(await readFile(resolve(dist, name)));
-await writeFile(resolve(dist, 'cache-manifest.js'), `self.LYRICS_VERSION=${JSON.stringify(hash.digest('hex').slice(0, 16))};\nself.LYRICS_SHELL=${JSON.stringify(['./', ...names.map(name => './' + name)])};\n`);
+const version = hash.digest('hex').slice(0, 16);
+const worker = (await readFile(resolve(root, 'public/sw.js'), 'utf8')).replaceAll('__LYRICS_VERSION__', version);
+await writeFile(resolve(dist, 'sw.js'), worker);
+await writeFile(resolve(dist, 'cache-manifest.js'), `self.LYRICS_VERSION=${JSON.stringify(version)};\nself.LYRICS_SHELL=${JSON.stringify(['./', ...names.map(name => './' + name)])};\n`);
 await writeFile(resolve(dist, 'artifact.json'), JSON.stringify({ application: 'kaada-lyrics', schemaVersion: 1, relativeAssets: true, publicOnly: true }, null, 2));
 console.log(`Built portable artifact: ${dist}`);

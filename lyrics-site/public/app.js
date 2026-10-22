@@ -130,6 +130,18 @@ function updateRemoteState() {
   const song = currentSong();
   const editingLibrarySong = onlineSongOpen && !els.prep.hidden && Boolean(song);
   const songReady = Boolean(song?.reviewed && !validateSong(song).length);
+  const play = $('#show-mode');
+  play.hidden = els.prep.hidden || (!editingLibrarySong && !project && !localProjectId);
+  if (editingLibrarySong) {
+    const canPlay = songReady && !remoteDirty && !saveBusy;
+    const playLabel = canPlay ? 'запустить' : 'сначала сохраните изменения';
+    play.disabled = !canPlay;
+    play.title = playLabel; play.dataset.tooltip = playLabel;
+    play.setAttribute('aria-label', canPlay ? 'Запустить' : 'Запустить. Сначала сохраните изменения.');
+  } else {
+    play.disabled = !set.songs.length;
+    play.title = 'Запустить'; play.dataset.tooltip = 'Запустить'; play.setAttribute('aria-label', 'Запустить');
+  }
   els.save.hidden = els.prep.hidden || (!editingLibrarySong && !project && !localProjectId);
   els.save.disabled = editingLibrarySong
     ? saveBusy || !sessionActive || !songReady || !remoteDirty
@@ -604,11 +616,11 @@ function render() {
   $('#back-home').textContent = localProjectId || project ? '← Проекты' : '← Библиотека';
   els.prep.classList.toggle('online-song-open', onlineSongOpen);
   $('#local-save-status').textContent = localProjectId ? savedStatus : '';
-  $('#upload-current').hidden = true; $('#show-mode').hidden = !project && !localProjectId;
+  $('#upload-current').hidden = true;
   renderList(); els.setName.value = set.name || 'Библиотека песен';
   els.setName.disabled = offlineProjectOpen || onlineSongOpen || (!project && !localProjectId);
   updateSetNameMarquee(); $('#add-song').disabled = offlineProjectOpen || !sessionActive;
-  $('#show-mode').disabled = !set.songs.length; renderEditor(); updateRemoteState();
+  renderEditor(); updateRemoteState();
   if (offlineProjectOpen) { [...els.editor.querySelectorAll('input,textarea,select,button')].forEach(control => { control.disabled = true; }); }
 }
 async function createLibrarySong() {
@@ -870,7 +882,7 @@ function showProjects() { hub.show('projects'); }
 async function showOfflineProjects() { showProjects(); }
 function initOffline() {
   if (!('serviceWorker' in navigator)) { els.offline.textContent = 'Автономная оболочка недоступна'; return; }
-  navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => { els.offline.textContent = 'Не удалось подготовить автономную оболочку'; });
+  navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' }).catch(() => { els.offline.textContent = 'Не удалось подготовить автономную оболочку'; });
   navigator.serviceWorker.addEventListener('message', ({ data }) => {
     if (data?.type !== 'OFFLINE_READY') return;
     offlineShellReady = Boolean(data.ready);

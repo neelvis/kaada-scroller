@@ -17,7 +17,7 @@
     <header class="topbar">
       <a class="brand" href="./" aria-label="Тексты песен — к списку песен"><span class="brand-mark" aria-hidden="true">♪</span><span>Тексты песен</span></a>
       <div class="topbar-actions">
-        <svg class="action-icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0">
+        <svg class="action-icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0"><defs>
           <symbol id="action-icon-library" viewBox="0 0 24 24"><path d="M4 4v16M8 4v16M12 6v14M16 4l4 15M15 8l4-1M17 17l4-1"/></symbol>
           <symbol id="action-icon-save" viewBox="0 0 24 24"><path d="M4 3h13l3 3v15H4zM8 3v6h8V3M8 21v-8h8v8"/></symbol>
           <symbol id="action-icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></symbol>
@@ -28,20 +28,21 @@
           <symbol id="action-icon-projects" viewBox="0 0 24 24"><path d="M3 7V5a1 1 0 0 1 1-1h5l3 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/></symbol>
           <symbol id="action-icon-sign-out" viewBox="0 0 24 24"><path d="M11 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6m10-8H9m4-4-4 4 4 4"/></symbol>
           <symbol id="action-icon-hard-drive" viewBox="0 0 24 24"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm-2 9h20M6 16h.01M10 16h.01"/></symbol>
-        </svg>
+          <symbol id="action-icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+        </defs></svg>
         <div class="toolbar-group toolbar-status"><span class="offline-state" id="offline-state" aria-live="polite">Проверка автономной работы…</span><span class="remote-state" id="remote-state" aria-live="polite">Локальный набор</span></div>
         <nav class="primary-nav toolbar-group" aria-label="Основные разделы">
           <button class="button quiet nav-button is-active" id="projects" type="button" aria-current="page">Проекты</button>
           <button class="button quiet nav-button" id="library" type="button" aria-controls="hub-list">Библиотека песен</button>
         </nav>
         <div class="toolbar-group toolbar-song-actions" id="toolbar-song-actions" hidden>
+          <button class="button quiet event-icon-button has-tooltip action-icon-button" id="save-project" type="button" aria-label="Сохранить проект" data-tooltip="Сохранить проект" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-save"/></svg></button>
           <button class="button quiet event-icon-button has-tooltip action-icon-button" id="show-mode" type="button" aria-label="Запустить" data-tooltip="Запустить" hidden disabled><svg class="event-icon" aria-hidden="true"><use href="#action-icon-play"/></svg></button>
           <details class="project-add-menu" id="project-add-menu" hidden>
             <summary class="button quiet event-icon-button action-icon-button has-tooltip" aria-label="Добавить песни" data-tooltip="Добавить песни"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-add-song"/></svg></summary>
             <div class="project-add-options"><button class="button add-song" id="add-song" type="button">Новая песня</button><button class="button add-song" id="add-library-song" type="button" disabled>Из библиотеки</button></div>
           </details>
           <button class="button quiet danger event-icon-button has-tooltip action-icon-button" id="delete-library-song" type="button" aria-label="Удалить песню" data-tooltip="Удалить песню" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-trash"/></svg></button>
-          <button class="button quiet event-icon-button has-tooltip action-icon-button" id="save-project" type="button" aria-label="Сохранить проект" data-tooltip="Сохранить проект" hidden><svg class="event-icon" aria-hidden="true"><use href="#action-icon-save"/></svg></button>
         </div>
         <div class="toolbar-group toolbar-settings">
           <div class="local-copy-control"><button class="button quiet workspace-connect has-tooltip event-icon-button action-icon-button" id="workspace-connect" type="button" aria-label="Локальная папка для сохранения проектов: папка не выбрана" data-tooltip="Локальная папка для сохранения проектов: папка не выбрана"><svg class="event-icon" aria-hidden="true"><use href="#action-icon-hard-drive"/></svg></button><span id="workspace-status" class="workspace-status" aria-live="polite" hidden></span></div>
@@ -91,7 +92,7 @@
     </section>
 
     <section class="event-view" id="event-view" hidden>
-      <svg class="event-icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0">
+      <svg class="event-icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0"><defs>
         <symbol id="icon-library" viewBox="0 0 24 24"><path d="M4 4v16M8 4v16M12 6v14M16 4l4 15M15 8l4-1M17 17l4-1"/></symbol>
         <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></symbol>
         <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
@@ -102,7 +103,7 @@
         <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4ZM17 8a6 6 0 0 1 0 8M20 5a10 10 0 0 1 0 14"/></symbol>
         <symbol id="icon-muted" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4ZM17 9l5 6M22 9l-5 6"/></symbol>
         <symbol id="icon-highlight" viewBox="0 0 24 24"><path class="emphasis-past" d="M4 6h16"/><path class="emphasis-current" d="M4 12h16"/><path class="emphasis-future" d="M4 18h16"/></symbol>
-      </svg>
+      </defs></svg>
       <div class="event-bar">
         <div class="event-bar-start"><button class="button quiet event-menu-toggle event-icon-button" id="event-menu-toggle" type="button" aria-label="Медиатека песен и проектов" data-tooltip="Медиатека песен и проектов · L" aria-keyshortcuts="L" aria-expanded="false" aria-controls="event-menu"><svg class="event-icon" aria-hidden="true"><use href="#icon-library"/></svg></button><button class="button quiet" id="event-home" type="button">На главную</button><button class="button quiet" id="exit-event" type="button">← К подготовке</button></div>
         <span id="event-song-name"></span>

@@ -380,3 +380,55 @@ returned 401. The published public assets match the locally staged hashes. The
 previous pair `20261022_213226` remains available for rollback. Automated behavior
 suites, authenticated save/reopen, offline Start and manual browser acceptance
 were not run. Close and reopen existing lyrics tabs to adopt the new shell.
+
+### Library editing and preparation toolbar release
+
+Paired release `20261022_221927` on 2026-10-23 publishes revisions 21 and 22
+from application commit `444f224`. It fixes readiness and project-song entries
+in the display media menu, changes project and song card actions to icon
+controls, removes the project-location filter, and adds dirty-state protection
+and top-menu save/delete actions to online-song editing. The preparation toolbar
+now groups status, tabs, song actions, and site settings; project Play and Add
+are in the toolbar, and online-library song preparation has a gated Play action.
+
+Backend source and locked runtime match `20261022_215117`; there is no schema
+change. Frontend build, paired staging, checksum validation, API preparation,
+and activation passed. Production returned 200 for `/lyrics/`, API health, the
+main site and its health endpoint, app JavaScript and CSS; anonymous project
+access returned 401. SHA-256 checks for the five changed public assets matched
+the local build. The previous pair `20261022_215117` remains available for
+rollback. Automated behavior suites and manual browser acceptance were not run.
+Close and reopen existing lyrics tabs to adopt the new shell.
+
+### Online library song playback toolbar follow-up
+
+Paired release `20261022_222801` on 2026-10-23 publishes the online-library preparation
+toolbar refinement. Its order is Save, Play, Delete. Play is enabled only for a ready,
+saved library song; other statuses disable it and show the `сначала сохраните изменения`
+tooltip. The copy-card action uses the standard copy icon with a tooltip. The frontend
+SVG symbol definitions are placed in `<defs>` so icon references render. Backend source
+and locked runtime match `20261022_221927`; no schema change was needed.
+
+The frontend build, paired staging and checksum validation, API preparation, and
+activation passed. Production returned 200 for `/lyrics/`, API health, app JavaScript and
+CSS; anonymous project access returned 401. SHA-256 checks for `index.html`, `app.js`,
+and `workspace-hub.js` matched the local build. Browser behavior suites and manual
+browser acceptance were not run. The previous pair `20261022_221927` remains available
+for rollback. Close and reopen existing tabs to adopt the new shell.
+
+### Service worker cache refresh follow-up
+
+Paired release `20261022_223209` on 2026-10-23 fixes stale frontend assets left by
+older service workers. The build now embeds its content version in `sw.js`, and
+service-worker registration bypasses the HTTP cache for the worker and its imported
+manifest. This ensures a subsequent worker update installs a shell whose CSS matches
+the HTML and JavaScript. The backend source and locked runtime match
+`20261022_222801`; no schema change was needed.
+
+The frontend build, paired staging and checksum validation, API preparation, and
+activation passed. Production returned 200 for `/lyrics/`, API health, app JavaScript,
+CSS, and the service worker; anonymous project access returned 401. SHA-256 checks for
+`sw.js`, `styles.css`, and `app.js` matched the local build. In a fresh browser tab after
+closing the prior client, SVG icon styles loaded at 22 by 22 pixels with the expected
+stroke. The previous pair `20261022_222801` remains available for rollback. Close and
+reopen existing tabs to adopt the new shell.

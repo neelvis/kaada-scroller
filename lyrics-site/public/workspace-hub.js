@@ -106,9 +106,12 @@ export function createWorkspaceHub({ state, actions }) {
       ] : [
         songPlayControl(item),
         (() => {
-          const copy = button('Создать копию', 'button quiet', () => actions.createLibraryCopy(item));
+          const copy = iconButton('copy', 'Создать копию', '', () => actions.createLibraryCopy(item));
           if (item.reviewed === true && item.valid === true) return copy;
-          copy.disabled = true; copy.title = 'подтвердите готовность песни'; copy.setAttribute('aria-label', 'Создать копию. Подтвердите готовность песни.');
+          copy.disabled = true;
+          copy.title = 'подтвердите готовность песни';
+          copy.setAttribute('aria-label', 'Создать копию. Подтвердите готовность песни.');
+          copy.setAttribute('data-tooltip', 'Создать копию. Подтвердите готовность песни.');
           return copy;
         })(),
         iconButton('trash', 'Удалить песню', 'danger', () => actions.removeCloudSong(item.id)),
