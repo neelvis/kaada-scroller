@@ -130,3 +130,13 @@
   transform:translateY(-50%);
   max-width:min(190px,calc(100vw - 110px));
 }
+
+.event-menu{overflow-x:hidden;overflow-y:auto}.event-menu-content,.event-menu-songs{min-width:0}.event-menu-songs button{min-width:0;white-space:normal;overflow-wrap:anywhere}
+.hub-card-actions .action-icon-button{width:38px;height:38px;padding:7px}
+@media(max-width:500px){.hub-card-actions .action-icon-button{width:34px;height:34px;padding:5px}}
+
+.toolbar-group{display:flex;align-items:center;gap:8px;min-width:0;padding-left:12px;border-left:1px solid var(--line)}.toolbar-status{padding-left:0;border-left:0}.toolbar-status .offline-state,.toolbar-status .remote-state{white-space:normal}.primary-nav.toolbar-group{margin-left:0}.toolbar-song-actions{flex:none}.toolbar-settings{flex:none}.project-add-menu{position:relative;flex:none}.project-add-menu summary{display:grid;place-items:center;padding:7px;list-style:none}.project-add-menu summary::-webkit-details-marker{display:none}.project-add-options{position:absolute;top:calc(100% + 6px);right:0;z-index:40;width:min(210px,calc(100vw - 28px));padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-shadow:0 12px 35px #0008}.project-add-options .add-song{margin:0;text-align:left;white-space:normal}#show-mode{width:38px;height:38px;padding:7px;flex:none;margin:0}
+@media(max-width:780px){.toolbar-group{gap:5px;padding-left:8px}.toolbar-status{padding-left:0}.primary-nav.toolbar-group{flex:0 1 auto;width:auto}.toolbar-song-actions,.toolbar-settings{flex:0 1 auto}.toolbar-group .nav-button{padding:7px 8px}}
+@media(max-width:500px){.toolbar-group{gap:3px;padding-left:6px}.toolbar-status{display:none}.primary-nav.toolbar-group{flex:1 1 auto}.toolbar-group .nav-button{font-size:11px;padding:7px 6px}#show-mode{width:34px;height:34px;padding:5px}}
+@media(max-width:780px){.toolbar-status .remote-state{display:block;max-width:110px;font-size:10px}}
+@media(max-width:500px){.toolbar-status{display:flex}.toolbar-status .offline-state{display:none}.toolbar-status .remote-state{max-width:78px;font-size:9px}}

@@ -488,7 +488,7 @@ export function createSongEditor(context) {
       confirm.addEventListener('pointerdown', event => { if (event.button === 0) event.preventDefault(); });
       actions.append(confirm);
     }
-    actions.append(createDeleteButton(song));
+    if (!context.state.onlineSongOpen) actions.append(createDeleteButton(song));
     card.append(actions); return card;
   }
 
@@ -516,29 +516,7 @@ export function createSongEditor(context) {
   }
 
   function renderSongActions(song) {
-    const libraryMode = Boolean(context.state.onlineSongOpen);
-    const controls = [];
-    const validation = validateSong(song);
-    const ready = song.reviewed && validation.length === 0;
-    const saveHint = validation.length
-      ? `Исправьте ошибки перед сохранением: ${validation.join(' ')}`
-      : !song.reviewed ? 'Сначала подтвердите готовность песни.' : 'Песня готова к сохранению.';
-    const saveButton = label => {
-      const control = button(label, 'button primary', async () => {
-        const latest = currentSong();
-        const errors = latest ? validateSong(latest) : ['Песня больше не открыта.'];
-        if (!latest || !latest.reviewed || errors.length) { toast(errors.length ? `Исправьте ошибки перед сохранением: ${errors.join(' ')}` : 'Сначала подтвердите готовность песни.'); return; }
-        try { await context.actions.saveLibrarySong(); }
-        catch (error) { toast(`Не удалось сохранить песню: ${error.message}`); }
-      });
-      control.disabled = !ready;
-      control.title = ready ? label : saveHint;
-      control.setAttribute('aria-label', ready ? label : `${label}. ${saveHint}`);
-      control.setAttribute('data-tooltip', ready ? label : saveHint);
-      return control;
-    };
-    if (libraryMode) controls.push(saveButton('Сохранить в облаке'));
-    return node('div', { className: 'song-actions' }, [node('div', { className: 'action-row' }, controls)]);
+    return node('div', { className: 'song-actions', hidden: true });
   }
 
   return { renderEditor, cancelLrclib, resetPreparation, resetEditorTab, refreshConnectivity: () => lrclibState?.paint() };

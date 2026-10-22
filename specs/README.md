@@ -17,3 +17,5 @@
 | TL revision 16 | Cloud library and local project copies | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-16.md) |
 | TL revision 17 | Cue ordering, interludes and library sorting | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-17.md) |
 | TL revision 20 | Direct card navigation and display library controls | Deployed — UI acceptance pending | [Requirements](features/timed-lyrics/revision-20.md) |
+| TL revision 21 | Library status, project media and song editing | Implemented — UI acceptance pending | [Requirements](features/timed-lyrics/revision-21.md) |
+| TL revision 22 | Preparation toolbar actions and grouping | Implemented — UI acceptance pending | [Requirements](features/timed-lyrics/revision-22.md) |

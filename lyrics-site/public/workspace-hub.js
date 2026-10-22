@@ -12,6 +12,12 @@ export function createWorkspaceHub({ state, actions }) {
   sortSelect.value = LIBRARY_SORTS.some(option => option.value === savedSort) ? savedSort : DEFAULT_LIBRARY_SORT;
   const sortLabel = node('label', { className: 'hub-sort-label' }, [node('span', { text: 'Сортировка' }), sortSelect]);
   $('#hub-search').parentElement.after(sortLabel);
+  function iconButton(icon, label, className, onClick) {
+    const control = button('', `button quiet event-icon-button action-icon-button has-tooltip ${className}`, onClick);
+    control.setAttribute('aria-label', label); control.setAttribute('data-tooltip', label); control.title = label;
+    control.append(node('svg', { className: 'event-icon', 'aria-hidden': 'true' }, [node('use', { href: `#action-icon-${icon}` })]));
+    return control;
+  }
   async function show(next = destination) {
     if (await actions.leaveEditor?.() === false) return false;
     destination = next;
@@ -24,7 +30,7 @@ export function createWorkspaceHub({ state, actions }) {
   function songPlayControl(item) {
     const song = item.song || (Array.isArray(item.cues) ? item : null);
     const ready = song ? !validateSong(song).length : item.reviewed === true && item.valid === true;
-    const control = button('▶ Запустить', 'button quiet', () => actions.playCloudSong(item.id));
+    const control = iconButton('play', 'Запустить', '', () => actions.playCloudSong(item.id));
     if (ready) return control;
     control.disabled = true;
     const id = `hub-play-tooltip-${++tooltipId}`;
@@ -59,11 +65,8 @@ export function createWorkspaceHub({ state, actions }) {
     $('#hub-search').placeholder = isProjects ? 'Найти проект' : 'Название, исполнитель или версия записи';
     $('#hub-search').setAttribute('aria-label', isProjects ? 'Поиск проектов' : 'Поиск песен по названию, исполнителю или версии записи');
     $('#hub-create').textContent = isProjects ? '+ Создать проект' : '+ Новая песня';
-    $('#hub-filter').hidden = !isProjects;
-    $('#hub-filter-label').hidden = !isProjects;
     sortLabel.hidden = isProjects;
     const query = $('#hub-search').value.trim().toLocaleLowerCase();
-    const filter = isProjects ? $('#hub-filter').value : 'cloud';
     const localItems = isProjects ? data.projects : [];
     const cloudItems = isProjects ? data.cloudProjects : sortLibrarySongs(data.cloudSongs, sortSelect.value);
     const linkedIds = new Set(localItems.map(item => data.links[`project:${item.id}`]?.id).filter(Boolean));
@@ -73,14 +76,14 @@ export function createWorkspaceHub({ state, actions }) {
       const link = data.links[`project:${item.id}`];
       const cloud = cloudItems.find(entry => entry.id === link?.id);
       const metadata = cloud || item;
-      if ((filter === 'cloud' && !link) || !matches(metadata)) continue;
+      if (!matches(metadata)) continue;
       const controls = [
-        button('▶ Запустить', 'button quiet', () => actions.play(item.id)),
+        iconButton('play', 'Запустить', '', () => actions.play(item.id)),
       ];
       if (link && data.session) {
-        controls.push(button('↓ Сохранить локальную копию', 'button quiet', () => actions.download('project', link.id)));
-        controls.push(button('Удалить проект', 'button danger', () => actions.removeCloudProject(link.id)));
-      } else if (!link) controls.push(button('Удалить', 'button danger', () => actions.remove('project', item.id)));
+        controls.push(iconButton('download', 'Сохранить локальную копию', '', () => actions.download('project', link.id)));
+        controls.push(iconButton('trash', 'Удалить проект', 'danger', () => actions.removeCloudProject(link.id)));
+      } else if (!link) controls.push(iconButton('trash', 'Удалить проект', 'danger', () => actions.remove('project', item.id)));
       const subtitle = `${item.songs.length} песен · ${Math.ceil(item.songs.reduce((sum, song) => sum + (song.duration || 0), 0) / 60)} мин`;
       const readiness = node('p', { className: 'hub-readiness', text: 'Проверка готовности…' });
       const card = makeOpenCard(node('article', { className: 'hub-card', 'data-local-id': item.id, 'data-cloud-id': link?.id }, [
@@ -94,12 +97,12 @@ export function createWorkspaceHub({ state, actions }) {
       cards.push(card);
       actions.readiness(item).then(text => { if (card.isConnected) readiness.textContent = text; }).catch(() => { if (card.isConnected) readiness.textContent = 'Файлы недоступны — подключите папку'; });
     }
-    if (data.session && filter !== 'local') for (const item of cloudItems) {
+    if (data.session) for (const item of cloudItems) {
       if ((isProjects && linkedIds.has(item.id)) || !matches(item)) continue;
       const controls = isProjects ? [
-        button('▶ Запустить', 'button quiet', () => actions.playCloudProject(item.id)),
-        button('↓ Сохранить локальную копию', 'button quiet', () => actions.download('project', item.id)),
-        button('Удалить проект', 'button danger', () => actions.removeCloudProject(item.id)),
+        iconButton('play', 'Запустить', '', () => actions.playCloudProject(item.id)),
+        iconButton('download', 'Сохранить локальную копию', '', () => actions.download('project', item.id)),
+        iconButton('trash', 'Удалить проект', 'danger', () => actions.removeCloudProject(item.id)),
       ] : [
         songPlayControl(item),
         (() => {
@@ -108,7 +111,7 @@ export function createWorkspaceHub({ state, actions }) {
           copy.disabled = true; copy.title = 'подтвердите готовность песни'; copy.setAttribute('aria-label', 'Создать копию. Подтвердите готовность песни.');
           return copy;
         })(),
-        button('Удалить песню', 'button danger', () => actions.removeCloudSong(item.id)),
+        iconButton('trash', 'Удалить песню', 'danger', () => actions.removeCloudSong(item.id)),
       ];
       cards.push(makeOpenCard(node('article', { className: 'hub-card cloud', 'data-cloud-id': item.id }, [
         node('span', { className: 'eyebrow', text: isProjects ? 'ПРОЕКТ' : 'ПЕСНЯ' }),
@@ -127,7 +130,7 @@ export function createWorkspaceHub({ state, actions }) {
     $('#hub-message').textContent = data.message || (!data.session ? 'Войдите для доступа к облачной библиотеке и проектам.' : 'Песни хранятся в облаке. Локальные копии проектов сохраняются в выбранную папку.');
   }
   $('#hub-create').addEventListener('click', () => destination === 'projects' ? actions.createProject() : actions.createSong());
-  $('#hub-search').addEventListener('input', render); $('#hub-filter').addEventListener('change', render);
+  $('#hub-search').addEventListener('input', render);
   sortSelect.addEventListener('change', () => {
     try { sessionStorage.setItem('kaada-library-sort', sortSelect.value); } catch {}
     render();
