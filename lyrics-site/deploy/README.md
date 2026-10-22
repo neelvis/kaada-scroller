@@ -324,3 +324,22 @@ isolated production browser passed. The live browser verified row insertion,
 three notes, local-directory ZIP/backing playback, keyboard pause and narrow
 layout without production API writes. Private school data was not changed by
 smoke checks. Close and reopen existing tabs to adopt the new cached shell.
+
+### Focused project and song editing release
+
+Paired release `20261022_210520` on 2026-10-23 publishes revision 18 from
+application commit `601a310`. It replaces the local-folder label with a
+hard-drive icon, removes whole-project import/export, improves stale-project
+cleanup, saves project edits and existing local copies together, supports song
+drag ordering, limits readiness invalidation to timeline/music edits, records
+timeline marks from backing playback, and creates song copies from library cards.
+
+The API source and runtime are unchanged. The exact hash-pinned runtime from
+`20261021_235101` was reused and its files matched the active server runtime. The
+runtime refresh helper stopped because the upstream get-pip checksum differed;
+the pinned checksum was not changed. The frontend build and paired preparation
+passed. Production checks returned 200 for the lyrics page, API health, JavaScript
+and CSS, and 401 for anonymous project/audio requests. Automated feature tests,
+browser UI scenarios, authenticated cloud writes and native folder-picker
+interaction were not run. The previous pair `20261021_235101` remains available
+for rollback. Close and reopen existing lyrics tabs to adopt the new shell.

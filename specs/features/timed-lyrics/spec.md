@@ -33,7 +33,8 @@ Accepted extension: [revision 17 — cue ordering, interludes and library sortin
 Accepted extension: [revision 16 — cloud library and local project copies](revision-16.md)
 (implemented, verified and deployed; supersedes affected storage/version rules).
 Accepted extension: [revision 18 — focused project and song editing](revision-18.md)
-(supersedes affected requirements in revisions 14 and 16).
+(implemented and deployed; production smoke checks passed, feature behavior tests not run;
+supersedes affected requirements in revisions 14 and 16).
 
 ## Purpose
 

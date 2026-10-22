@@ -1,7 +1,8 @@
 # Timed lyrics revision 18: focused project and song editing
 
 Feature ID: TL (extension)
-Status: Implemented — static checks complete; behavior not test-verified
+Status: Implemented and deployed — production smoke-checked; feature behavior
+not test-verified
 Revision: 18, 2026-10-22
 Baseline: [Specification](spec.md), [projects and durable files](revision-14.md),
 [cloud library and local project copies](revision-16.md), and [cue ordering](revision-17.md).
