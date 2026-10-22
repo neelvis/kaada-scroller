@@ -10,25 +10,32 @@ export function createWorkspaceActions(context) {
   function showPreparation() { $('#home-view').hidden = true; els.prep.hidden = false; }
   // Old library files remain intact for recovery; they are no longer a library destination.
   function syncLocalLibrary() { context.state.legacySet = { schemaVersion: 1, id: 'library-draft', name: 'Библиотека песен', songs: [] }; }
+  function showWorkspaceFolder(name = '') {
+    const button = $('#workspace-connect');
+    const label = name || 'папка не выбрана';
+    button.setAttribute('aria-label', label); button.setAttribute('data-tooltip', label); button.title = label;
+    $('#workspace-status').textContent = '';
+  }
   async function ensureDirectory() { if (!connectedWorkspace()) await chooseDirectory(); return Boolean(connectedWorkspace()); }
   async function chooseDirectory() {
-    if (!filesSupported()) return toast('Для локальной копии откройте приложение в настольном Chrome или Edge по HTTPS. Доступны облако и ZIP-экспорт.');
+    if (!filesSupported()) return toast('Для локальной копии откройте приложение в настольном Chrome или Edge по HTTPS.');
     try {
       await context.state.persistChain;
       const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'kaada-workspace' });
       await connectWorkspace(handle); await rememberDirectory(handle).catch(() => {});
-      $('#workspace-status').textContent = handle.name;
+      showWorkspaceFolder(handle.name);
       context.resources.hub.render(); render();
     } catch (error) { if (error.name !== 'AbortError') toast(error.message); }
   }
   async function restoreDirectory() {
     if (!filesSupported()) return;
+    let handle = null;
     try {
-      const handle = await rememberedDirectory(); if (!handle) return;
-      $('#workspace-status').textContent = handle.name;
-      if (await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') { $('#workspace-status').textContent = `${handle.name} — подключите папку`; return; }
+      handle = await rememberedDirectory(); if (!handle) { showWorkspaceFolder(); return; }
+      showWorkspaceFolder(handle.name);
+      if (await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') { showWorkspaceFolder(`${handle.name} — подключите папку`); return; }
       await connectWorkspace(handle);
-    } catch (error) { $('#workspace-status').textContent = 'Подключите папку'; }
+    } catch (error) { showWorkspaceFolder(handle ? `${handle.name} — подключите папку` : 'папка не выбрана'); }
   }
   async function openLocalProject(id, { playbackOnly = false } = {}) {
     await context.state.persistChain;
@@ -70,7 +77,6 @@ export function createWorkspaceActions(context) {
   }
   function lockTransfer(busy) {
     for (const selector of ['#home-view', '#preparation-view', '.topbar']) $(selector).inert = busy;
-    $('#set-file').disabled = busy;
   }
   async function downloadItem(kind, id, { cloud = null, quiet = false } = {}) {
     if (kind !== 'project') return false;
@@ -97,5 +103,17 @@ export function createWorkspaceActions(context) {
     const next = structuredClone(localState()); next.projects = next.projects.filter(item => item.id !== id); delete next.links[`project:${id}`];
     try { await saveWorkspace(next); context.resources.hub.render(); } catch (error) { toast(error.message); }
   }
-  return { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, createLocalProject, submitLocalProject, createLocalSong, refreshHubCloud, readiness, downloadItem, removeLocalItem, chooseDirectory, ensureDirectory };
+  async function removeMissingCloudProject(id) {
+    const current = localState();
+    const local = current.projects.find(item => current.links[`project:${item.id}`]?.id === id);
+    if (!local) return false;
+    if (!connectedWorkspace()) throw new Error('Подключите рабочую папку, чтобы удалить из неё осиротевшую копию проекта.');
+    const next = structuredClone(current);
+    next.projects = next.projects.filter(item => item.id !== local.id);
+    delete next.links[`project:${local.id}`]; delete next.links[`pending-project:${local.id}`];
+    await saveWorkspace(next);
+    context.resources.hub.render();
+    return true;
+  }
+  return { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, createLocalProject, submitLocalProject, createLocalSong, refreshHubCloud, readiness, downloadItem, removeLocalItem, removeMissingCloudProject, chooseDirectory, ensureDirectory };
 }

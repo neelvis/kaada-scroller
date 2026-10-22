@@ -7,9 +7,8 @@ import { createWorkspaceActions } from './workspace-actions.js';
 import { uploadLocalProject, projectLink } from './cloud-transfers.js';
 import { Playback } from './playback.js';
 import { sameEntryContent, reconcileProjectSave } from './save-reconciliation.js';
-import { exportPortableSet, importPortableSet } from './portable.js';
 import * as remote from './remote.js';
-import { clearPrivateProjectCache, getDraft, getPrivateAudio, openCachedProject, preparedProjects, removeDraft, saveDraft } from './offline-projects.js';
+import { clearPrivateProjectCache, getDraft, getPrivateAudio, openCachedProject, preparedProjects, removeDraft, removePreparedProject, saveDraft } from './offline-projects.js';
 
 const els = { editor: $('#editor'), list: $('#song-list'), count: $('#song-count'), setName: $('#set-name'), prep: $('#preparation-view'), event: $('#event-view'), eventName: $('#event-song-name'), audience: $('#audience'), audienceLines: $('#audience-lines'), offline: $('#offline-state'), remote: $('#remote-state'), save: $('#save-project'), login: $('#login'), logout: $('#logout'), clearDownloaded: $('#clear-downloaded') };
 let set = { schemaVersion: 1, id: crypto.randomUUID?.() || `set-${Date.now()}`, name: 'Мой набор', songs: [] };
@@ -29,9 +28,7 @@ previewPlayer.id = 'audio-player';
 previewPlayer.controls = true;
 previewPlayer.preload = 'metadata';
 let recognition = new Map();
-let tapHistory = new Map();
 let persistChain = Promise.resolve();
-let importing = false;
 let eventState = { song: null, startedAt: 0, running: false, frame: 0, lastIndex: null };
 let fontSize = 54;
 let highlightEnabled = true;
@@ -62,7 +59,7 @@ backingPreview.preload = 'metadata';
 let privateMutationChain = Promise.resolve();
 function privateMutation(operation) { const next = privateMutationChain.then(operation, operation); privateMutationChain = next.catch(() => {}); return next; }
 
-const { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, createLocalProject, submitLocalProject, createLocalSong, refreshHubCloud, readiness, downloadItem, removeLocalItem, chooseDirectory } = createWorkspaceActions({
+const { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, createLocalProject, submitLocalProject, createLocalSong, refreshHubCloud, readiness, downloadItem, removeLocalItem, removeMissingCloudProject, chooseDirectory } = createWorkspaceActions({
   state: {
     get set() { return set; }, set set(value) { set = value; },
     get legacySet() { return legacySet; }, set legacySet(value) { legacySet = value; },
@@ -101,12 +98,12 @@ const { renderEditor, cancelLrclib, resetPreparation, resetEditorTab, refreshCon
     get set() { return set; }, set set(value) { set = value; },
     get workspaceGeneration() { return workspaceGeneration; }
   },
-  resources: { els, previewPlayer, backingPreview, recognition, tapHistory, sourceGeneration },
+  resources: { els, previewPlayer, backingPreview, get backingPreviewId() { return backingPreviewId; }, recognition, sourceGeneration },
   actions: { currentSong, status, changeSong, render, showLibrary, addSong, clearAudioPreview, clearBackingPreview, setAudioPreview, setBackingPreview, entryFor, privateMutation, backingKey, markRemoteDirty, persist, syncLocalLibrary, saveLibrarySong, deleteLibrarySong, displayTime },
 });
 
 function currentSong() { return set.songs.find((song) => song.id === selectedId) || null; }
-function status(song) { if (song.reviewed && !validateSong(song).length) return 'Готова'; if (song.cues.length) return 'Нужно проверить'; return 'Не подготовлена'; }
+function status(song) { if (song.reviewed) return validateSong(song).length ? 'Есть ошибки' : 'Готова'; if (song.cues.length) return 'Нужно проверить'; return 'Не подготовлена'; }
 function changeSong(songId, change) {
   if (offlineProjectOpen) { toast('Подготовленный снимок открыт только для показа. Для редактирования нужен сервер.'); return; }
   const index = set.songs.findIndex((song) => song.id === songId); if (index < 0) return;
@@ -119,9 +116,6 @@ function updateRemoteState() {
   els.remote.hidden = els.prep.hidden;
   els.clearDownloaded.hidden = !offlineProjectOpen;
   $('#add-library-song').disabled = !sessionActive || offlineProjectOpen;
-  $('#export-set').hidden = false; $('#import-set').hidden = false;
-  const prepare = $('#prepare-offline'); prepare.textContent = 'Сохранить локально';
-  prepare.hidden = !project; prepare.disabled = !project || !sessionActive || offlineProjectOpen || remoteDirty || saveBusy;
   els.save.hidden = els.prep.hidden || onlineSongOpen || (!project && !localProjectId);
   els.save.disabled = saveBusy || !sessionActive || offlineProjectOpen || (!remoteDirty && pendingLocalRefresh !== project?.id);
   els.remote.textContent = pendingLocalRefresh && pendingLocalRefresh === project?.id ? 'В облаке сохранено · локальную копию нужно обновить' : remoteFailed ? 'Сохранение не удалось · изменения ожидают повтора' : remoteDirty ? 'Есть несохранённые изменения' : onlineSongOpen ? 'В облаке' : project ? 'Сохранено в облаке' : localProjectId ? 'Локальная копия' : '';
@@ -251,40 +245,33 @@ async function saveRemoteProject() {
   } catch (error) { remoteFailed = true; toast(error.message); }
   finally { saveBusy = false; updateRemoteState(); }
 }
-async function saveLibrarySong(copy = false) {
+async function saveLibrarySong() {
   const song = currentSong();
   if (saveBusy || !sessionActive || !song) return;
   if (validateSong(song).length) return toast('Подтвердите готовность песни перед сохранением.');
-  const identity = item => [item.title, item.artist, item.version].map(value => (value || '').trim());
   const snapshot = structuredClone(song), original = { ...entryFor(song) }, generation = editGeneration, workspace = workspaceGeneration;
   saveBusy = true;
   try {
-    const key = `${snapshot.id}:${generation}`, retryCopy = copyAttempts.has(key);
-    if (copy && !retryCopy) {
-      const { songs } = await remote.listLibrary();
-      if (songs.some(item => JSON.stringify(identity(item)) === JSON.stringify(identity(snapshot)))) return toast('Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.');
-    }
-    if (!copyAttempts.has(key)) copyAttempts.set(key, `song-copy-${crypto.randomUUID()}`);
     const payload = { song: snapshot, audioId: original.audioId ?? null, backingAudioId: original.backingAudioId ?? null };
-    let saved = copy || !original.songId
-      ? await remote.createSong({ ...payload, migrationKey: copy ? copyAttempts.get(key) : snapshot.id })
+    let saved = !original.songId
+      ? await remote.createSong({ ...payload, migrationKey: snapshot.id })
       : await remote.saveSong(original.songId, { ...payload, revisionId: original.revisionId });
     if (!sessionActive || workspace !== workspaceGeneration) return;
-    if (!copy && !original.songId && !sameEntryContent(saved, payload)) {
+    if (!original.songId && !sameEntryContent(saved, payload)) {
       saved = await remote.saveSong(saved.songId, { ...payload, revisionId: saved.revisionId });
       if (!sessionActive || workspace !== workspaceGeneration) return;
     }
-    if (!copy && generation === editGeneration && onlineSongOpen) {
+    if (generation === editGeneration && onlineSongOpen) {
       projectEntries = new Map([[saved.song.id, saved]]); set = { ...set, songs: [saved.song] }; selectedId = saved.song.id; remoteDirty = false;
-    } else if (!copy && onlineSongOpen && currentSong()?.id === snapshot.id) {
+    } else if (onlineSongOpen && currentSong()?.id === snapshot.id) {
       const result = reconcileProjectSave(set.songs, projectEntries, { songs: [{ ...original, song: snapshot }] }, { songs: [saved] }, selectedId);
       set = { ...set, songs: result.songs }; projectEntries = result.entries; selectedId = result.selectedId;
     }
-    toast(copy ? 'Копия сохранена в облачной библиотеке.' : 'Песня сохранена в облаке.');
+    toast('Песня сохранена в облаке.');
     await refreshHubCloud();
     // Existing-song saves do not change the editor's content. Keep its inputs
     // mounted so a refresh cannot interrupt the next edit between focus/input.
-    if (!copy && (saved.song.id !== snapshot.id || !sameEntryContent(saved, payload))) render();
+    if (saved.song.id !== snapshot.id || !sameEntryContent(saved, payload)) render();
     else updateRemoteState();
   } catch (error) { toast(error.message); }
   finally { saveBusy = false; updateRemoteState(); }
@@ -304,9 +291,21 @@ async function removeCloudSong(id) {
   } catch (error) { toast(error.message); }
 }
 async function removeCloudProject(id) {
-  if (!sessionActive || !confirm('Удалить облачный проект? Песни останутся в библиотеке, локальная копия останется в папке.')) return;
-  try { const current = await remote.getProject(id); await remote.deleteProject(id, current.revision); await refreshHubCloud(); }
-  catch (error) { toast(error.message); }
+  if (!sessionActive || !confirm('Удалить облачный проект? Песни останутся в библиотеке. Если проекта на сервере уже нет, его устаревшая локальная копия будет очищена.')) return;
+  try {
+    const current = await remote.getProject(id);
+    await remote.deleteProject(id, current.revision);
+    await refreshHubCloud();
+  } catch (error) {
+    if (error.status !== 404) { toast(error.message); return; }
+    try {
+      await privateMutation(() => Promise.all([removePreparedProject(id), removeDraft(id)]));
+      const hadLocalCopy = await removeMissingCloudProject(id);
+      cloudProjects = cloudProjects.filter(item => item.id !== id);
+      await refreshHubCloud();
+      toast(hadLocalCopy ? 'Проект удалён из браузера и рабочей папки.' : 'Устаревшая копия проекта удалена из браузера.');
+    } catch (cleanupError) { toast(`Серверного проекта уже нет. Не удалось очистить рабочую папку: ${cleanupError.message}`); }
+  }
 }
 
 async function openProject(id, { cached = false } = {}) {
@@ -388,11 +387,43 @@ async function openLibrarySong(id) {
     selectedId = entry.song.id; render(); return true;
   } catch (error) { if (sessionActive && request === librarySelection) toast(error.message); return false; }
 }
+async function createLibraryCopy(item) {
+  if (!sessionActive || saveBusy) return;
+  saveBusy = true; updateRemoteState();
+  try {
+    const source = await remote.getSong(item.id);
+    if (!source.song.reviewed || validateSong(source.song).length) throw new Error('Сначала подтвердите готовность песни.');
+    const { songs } = await remote.listLibrary();
+    const identity = (title, artist, version) => JSON.stringify([title, artist, version].map(value => (value || '').trim()));
+    const occupied = new Set(songs.map(song => identity(song.title, song.artist, song.version)));
+    let title = '';
+    for (let number = 1; number <= songs.length + 1; number += 1) {
+      const candidate = `${source.song.title} (копия ${number})`;
+      if (!occupied.has(identity(candidate, source.song.artist, source.song.version))) { title = candidate; break; }
+    }
+    if (!title) throw new Error('Не удалось подобрать свободное название копии.');
+    const copiedSong = { ...source.song, title }; delete copiedSong.id;
+    const key = `${item.id}:${title}`;
+    if (!copyAttempts.has(key)) copyAttempts.set(key, `song-copy-${crypto.randomUUID()}`);
+    await remote.createSong({ song: copiedSong, audioId: source.audioId ?? null, backingAudioId: source.backingAudioId ?? null, migrationKey: copyAttempts.get(key) });
+    copyAttempts.delete(key);
+    await refreshHubCloud();
+    toast(`Создана песня «${title}».`);
+  } catch (error) { toast(error.message); }
+  finally { saveBusy = false; updateRemoteState(); }
+}
 function renderList() {
   els.list.replaceChildren(); $('#local-song-list').replaceChildren();
   $('#project-songs').hidden = !project && !localProjectId; $('#local-library').hidden = true; $('#online-library').hidden = true;
   els.count.textContent = `${set.songs.length} ${plural(set.songs.length, 'песня', 'песни', 'песен')}`;
   if (!project && !localProjectId) return;
+  let draggedSongId = null;
+  const moveSong = (songId, targetIndex) => {
+    const sourceIndex = set.songs.findIndex(item => item.id === songId);
+    if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= set.songs.length || sourceIndex === targetIndex) return;
+    const songs = [...set.songs], [moved] = songs.splice(sourceIndex, 1);
+    songs.splice(targetIndex, 0, moved); set = { ...set, songs }; markRemoteDirty(); render();
+  };
   set.songs.forEach((song, index) => {
     const ready = !validateSong(song).length;
     const select = node('button', { type: 'button', className: 'song-select', onclick: () => { selectedId = song.id; resetEditorTab(); render(); } }, [
@@ -402,7 +433,14 @@ function renderList() {
     const move = direction => { const target = index + direction; if (target < 0 || target >= set.songs.length) return; const songs = [...set.songs]; [songs[index], songs[target]] = [songs[target], songs[index]]; set = { ...set, songs }; markRemoteDirty(); render(); };
     const up = iconTextButton('↑', 'Переместить песню выше', 'song-reorder', () => move(-1)); up.disabled = index === 0;
     const down = iconTextButton('↓', 'Переместить песню ниже', 'song-reorder', () => move(1)); down.disabled = index === set.songs.length - 1;
-    els.list.append(node('div', { className: `song-item${song.id === selectedId ? ' active' : ''}` }, [select, node('div', { className: 'song-reorder-wrap' }, [up, down])]));
+    select.draggable = true;
+    select.addEventListener('dragstart', event => { draggedSongId = song.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', song.id); select.classList.add('song-dragging'); });
+    select.addEventListener('dragend', () => { draggedSongId = null; select.classList.remove('song-dragging'); });
+    const row = node('div', { className: `song-item${song.id === selectedId ? ' active' : ''}`, 'data-song-id': song.id }, [select, node('div', { className: 'song-reorder-wrap' }, [up, down])]);
+    row.addEventListener('dragover', event => { if (draggedSongId) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; row.classList.add('song-drop-target'); } });
+    row.addEventListener('dragleave', event => { if (!row.contains(event.relatedTarget)) row.classList.remove('song-drop-target'); });
+    row.addEventListener('drop', event => { if (!draggedSongId) return; event.preventDefault(); row.classList.remove('song-drop-target'); moveSong(draggedSongId, index); });
+    els.list.append(row);
   });
 }
 
@@ -421,7 +459,7 @@ function updateSetNameMarquee() {
   if (overflowing) marquee.style.setProperty('--marquee-duration', `${Math.max(8, textWidth / 24)}s`);
 }
 function render() {
-  $('#add-library-song').hidden = !project && !localProjectId;
+  $('#project-add-menu').hidden = !project && !localProjectId;
   $('#back-home').textContent = localProjectId || project ? '← Проекты' : '← Библиотека';
   $('#local-save-status').textContent = localProjectId ? savedStatus : '';
   $('#upload-current').hidden = true; $('#show-mode').hidden = !project && !localProjectId;
@@ -649,70 +687,21 @@ function showEventMenu() {
 }
 function showProjects() { if (!els.event.hidden) exitEvent(); hub.show('projects'); }
 async function showOfflineProjects() { showProjects(); }
-function transferUi(busy) {
-  importing = busy;
-  $('#home-view').inert = busy;
-  els.prep.inert = busy;
-  $('.topbar').inert = busy;
-  $('#import-set').disabled = busy;
-  $('#export-set').disabled = busy;
-  $('#set-file').disabled = busy;
-}
-async function downloadSet() {
-  if (importing || transferBusy) return toast('Дождитесь завершения переноса файлов.');
-  const snapshot = structuredClone(set), owner = project && structuredClone(project);
-  const entries = new Map([...projectEntries].map(([id, entry]) => [id, { ...entry }]));
-  const offline = offlineProjectOpen, workspace = workspaceGeneration, session = sessionActive;
-  const current = () => workspaceGeneration === workspace && sessionActive === session;
-  transferUi(true);
-  try {
-    await persistChain;
-    const blob = await exportPortableSet(snapshot, async song => {
-      if (!current()) throw new Error('Рабочая область изменилась. Повторите экспорт.');
-      const entry = entries.get(song.id) || {};
-      const audio = await loadBacking(song, owner, entry, offline);
-      if (entry.backingAudioId && !audio) throw new Error(`Минусовка песни «${song.title}» недоступна.`);
-      return audio;
-    });
-    if (!current()) throw new Error('Рабочая область изменилась. Повторите экспорт.');
-    const url = URL.createObjectURL(blob);
-    const a = node('a', { href: url, download: `${(snapshot.name || 'lyrics-set').replace(/[^\wа-яё-]+/gi, '-').toLowerCase()}.zip` });
-    a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } catch (error) { toast(`Не удалось экспортировать набор: ${error.message}`); }
-  finally { transferUi(false); }
-}
-async function importFile(file) {
-  if (importing || transferBusy) return toast('Дождитесь завершения переноса файлов.');
-  if (!connectedWorkspace()) return toast('Сначала выберите рабочую папку для импорта.');
-  transferUi(true);
-  try {
-    const { set: imported, backingAudio } = await importPortableSet(file);
-    const next = structuredClone(localState());
-    const audio = new Map();
-    const local = { ...imported, id: `project-${crypto.randomUUID()}`, songs: [] };
-    for (const song of imported.songs) {
-      const copy = structuredClone(song); copy.id = `song-${crypto.randomUUID()}`; local.songs.push(copy);
-      if (backingAudio.has(song.id)) audio.set(`backing:${copy.id}`, backingAudio.get(song.id));
-
-    }
-    next.projects.push(local); await saveWorkspace(next, audio); syncLocalLibrary(); await openLocalProject(local.id); markRemoteDirty();
-    toast('Проект, песни и минусовки сохранены в рабочую папку.');
-  } catch (error) { toast(error.message); }
-  finally { transferUi(false); }
-}
 function initOffline() {
   if (!('serviceWorker' in navigator)) { els.offline.textContent = 'Автономная оболочка недоступна'; return; }
   navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => { els.offline.textContent = 'Не удалось подготовить автономную оболочку'; });
   navigator.serviceWorker.addEventListener('message', ({ data }) => {
     if (data?.type !== 'OFFLINE_READY') return;
     offlineShellReady = Boolean(data.ready);
-    els.offline.textContent = offlineShellReady ? 'Оболочка приложения сохранена' : 'Оболочка приложения готовится';
+    els.offline.textContent = offlineShellReady ? '' : 'Оболочка приложения готовится';
     hub.render();
   });
   navigator.serviceWorker.ready.then(registration => registration.active?.postMessage({ type: 'CHECK_OFFLINE' })).catch(() => {});
 }
 function updateSessionUi() {
   els.login.hidden = sessionActive; els.logout.hidden = !sessionActive;
+  els.login.setAttribute('aria-label', 'Войти'); els.login.setAttribute('data-tooltip', 'Войти');
+  els.logout.setAttribute('aria-label', 'Выйти'); els.logout.setAttribute('data-tooltip', 'Выйти');
   $('#projects').disabled = false; $('#projects').hidden = false; $('#event-projects').disabled = false; $('#event-projects').hidden = false;
   updateRemoteState(); refreshOfflineProjectEntry(); if (typeof hub !== 'undefined') hub.render();
 }
@@ -736,7 +725,7 @@ async function clearDownloadedProjectData() {
   if (!offlineProjectOpen || !confirm('Очистить загруженный проект и его черновики с этого устройства?')) return;
   cancelRecognition(); clearAudioPreview(); await privateMutation(() => clearPrivateProjectCache()).catch(error => toast(error.message)); project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateRemoteState(); render(); refreshOfflineProjectEntry(); toast('Загруженный проект очищен с этого устройства.');
 }
-$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#prepare-offline').addEventListener('click', () => project ? downloadItem('project', project.id) : toast('Проект сохраняется в рабочую папку автоматически.')); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); $('#export-set').addEventListener('click', downloadSet); $('#import-set').addEventListener('click', () => $('#set-file').click()); $('#set-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project || localProjectId || onlineSongOpen) markRemoteDirty(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => changeAudienceFont(4)); $('#font-down').addEventListener('click', () => changeAudienceFont(-4));
+$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project || localProjectId || onlineSongOpen) markRemoteDirty(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => changeAudienceFont(4)); $('#font-down').addEventListener('click', () => changeAudienceFont(-4));
 $('#library').addEventListener('click', () => hub.show('library'));
 $('#projects').addEventListener('click', showProjects);
 $('#event-menu-toggle').addEventListener('click', showEventMenu);
@@ -836,7 +825,7 @@ const hub = createWorkspaceHub({
     refresh: refreshHubCloud, createProject: createLocalProject, createSong: createLocalSong,
     openProject: openLocalProject,
     openCloudProject: id => openProject(id), openCloudSong: openLibrarySong,
-    download: downloadItem, remove: removeLocalItem, readiness, removeCloudSong, removeCloudProject,
+    download: downloadItem, remove: removeLocalItem, readiness, removeCloudSong, removeCloudProject, createLibraryCopy,
     playCloudSong: async id => { if (await openLibrarySong(id)) { const song = currentSong(); if (song) launchEvent(song); } },
     playCloudProject: async id => { if (!await openProject(id)) return; const song = set.songs.find(item => !validateSong(item).length); if (song) { selectedId = song.id; launchEvent(song); } else toast('Сначала подготовьте песни проекта.'); },
     play: async id => { if (!await openLocalProject(id, { playbackOnly: true })) return; const song = set.songs.find(item => !validateSong(item).length); if (song) launchEvent(song); else toast('Сначала подготовьте песни проекта.'); },
@@ -867,10 +856,3 @@ els.setName.addEventListener('input', updateSetNameMarquee);
 window.addEventListener('resize', updateSetNameMarquee);
 window.addEventListener('online', refreshConnectivity);
 window.addEventListener('offline', refreshConnectivity);
-
-document.addEventListener('keydown', event => {
-  if (event.code !== 'Space' || event.repeat || els.prep.hidden || $('#confirm-dialog').open) return;
-  if (event.target.closest('input,textarea,select,button,[contenteditable]')) return;
-  const tap = [...els.editor.querySelectorAll('button')].find(button => button.textContent === 'Отметить следующую');
-  if (tap) { event.preventDefault(); tap.click(); }
-});

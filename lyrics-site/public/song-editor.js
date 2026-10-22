@@ -8,7 +8,7 @@ import * as remote from './remote.js';
 import { insertRestCue, moveCueToBoundary } from './cue-editing.js';
 
 export function createSongEditor(context) {
-  const { els, previewPlayer, backingPreview, recognition, tapHistory, sourceGeneration } = context.resources;
+  const { els, previewPlayer, backingPreview, backingPreviewId, recognition, sourceGeneration } = context.resources;
   const { currentSong, status, changeSong, render, showLibrary, addSong, clearAudioPreview, clearBackingPreview, setAudioPreview, setBackingPreview, entryFor, privateMutation, backingKey, markRemoteDirty, persist, displayTime } = context.actions;
   const recognitionProfiles = new Map();
   const backingGeneration = new Map();
@@ -45,20 +45,20 @@ export function createSongEditor(context) {
       els.editor.append(node('div', { className: 'empty-state' }, [
         node('span', { className: 'empty-note', text: '♪' }),
         node('h1', { text: context.state.set.songs.length ? 'Выберите песню' : context.state.project ? 'Добавьте песни в проект' : 'Подготовьте первую песню' }),
-        node('p', { className: 'hint', text: context.state.set.songs.length ? 'Откройте песню в списке слева.' : 'Добавьте текст, минусовку или оба компонента.' }),
+        node('p', { className: 'hint', text: context.state.set.songs.length ? 'Откройте песню в списке слева.' : 'Добавьте текст, музыку или оба компонента.' }),
         button('Добавить песню', 'button primary', addSong),
       ])); return;
     }
     const validation = validateSong(song);
     const title = input(song.title, 'text', { required: true, autocomplete: 'off' });
-    title.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { title: title.value })); render(); });
-    const artist = input(song.artist, 'text', { autocomplete: 'off' }); artist.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { artist: artist.value })); render(); });
-    const version = input(song.version, 'text', { placeholder: 'Например, студийная версия' }); version.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { version: version.value })); render(); });
+    title.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, title: title.value })); render(); });
+    const artist = input(song.artist, 'text', { autocomplete: 'off' }); artist.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, artist: artist.value })); render(); });
+    const version = input(song.version, 'text', { placeholder: 'Например, студийная версия' }); version.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, version: version.value })); render(); });
     const duration = input(formatDurationInput(song.duration), 'text', { inputmode: 'numeric', placeholder: 'ММ:СС', pattern: '[0-9]+:[0-5][0-9]', 'aria-label': 'Длительность, ММ:СС' });
     duration.addEventListener('change', () => {
       const parsed = parseDurationInput(duration.value);
       if (parsed == null) { toast('Введите длительность в формате ММ:СС; секунды должны быть от 00 до 59.'); render(); return; }
-      if (duration.value !== formatDurationInput(song.duration)) { changeSong(song.id, s => invalidateChanged(s, { duration: parsed })); render(); }
+      if (duration.value !== formatDurationInput(song.duration)) { changeSong(song.id, s => ({ ...s, duration: parsed })); render(); }
     });
     const header = node('div', { className: 'editor-header' }, [node('div', {}, [node('h1', { className: 'editor-title', text: song.title || 'Новая песня' }), node('p', { className: 'editor-subtitle', text: 'Текст, таймлайн и музыка для выступления' })]), node('span', { className: `status-pill${song.reviewed && !validation.length ? ' ready' : ''}`, text: status(song) })]);
     const details = node('section', { className: 'section-card' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Версия записи', version), field('Длительность, ММ:СС', duration)])]);
@@ -103,8 +103,8 @@ export function createSongEditor(context) {
 
   function renderBackingCard(song) {
     const file = node('input', { id: 'backing-file', type: 'file', accept: 'audio/mpeg,audio/mp3,audio/wav,audio/x-wav', hidden: true });
-    const choose = button(song.backing?.fileName ? 'Заменить минусовку' : 'Добавить минусовку', 'button quiet', () => file.click());
-    const remove = button('Удалить минусовку', 'button quiet', async () => {
+    const choose = button(song.backing?.fileName ? 'Заменить музыку' : 'Добавить музыку', 'button quiet', () => file.click());
+    const remove = button('Удалить музыку', 'button quiet', async () => {
       backingGeneration.set(song.id, (backingGeneration.get(song.id) || 0) + 1);
       if (remoteAudioMode()) context.state.projectEntries.set(song.id, { ...entryFor(song), backingAudioId: null });
       else await deleteBacking(song.id);
@@ -117,12 +117,12 @@ export function createSongEditor(context) {
       const run = (backingGeneration.get(song.id) || 0) + 1; backingGeneration.set(song.id, run);
       const owner = audioOwner(), workspace = context.state.workspaceGeneration, session = context.state.sessionActive;
       const current = () => context.state.workspaceGeneration === workspace && audioOwner() === owner && context.state.sessionActive === session && backingGeneration.get(song.id) === run && context.state.set.songs.some(item => item.id === song.id);
-      choose.disabled = true; choose.textContent = 'Загрузка минусовки…';
+      choose.disabled = true; choose.textContent = 'Загрузка музыки…';
       try {
         await checkBackingFile(selected);
         if (!current()) return;
         if (remoteAudioMode()) {
-          if (!context.state.sessionActive) throw new Error('Для загрузки минусовки нужна связь с сервером.');
+          if (!context.state.sessionActive) throw new Error('Для загрузки музыки нужна связь с сервером.');
           const uploaded = await remote.uploadAudio(selected);
           if (!current()) return;
           await privateMutation(() => { if (current()) return putPrivateAudio(backingKey(uploaded.id), selected); });
@@ -134,9 +134,9 @@ export function createSongEditor(context) {
           if (!current()) return;
         }
         clearBackingPreview(); changeSong(song.id, s => invalidateChanged(s, { backing: { fileName: selected.name }, mediaRevision: crypto.randomUUID() })); render();
-      } catch (error) { if (current()) { toast(`Не удалось сохранить минусовку: ${error.message}`); render(); } }
+      } catch (error) { if (current()) { toast(`Не удалось сохранить музыку: ${error.message}`); render(); } }
     });
-    return node('section', { className: 'section-card backing-card' }, [node('h2', { text: 'Минусовка' }), node('p', { className: 'hint', text: 'Необязательно. Запускается вместе с текстом; проверьте, что версия и начало совпадают с таймлайном. MP3/WAV до 150 МиБ и 20 минут. ZIP-экспорт включает минусовки; оригинальная запись исключена.' }), node('div', { className: 'action-row' }, [choose, node('span', { className: 'file-name', text: song.backing?.fileName || 'Без минусовки' }), remove]), file, ...(song.backing?.fileName ? [backingPreview] : [])]);
+    return node('section', { className: 'section-card backing-card' }, [node('h2', { text: 'Музыка' }), node('p', { className: 'hint', text: 'Необязательно. Запускается вместе с текстом; MP3/WAV до 150 МБ и 20 минут;' }), node('div', { className: 'action-row' }, [choose, node('span', { className: 'file-name', text: song.backing?.fileName || 'Без музыки' }), remove]), file, ...(song.backing?.fileName ? [backingPreview] : [])]);
   }
 
   async function checkBackingFile(file) {
@@ -146,7 +146,7 @@ export function createSongEditor(context) {
     try {
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('Не удалось прочитать аудиофайл.')), 15000);
-        player.onloadedmetadata = () => { clearTimeout(timer); Number.isFinite(player.duration) && player.duration > 0 && player.duration <= 1200 ? resolve() : reject(new Error('Минусовка должна быть не длиннее 20 минут.')); };
+        player.onloadedmetadata = () => { clearTimeout(timer); Number.isFinite(player.duration) && player.duration > 0 && player.duration <= 1200 ? resolve() : reject(new Error('Музыка должна быть не длиннее 20 минут.')); };
         player.onerror = () => { clearTimeout(timer); reject(new Error('Не удалось прочитать MP3 или WAV.')); };
         player.src = url;
       });
@@ -239,7 +239,7 @@ export function createSongEditor(context) {
         const lrc = node('textarea', { id: 'lrclib-preview', readonly: true, 'aria-label': 'Предпросмотр LRC' });
         lrc.value = state.selected.syncedLyrics;
         const apply = button('Импортировать LRC', 'button primary', () => importRecord(state.selected)); apply.id = 'lrclib-import';
-        preview.append(node('p', { className: 'hint', text: 'Проверьте, что версия и длительность совпадают с вашей оригинальной записью или минусовкой.' }), field('LRC выбранной записи', lrc), apply);
+        preview.append(node('p', { className: 'hint', text: 'Проверьте, что версия и длительность совпадают с вашей оригинальной записью или музыкой.' }), field('LRC выбранной записи', lrc), apply);
       }
     };
     for (const [control, key] of [[title, 'title'], [artist, 'artist']]) {
@@ -278,7 +278,6 @@ export function createSongEditor(context) {
   async function replaceCues(song, cues, details, question, isCurrent = () => true) {
     if (song.cues.length && !(await confirmReplace(question))) return false;
     if (!isCurrent()) return false;
-    tapHistory.delete(song.id);
     changeSong(song.id, s => invalidateChanged(s, { ...details, cues: cues.map((cue, i) => ({ id: cue.id || `cue-${Date.now()}-${i}`, start: Number.isFinite(cue.start) ? cue.start : null, text: String(cue.text || ''), type: cue.type === 'rest' ? 'rest' : 'lyric' })) })); render(); return true;
   }
   function confirmReplace(message) { const dialog = $('#confirm-dialog'); $('#confirm-text').textContent = message; return new Promise((resolve) => { dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true }); dialog.showModal(); }); }
@@ -287,7 +286,6 @@ export function createSongEditor(context) {
     let deferCueRender = false;
     let pendingCueRender = false;
     let nativeDragActive = false;
-    const addCue = (cue = { id: `cue-${crypto.randomUUID()}`, start: null, text: '', type: 'lyric' }) => { changeSong(song.id, s => invalidateChanged(s, { cues: [...s.cues, cue] })); render(); };
     const estimateKey = cueId => `${song.id}/${cueId}`;
     const commitFocusedEdit = () => {
       const focused = document.activeElement;
@@ -325,13 +323,15 @@ export function createSongEditor(context) {
       changeSong(song.id, () => moved);
       pendingCueRender = false; render(); focusCue(cueId, focusControl);
     };
-    const tapCue = (index) => { const player = previewPlayer; if (!player.src) { toast('Для отметки включите оригинальную запись.'); return; } const before = currentSong()?.cues[index]?.start ?? null; changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((cue, i) => i === index ? { ...cue, start: player.currentTime } : cue) })); const history = tapHistory.get(song.id) || []; history.push({ cueId: song.cues[index].id, before }); tapHistory.set(song.id, history); render(); };
-    const tapNext = () => { const index = currentSong()?.cues.findIndex((cue) => cue.start == null) ?? -1; if (index < 0) { toast('Нет неотмеченных строк. Для повторной отметки используйте кнопку часов у строки.'); return; } tapCue(index); };
-    const undoTap = () => { const history = tapHistory.get(song.id) || []; const last = history.pop(); if (!last) { toast('Нет последней отметки для отмены.'); return; } tapHistory.set(song.id, history); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((cue) => cue.id === last.cueId ? { ...cue, start: last.before } : cue) })); render(); };
-    card.append(node('div', { className: 'cue-toolbar' }, [node('div', {}, [node('h2', { text: 'Строки таймлайна' }), node('p', { className: 'hint', text: 'Время — начало строки. Отмечайте начало кнопкой «Отметить следующую», пробелом или часами у строки. Переносите строки за ручку или стрелками; время при переносе сохраняется.' })]), node('div', { className: 'action-row' }, [button('+ Строка', 'button quiet', () => addCue()), button('Отметить следующую', 'button quiet', tapNext), button('Отменить отметку', 'button quiet', undoTap)])]));
+    const tapCue = index => {
+      if (!song.backing?.fileName) return;
+      if (!backingPreview.src || backingPreviewId !== `${project?.id || 'local'}:${song.id}:${entryFor(song).backingAudioId || song.backing.fileName}`) { toast('Сначала запустите музыку.'); return; }
+      changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map((cue, i) => i === index ? { ...cue, start: backingPreview.currentTime } : cue) })); render();
+    };
+    card.append(node('div', { className: 'cue-toolbar' }, [node('div', {}, [node('h2', { text: 'Строки таймлайна' }), node('p', { className: 'hint', text: 'Время — начало строки. Отмечайте начало кнопкой с часами у строки.' })])]));
     const ignore = input('', 'checkbox', { id: 'ignore-timecodes' });
     ignore.checked = song.ignoreTimecodes === true;
-    ignore.addEventListener('change', () => { changeSong(song.id, s => invalidateChanged(s, { ignoreTimecodes: ignore.checked })); render(); });
+    ignore.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, ignoreTimecodes: ignore.checked })); render(); });
     const autoScroll = input('', 'checkbox', { id: 'auto-scroll-enabled' });
     autoScroll.checked = song.autoScrollEnabled !== false;
     autoScroll.addEventListener('change', () => {
@@ -377,7 +377,8 @@ export function createSongEditor(context) {
       manualScrollHint.hidden = !ignore.checked || autoScroll.checked;
     };
     updateAutoScrollVisibility();
-    card.append(node('label', { className: 'ignore-timecodes cue-ignore-timecodes' }, [ignore, node('span', { text: 'игнорировать таймкоды' })]), autoScrollSettings, scrollStartHint, manualScrollHint, timeShiftControls);
+    const ignoreLabel = node('label', { className: 'ignore-timecodes cue-ignore-timecodes has-tooltip', 'data-tooltip': 'выберите если таймкоды недоступны', title: 'выберите если таймкоды недоступны' }, [ignore, node('span', { text: 'игнорировать таймкоды' })]);
+    card.append(ignoreLabel, autoScrollSettings, scrollStartHint, manualScrollHint, timeShiftControls);
     let draggedCueId = null;
     const boundaries = [];
     const indicateBoundary = boundary => {
@@ -413,8 +414,8 @@ export function createSongEditor(context) {
     song.cues.forEach((cue, index) => { const time = input(cue.start == null ? '' : formatTime(cue.start), 'text', { className: 'cue-time', 'aria-label': `Время строки ${index + 1}` }); const text = input(cue.text, 'text', { className: 'cue-text', 'aria-label': `Текст строки ${index + 1}` }); const type = node('select', { className: 'cue-type', 'aria-label': `Тип строки ${index + 1}` }); type.append(node('option', { value: 'lyric', text: 'Текст' }), node('option', { value: 'rest', text: 'Проигрыш' })); type.value = cue.type;
       const initialValues = new Map([[time, time.value], [text, text.value], [type, type.value]]);
       const update = event => { if (event.target.value === initialValues.get(event.target)) return; initialValues.set(event.target, event.target.value); if (event.target === time || type.value !== 'rest') estimatedRestStarts.delete(estimateKey(cue.id)); changeSong(song.id, s => invalidateChanged(s, { cues: s.cues.map(item => item.id === cue.id ? { ...item, start: event.target === time ? parseTime(time.value) : item.start, text: text.value, type: type.value } : item) })); if (deferCueRender) pendingCueRender = true; else render(); }; time.addEventListener('change', update); text.addEventListener('change', update); type.addEventListener('change', update);
-      const retapLabel = `Отметить строку ${index + 1} по текущему времени записи`;
-      const retap = button('◷', 'button quiet has-tooltip cue-retap', () => { estimatedRestStarts.delete(estimateKey(cue.id)); tapCue(index); }); retap.setAttribute('aria-label', retapLabel); retap.setAttribute('data-tooltip', retapLabel);
+      const retapLabel = song.backing?.fileName ? `Отметить строку ${index + 1} по текущему времени музыки` : 'загрузите музыку для разметки строк по мере воспроизведения';
+      const retap = button('◷', 'button quiet has-tooltip cue-retap', () => { estimatedRestStarts.delete(estimateKey(cue.id)); tapCue(index); }); retap.setAttribute('aria-label', retapLabel); retap.setAttribute('data-tooltip', retapLabel); retap.title = retapLabel; retap.disabled = !song.backing?.fileName;
       const insertRestAfter = cueActionButton('+ ♪', 'button quiet cue-insert-rest', () => insertRest(current => {
         const currentIndex = current.cues.findIndex(item => item.id === cue.id);
         return currentIndex < 0 ? -1 : currentIndex + 1;
@@ -461,7 +462,7 @@ export function createSongEditor(context) {
   }
   function renderReview(song) {
     const card = node('section', { className: 'review-row' });
-    card.append(node('p', { text: song.reviewed ? 'Таймлайн был подтверждён, но последующие изменения отменяют подтверждение.' : 'Прослушайте запись, проверьте каждую строку и только затем отметьте песню готовой.' }));
+    card.append(node('p', { text: 'Прослушайте запись, проверьте каждую строку и только затем отметьте песню готовой.' }));
     const confirm = button('Подтвердить готовность', 'button primary', () => {
       // Commit the focused edit before validating; its change handler can rebuild the editor.
       const focused = document.activeElement;
@@ -503,12 +504,12 @@ export function createSongEditor(context) {
     const saveHint = validation.length
       ? `Исправьте ошибки перед сохранением: ${validation.join(' ')}`
       : !song.reviewed ? 'Сначала подтвердите готовность песни.' : 'Песня готова к сохранению.';
-    const saveButton = (label, copy) => {
+    const saveButton = label => {
       const control = button(label, 'button primary', async () => {
         const latest = currentSong();
         const errors = latest ? validateSong(latest) : ['Песня больше не открыта.'];
         if (!latest || !latest.reviewed || errors.length) { toast(errors.length ? `Исправьте ошибки перед сохранением: ${errors.join(' ')}` : 'Сначала подтвердите готовность песни.'); return; }
-        try { await context.actions.saveLibrarySong(copy); }
+        try { await context.actions.saveLibrarySong(); }
         catch (error) { toast(`Не удалось сохранить песню: ${error.message}`); }
       });
       control.disabled = !ready;
@@ -517,8 +518,7 @@ export function createSongEditor(context) {
       control.setAttribute('data-tooltip', ready ? label : saveHint);
       return control;
     };
-    if (libraryMode) controls.push(saveButton('Сохранить в облаке', false));
-    if (libraryMode || context.state.project) controls.push(saveButton('Сохранить копию', true));
+    if (libraryMode) controls.push(saveButton('Сохранить в облаке'));
     return node('div', { className: 'song-actions' }, [node('div', { className: 'action-row' }, controls)]);
   }
 

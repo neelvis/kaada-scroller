@@ -6,7 +6,8 @@ of current songs; cloud projects use those songs and resolve their latest saved
 versions when opened. A selected folder stores local project snapshots. The same
 public artifact runs at `/lyrics/` or an origin's root.
 
-The current workflow follows [revision 16](../specs/features/timed-lyrics/revision-16.md)
+The current workflow follows [revision 18](../specs/features/timed-lyrics/revision-18.md),
+[revision 16](../specs/features/timed-lyrics/revision-16.md)
 with [revision 17](../specs/features/timed-lyrics/revision-17.md) timeline editing
 and library sorting.
 Validation and publication evidence is recorded in the
@@ -16,12 +17,12 @@ recordings and a projector rehearsal remain organizer checks.
 ## Cloud library, projects and local copies
 
 Sign in to use **Song library** and cloud projects. Create and edit library songs
-in the cloud. In the editor, **Сохранить в облаке** updates the current song;
-**Сохранить копию** creates a separate library song and leaves the original
-unchanged. Copies must have a distinct combination of title, artist and recording
-version after trimming outer whitespace; changing any one field allows a copy.
-Both save actions require a confirmed, valid song. The optional **Recording
-version** field describes the audio take and appears on cards when nonempty.
+in the cloud. In the editor, **Сохранить в облаке** updates the current song.
+Create a separate copy from a library card with **Создать копию**; it uses the
+lowest available `(копия N)` suffix for that title, artist and recording version
+and leaves the source unchanged. Copy creation requires a confirmed, valid song.
+The optional **Recording version** field describes the audio take and appears on
+cards when nonempty.
 
 Library sorting defaults to newest additions first. The dropdown also offers
 oldest first and ascending/descending artist or title order. Dates refer to
@@ -38,24 +39,27 @@ An interlude lasts until the next cue or song end. During timed display its acti
 row shows **♪ ♪ ♪** in the current-line color; notes freeze on pause and remain
 static with reduced motion enabled. Ignored-timecode mode keeps text labels.
 
-Open **Projects** to assemble a performance from the current library songs. Saving
-a song edit from a project updates that same library song, so other projects use
-the saved version when next opened. Saving a copy from a project adds a separate
-library song without changing project membership. **Remove from project** removes
-only that occurrence. Deleting a song from the cloud library removes every
-occurrence from cloud projects while preserving their other songs and order.
+Open **Projects** to assemble a performance from the current library songs. Use
+the arrows or drag songs to change project order. Saving a song edit from a project
+updates that same library song, so other projects use the saved version when next
+opened. **Remove from project** removes only that occurrence. Deleting a song from
+the cloud library removes every occurrence from cloud projects while preserving
+their other songs and order. A song's readiness stays confirmed when only its
+title, artist, recording version or duration changes; timeline or backing-music
+changes require confirmation again.
 
-The top bar has a **Локальная копия** control for the project folder; when a folder
-is connected, its name appears below the control. Use desktop Chrome or Edge over
+The top bar has a hard-drive icon for the project folder; its tooltip shows the
+selected folder name. Use desktop Chrome or Edge over
 HTTPS (localhost is supported for development). Local project data and backing
 audio are stored under `kaada-workspace/` in that folder; the library remains
 cloud-based. The app does not provide a local-library migration control or
 per-song upload/update actions.
 
-**Save** writes cloud project changes and, when that project already has a local
-copy, updates its local snapshot as well. Use **Save locally** to create the first
-local copy in the selected folder. Cloud and local results are reported
-separately; failed work remains available for retry. A local snapshot contains
+**Сохранить проект** writes cloud project and song changes and, when that project
+already has a local copy, updates its local snapshot as well. Use **Сохранить
+локальную копию** on a project card to create its first copy in the selected
+folder. Cloud and local results are reported separately; failed work remains
+available for retry. A local snapshot contains
 the last successfully saved project and backing files. When a saved local project
 is opened, playback reads its lyrics and backing audio from that snapshot without
 requesting cloud audio during launch or playback. Cloud library edits appear in a
@@ -77,11 +81,12 @@ for recovery, so storage use grows over time.
 5. Choose **Launch** to open performance mode. A selected local copy is refreshed
    when the project is saved, not by downloading assets on every launch.
 
-**Import** accepts portable ZIP projects with backing files and older JSON sets;
-JSON sets containing backing labels need their files relinked. **Export** creates
-one portable ZIP with every linked backing file; original vocal recordings and
-private cloud identifiers are excluded. Export fails rather than silently omitting
-a required backing file.
+Whole-project ZIP/JSON import and export controls have been removed. Existing
+archives are not imported through the application; LRCLIB, LRC and plain-text
+imports remain available while preparing an individual song. If a project being
+deleted is already absent from the server, its browser cache and active working
+folder entry are removed when the selected folder is writable. Older immutable
+folder snapshots remain for recovery.
 
 ## Find an existing LRC
 
@@ -229,10 +234,10 @@ Release instructions: [deployment](deploy/README.md).
 - `workspace-hub.js` and `hub.css`: project/library destinations and responsive UI.
 - `workspace-files.js`: ordinary-directory snapshots, audio integrity and recovery.
 - `local-workspace.js`: active folder session, staged media, save status and retry.
-- `cloud-transfers.js`: portable project import/export and revision-aware cloud
-  transport helpers.
-- `ui.js`: shared DOM controls. Existing playback, portable archive, recognition,
-  LRCLIB and remote transport modules retain their domain responsibilities.
+- `cloud-transfers.js`: local project download and revision-aware cloud transfer
+  helpers.
+- `ui.js`: shared DOM controls. Existing playback, recognition, LRCLIB and remote
+  transport modules retain their domain responsibilities.
 
 The HTTP service remains split into API, configuration, credentials, backup and
 store modules; those boundaries remain useful at the current size. New local

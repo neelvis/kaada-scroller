@@ -91,6 +91,12 @@ export function createWorkspaceHub({ state, actions }) {
       ] : [
         button('Открыть', 'button primary', () => actions.openCloudSong(item.id)),
         songPlayControl(item),
+        (() => {
+          const copy = button('Создать копию', 'button quiet', () => actions.createLibraryCopy(item));
+          if (item.reviewed === true && item.valid === true) return copy;
+          copy.disabled = true; copy.title = 'подтвердите готовность песни'; copy.setAttribute('aria-label', 'Создать копию. Подтвердите готовность песни.');
+          return copy;
+        })(),
         button('Удалить песню', 'button danger', () => actions.removeCloudSong(item.id)),
       ];
       cards.push(node('article', { className: 'hub-card cloud', 'data-cloud-id': item.id }, [
