@@ -1,5 +1,13 @@
 [hidden]{display:none!important}
 
+#preparation-view{position:relative}
+.prep-back{position:absolute;z-index:2;top:18px;left:14px}
+#preparation-view.online-song-open .song-list-panel{display:none}
+#preparation-view.online-song-open .editor{grid-column:1/-1;padding-top:70px}
+.review-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.status-pill.is-action{cursor:pointer;background:transparent;color:inherit;font:inherit}
+.status-pill.is-action:hover{border-color:var(--accent);color:var(--text)}
+
 /* Preparation layout details that were previously embedded in index.html. */
 .song-item{padding:0;gap:2px}
 .song-select{min-width:0;flex:1;display:flex;text-align:left;align-items:center;border:0;background:transparent;color:inherit;padding:11px 6px 11px 9px;gap:9px}

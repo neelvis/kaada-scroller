@@ -12,13 +12,14 @@ export function createWorkspaceHub({ state, actions }) {
   sortSelect.value = LIBRARY_SORTS.some(option => option.value === savedSort) ? savedSort : DEFAULT_LIBRARY_SORT;
   const sortLabel = node('label', { className: 'hub-sort-label' }, [node('span', { text: 'Сортировка' }), sortSelect]);
   $('#hub-search').parentElement.after(sortLabel);
-  function show(next = destination) {
+  async function show(next = destination) {
+    if (await actions.leaveEditor?.() === false) return false;
     destination = next;
-    actions.leaveEditor();
     $('#home-view').hidden = false; $('#preparation-view').hidden = true;
     $('#projects').setAttribute('aria-current', destination === 'projects' ? 'page' : 'false');
     $('#library').setAttribute('aria-current', destination === 'library' ? 'page' : 'false');
     $('#hub-search').value = ''; render(); actions.refresh();
+    return true;
   }
   function songPlayControl(item) {
     const song = item.song || (Array.isArray(item.cues) ? item : null);

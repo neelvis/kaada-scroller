@@ -10,11 +10,11 @@ export function createWorkspaceActions(context) {
   function showPreparation() { $('#home-view').hidden = true; els.prep.hidden = false; }
   // Old library files remain intact for recovery; they are no longer a library destination.
   function syncLocalLibrary() { context.state.legacySet = { schemaVersion: 1, id: 'library-draft', name: 'Библиотека песен', songs: [] }; }
-  function showWorkspaceFolder(name = '') {
+  function showWorkspaceFolder(name = '', status = '') {
     const button = $('#workspace-connect');
-    const label = name || 'папка не выбрана';
+    const label = `Локальная папка для сохранения проектов: ${name || 'папка не выбрана'}`;
     button.setAttribute('aria-label', label); button.setAttribute('data-tooltip', label); button.title = label;
-    $('#workspace-status').textContent = '';
+    $('#workspace-status').textContent = status;
   }
   async function ensureDirectory() { if (!connectedWorkspace()) await chooseDirectory(); return Boolean(connectedWorkspace()); }
   async function chooseDirectory() {
@@ -33,16 +33,16 @@ export function createWorkspaceActions(context) {
     try {
       handle = await rememberedDirectory(); if (!handle) { showWorkspaceFolder(); return; }
       showWorkspaceFolder(handle.name);
-      if (await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') { showWorkspaceFolder(`${handle.name} — подключите папку`); return; }
+      if (await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') { showWorkspaceFolder(handle.name, 'Подключите папку'); return; }
       await connectWorkspace(handle);
-    } catch (error) { showWorkspaceFolder(handle ? `${handle.name} — подключите папку` : 'папка не выбрана'); }
+    } catch (error) { showWorkspaceFolder(handle?.name || '', handle ? 'Подключите папку' : ''); }
   }
   async function openLocalProject(id, { playbackOnly = false } = {}) {
     await context.state.persistChain;
     const found = localState().projects.find(item => item.id === id); if (!found) return false;
     const link = localState().links[`project:${id}`];
     if (link && !playbackOnly) return openProject(link.id);
-    if (context.state.remoteDirty && !confirm('Есть несохранённые изменения. Открыть другой проект без сохранения?')) return false;
+    if (!await context.actions.confirmProjectExit()) return false;
     cancelRecognition(); clearAudioPreview(); context.state.localProjectId = id; context.state.project = null; context.state.projectEntries.clear();
     context.state.offlineProjectOpen = false; context.state.onlineSongOpen = false; context.state.remoteDirty = false;
     context.state.set = structuredClone(found); context.state.selectedId = context.state.set.songs[0]?.id || null; showPreparation(); render(); return true;

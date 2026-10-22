@@ -60,7 +60,14 @@ export function createSongEditor(context) {
       if (parsed == null) { toast('Введите длительность в формате ММ:СС; секунды должны быть от 00 до 59.'); render(); return; }
       if (duration.value !== formatDurationInput(song.duration)) { changeSong(song.id, s => ({ ...s, duration: parsed })); render(); }
     });
-    const header = node('div', { className: 'editor-header' }, [node('div', {}, [node('h1', { className: 'editor-title', text: song.title || 'Новая песня' }), node('p', { className: 'editor-subtitle', text: 'Текст, таймлайн и музыка для выступления' })]), node('span', { className: `status-pill${song.reviewed && !validation.length ? ' ready' : ''}`, text: status(song) })]);
+    const needsConfirmation = !song.reviewed && song.cues.length > 0;
+    const statusControl = needsConfirmation
+      ? button(status(song), `status-pill is-action${song.reviewed && !validation.length ? ' ready' : ''}`, () => {
+        const target = $('#review-confirm');
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' }); target?.focus();
+      })
+      : node('span', { className: `status-pill${song.reviewed && !validation.length ? ' ready' : ''}`, text: status(song) });
+    const header = node('div', { className: 'editor-header' }, [node('div', {}, [node('h1', { className: 'editor-title', text: song.title || 'Новая песня' }), node('p', { className: 'editor-subtitle', text: 'Текст, таймлайн и музыка для выступления' })]), statusControl]);
     const details = node('section', { className: 'section-card' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Версия записи', version), field('Длительность, ММ:СС', duration)])]);
     if (editorTabSongId !== song.id) { editorTabSongId = song.id; editorTab = 'lrclib'; }
     const drafts = importDrafts.get(song.id) || { lrc: '', plain: '' }; importDrafts.set(song.id, drafts);
@@ -461,9 +468,12 @@ export function createSongEditor(context) {
     if (validation.length) card.append(node('ul', { className: 'validation' }, validation.map((message) => node('li', { text: message })))); return card;
   }
   function renderReview(song) {
+    const needsConfirmation = !song.reviewed && song.cues.length > 0;
     const card = node('section', { className: 'review-row' });
-    card.append(node('p', { text: 'Прослушайте запись, проверьте каждую строку и только затем отметьте песню готовой.' }));
-    const confirm = button('Подтвердить готовность', 'button primary', () => {
+    if (needsConfirmation) card.append(node('p', { text: 'Прослушайте запись, проверьте каждую строку и только затем отметьте песню готовой.' }));
+    const actions = node('div', { className: 'review-actions' });
+    if (needsConfirmation) {
+      const confirm = button('Подтвердить готовность', 'button primary', () => {
       // Commit the focused edit before validating; its change handler can rebuild the editor.
       const focused = document.activeElement;
       if (els.editor.contains(focused) && focused.matches('input,textarea,select')) focused.dispatchEvent(new Event('change', { bubbles: true }));
@@ -472,13 +482,17 @@ export function createSongEditor(context) {
       const trial = { ...latest, reviewed: true };
       if (validateSong(trial).length) { toast('Сначала исправьте ошибки в таймлайне.'); return; }
       changeSong(song.id, () => trial); render();
-    });
-    // Keep focus until click so a blur-triggered render cannot remove the click target.
-    confirm.addEventListener('pointerdown', event => { if (event.button === 0) event.preventDefault(); });
-    card.append(confirm); return card;
+      });
+      confirm.id = 'review-confirm';
+      // Keep focus until click so a blur-triggered render cannot remove the click target.
+      confirm.addEventListener('pointerdown', event => { if (event.button === 0) event.preventDefault(); });
+      actions.append(confirm);
+    }
+    actions.append(createDeleteButton(song));
+    card.append(actions); return card;
   }
 
-  function renderSongActions(song) {
+  function createDeleteButton(song) {
     const projectMode = Boolean(context.state.project || context.state.localProjectId);
     const libraryMode = Boolean(context.state.onlineSongOpen);
     const libraryDelete = libraryMode;
@@ -498,7 +512,12 @@ export function createSongEditor(context) {
       if (context.state.project || context.state.localProjectId) markRemoteDirty(); else persist();
       render();
     });
-    const controls = [del];
+    return del;
+  }
+
+  function renderSongActions(song) {
+    const libraryMode = Boolean(context.state.onlineSongOpen);
+    const controls = [];
     const validation = validateSong(song);
     const ready = song.reviewed && validation.length === 0;
     const saveHint = validation.length
