@@ -37,6 +37,8 @@ Accepted extension: [revision 18 — focused project and song editing](revision-
 supersedes affected requirements in revisions 14 and 16).
 Accepted extension: [revision 19 — library editing and project recovery](revision-19.md)
 (implemented and deployed; manual acceptance pending; supersedes affected requirements in revision 18).
+Accepted extension: [revision 20 — direct card navigation and display library controls](revision-20.md)
+(implemented; UI acceptance pending).
 
 ## Purpose
 

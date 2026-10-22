@@ -78,7 +78,12 @@
         </div>
         <section id="project-songs" hidden><h2 class="eyebrow">Песни проекта</h2><div class="song-list" id="song-list"></div></section>
         <section id="local-library" aria-labelledby="local-library-heading"><h2 class="eyebrow" id="local-library-heading">Библиотека песен</h2><div class="song-list" id="local-song-list"></div></section>
-        <section id="online-library" aria-labelledby="online-library-heading" hidden><h2 class="eyebrow" id="online-library-heading">Онлайн-библиотека</h2><div class="song-list" id="online-song-list" aria-live="polite"></div></section>
+        <section id="online-library" aria-labelledby="online-library-heading" hidden>
+          <h2 class="eyebrow" id="online-library-heading">Онлайн-библиотека</h2>
+          <label class="field online-library-search">Фильтр по названию<input id="online-library-search" type="search" placeholder="Название песни"></label>
+          <label class="field online-library-sort">Сортировка<select id="online-library-sort" aria-label="Сортировка песен"></select></label>
+          <div class="song-list" id="online-song-list" aria-live="polite"></div>
+        </section>
         <button class="button add-song" id="offline-projects" type="button" hidden>Локальные проекты</button>
       </aside>
 
@@ -99,7 +104,7 @@
         <symbol id="icon-highlight" viewBox="0 0 24 24"><path class="emphasis-past" d="M4 6h16"/><path class="emphasis-current" d="M4 12h16"/><path class="emphasis-future" d="M4 18h16"/></symbol>
       </svg>
       <div class="event-bar">
-        <div class="event-bar-start"><button class="button quiet event-menu-toggle event-icon-button" id="event-menu-toggle" type="button" aria-label="Медиатека песен и проектов" data-tooltip="Медиатека песен и проектов · L" aria-keyshortcuts="L" aria-expanded="false" aria-controls="event-menu"><svg class="event-icon" aria-hidden="true"><use href="#icon-library"/></svg></button><button class="button quiet" id="exit-event" type="button">← К подготовке</button></div>
+        <div class="event-bar-start"><button class="button quiet event-menu-toggle event-icon-button" id="event-menu-toggle" type="button" aria-label="Медиатека песен и проектов" data-tooltip="Медиатека песен и проектов · L" aria-keyshortcuts="L" aria-expanded="false" aria-controls="event-menu"><svg class="event-icon" aria-hidden="true"><use href="#icon-library"/></svg></button><button class="button quiet" id="event-home" type="button">На главную</button><button class="button quiet" id="exit-event" type="button">← К подготовке</button></div>
         <span id="event-song-name"></span>
         <div><button class="button quiet" id="font-down" type="button" aria-label="Уменьшить текст" title="Уменьшить текст · −" aria-keyshortcuts="-">A−</button><button class="button quiet" id="font-up" type="button" aria-label="Увеличить текст" title="Увеличить текст · +" aria-keyshortcuts="= Shift+=">A+</button></div>
       </div>
@@ -110,10 +115,10 @@
         <div class="event-control-row">
           <div class="event-progress-row"><span id="event-elapsed">0:00</span><input id="event-progress" type="range" min="0" max="1" value="0" step=".01" aria-label="Позиция песни" aria-description="↑ / ↓ — перемотка на 5 секунд"><span id="event-duration">0:00</span></div>
           <div class="event-actions">
-            <button class="button primary event-icon-button" id="event-start" type="button" aria-label="Старт" data-tooltip="Старт · Пробел" aria-keyshortcuts="Space"><svg class="event-icon" aria-hidden="true"><use href="#icon-play"/></svg></button>
-            <button class="button danger event-icon-button" id="event-reset" type="button" aria-label="Стоп и сброс" data-tooltip="Стоп и сброс"><svg class="event-icon" aria-hidden="true"><use href="#icon-reset"/></svg></button>
+            <button class="button primary event-icon-button" id="event-start" type="button" aria-label="Старт" data-tooltip="Старт"><svg class="event-icon" aria-hidden="true"><use href="#icon-play"/></svg></button>
+            <button class="button danger event-icon-button" id="event-reset" type="button" aria-label="Стоп и сброс" data-tooltip="Стоп и сброс · двойной клик"><svg class="event-icon" aria-hidden="true"><use href="#icon-reset"/></svg></button>
             <button class="button quiet event-icon-button" id="fullscreen" type="button" aria-label="На весь экран" data-tooltip="На весь экран · F" aria-keyshortcuts="F"><svg class="event-icon" aria-hidden="true"><use href="#icon-fullscreen"/></svg></button>
-            <button class="button quiet event-icon-button" id="event-mute" type="button" aria-label="для этой песни нет минусовки" data-tooltip="для этой песни нет минусовки" aria-pressed="false" aria-keyshortcuts="M" disabled><svg class="event-icon" aria-hidden="true"><use href="#icon-muted"/></svg></button>
+            <button class="button quiet event-icon-button" id="event-mute" type="button" aria-label="для этой песни нет минусовки" data-tooltip="для этой песни нет минусовки" aria-pressed="false" disabled><svg class="event-icon" aria-hidden="true"><use href="#icon-muted"/></svg></button>
             <button class="button quiet event-icon-button" id="highlight-current" type="button" aria-label="Выделять текущую строку" data-tooltip="Выделять текущую строку · C" aria-pressed="true" aria-keyshortcuts="C"><svg class="event-icon" aria-hidden="true"><use href="#icon-highlight"/></svg></button>
           </div>
         </div>
@@ -124,7 +129,6 @@
         <div class="event-menu-content">
         <div class="event-menu-heading"><div><p class="eyebrow">Проект</p><h2 id="event-menu-title"><span id="event-project-name"></span></h2></div><button class="button quiet event-icon-button has-tooltip" id="event-menu-close" type="button" aria-label="Закрыть меню" data-tooltip="Закрыть меню">×</button></div>
           <div class="event-menu-songs" id="event-menu-songs" aria-label="Песни проекта"></div>
-          <button class="button quiet event-projects" id="event-projects" type="button" hidden disabled>Другой проект</button>
           <button class="button quiet event-projects" id="event-offline-projects" type="button" hidden>Локальные проекты</button>
         </div>
       </dialog>

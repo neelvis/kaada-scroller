@@ -6,7 +6,9 @@ of current songs; cloud projects use those songs and resolve their latest saved
 versions when opened. A selected folder stores local project snapshots. The same
 public artifact runs at `/lyrics/` or an origin's root.
 
-The current workflow follows [revision 18](../specs/features/timed-lyrics/revision-18.md),
+The current workflow follows [revision 20](../specs/features/timed-lyrics/revision-20.md),
+[revision 19](../specs/features/timed-lyrics/revision-19.md),
+[revision 18](../specs/features/timed-lyrics/revision-18.md),
 [revision 16](../specs/features/timed-lyrics/revision-16.md)
 with [revision 17](../specs/features/timed-lyrics/revision-17.md) timeline editing
 and library sorting.
@@ -27,6 +29,8 @@ cards when nonempty.
 Library sorting defaults to newest additions first. The dropdown also offers
 oldest first and ascending/descending artist or title order. Dates refer to
 original library creation; editing a song does not move its creation date.
+Click a project or song card to open it; the separate **Открыть** buttons are
+not needed. Other card actions such as launch, copy and delete remain available.
 
 In **Строки таймлайна**, drag a row by its handle or use its arrows to change
 occurrence order. Timestamps stay with their rows; correct any resulting timing
@@ -146,29 +150,28 @@ The bottom progress bar shows position and duration. Click/drag it to seek both
 lyrics and backing audio; ArrowUp moves five seconds backward, ArrowDown five
 seconds forward, also when the bar has focus. Dialogs and editable fields keep
 ordinary keyboard behavior. Seeking preserves running/armed state; after the end,
-seek back and press Start. **Stop and reset** returns to zero. A shorter backing
-ends without truncating the lyric timeline; a longer backing stops at the declared
-song end. Lyric delay affects cue display, not audio position or duration.
+seek back and press Start. Double-click **Stop and reset** to return to zero; a
+single click is ignored. A shorter backing ends without truncating the lyric
+timeline; a longer backing stops at the declared song end. Lyric delay affects cue
+display, not audio position or duration.
 
 The bottom row places playback, reset, fullscreen, mute, and line-emphasis icons
 to the right of the timeline. Hover an icon or focus it with the keyboard for its
-tooltip. Space starts/pauses, M toggles backing sound, C toggles current-line
-emphasis, and F enters/exits fullscreen. + (or =) and − change font size in
-four-pixel steps, within 28–100 pixels; numeric keypad +/− also work. Shortcuts
-leave editable fields and open menus/dialogs alone. After closing the library,
-Space starts/pauses even when focus remains on its trigger. Space also controls
-playback on other focused display buttons; use Enter to activate that button.
-L opens the song popup. Space only starts/pauses playback, regardless of focus;
-it does not activate a focused control or select a song. Use Enter or the mouse
-to select a song, or Escape to close the popup.
-Arrow seeking remains available.
+tooltip. C toggles current-line emphasis, F enters/exits fullscreen, and L opens
+the media library. + (or =) and − change font size in four-pixel steps, within
+28–100 pixels; numeric keypad +/− also work. There are no keyboard shortcuts for
+Start or mute. Use their on-screen buttons; use Enter or the mouse to select a
+song, or Escape to close the library. Arrow seeking remains available.
 
 Toggle **Highlight current line** off for equal emphasis across lyric lines.
 Its icon shows three equal lines when off and past/current/upcoming styles when
 on. The setting survives song switches and browser reopening. Font controls and
 full screen remain available. The media-library button opens an adjacent popup
-for ready songs and online/prepared offline projects without leaving the display.
-Selection stops the old song and awaits a fresh Start.
+for the current project's songs or all songs in the online library, depending on
+where display mode was launched. Selection arms the chosen song for a fresh
+Start. **На
+главную** returns to Projects or Song library according to the launch source and
+is hidden in fullscreen. Choose another project from the main Projects section.
 
 In fullscreen, preparation navigation is hidden. After two seconds without
 pointer hover or keyboard focus, the bottom panel fades to 30% opacity while

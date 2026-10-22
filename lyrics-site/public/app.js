@@ -9,6 +9,7 @@ import { Playback } from './playback.js';
 import { sameEntryContent, reconcileProjectSave } from './save-reconciliation.js';
 import * as remote from './remote.js';
 import { clearPrivateProjectCache, getPrivateAudio, openCachedProject, preparedProjects, removeDraft, removePreparedProject } from './offline-projects.js';
+import { DEFAULT_LIBRARY_SORT, LIBRARY_SORTS, sortLibrarySongs } from './library-sort.js';
 
 const els = { editor: $('#editor'), list: $('#song-list'), count: $('#song-count'), setName: $('#set-name'), prep: $('#preparation-view'), event: $('#event-view'), eventName: $('#event-song-name'), audience: $('#audience'), audienceLines: $('#audience-lines'), offline: $('#offline-state'), remote: $('#remote-state'), save: $('#save-project'), login: $('#login'), logout: $('#logout'), clearDownloaded: $('#clear-downloaded') };
 let set = { schemaVersion: 1, id: crypto.randomUUID?.() || `set-${Date.now()}`, name: 'Мой набор', songs: [] };
@@ -47,6 +48,10 @@ let offlineProjectOpen = false;
 let onlineSongOpen = false;
 let librarySongs = [];
 let librarySelection = 0;
+let onlineLibraryItems = [];
+let onlineLibraryRequest = 0;
+let eventOrigin = 'projects';
+let eventMenuRequest = 0;
 const sourceGeneration = new Map();
 let workspaceGeneration = 0;
 let backingPreviewId = null;
@@ -300,6 +305,7 @@ async function saveLibrarySong() {
     }
     toast('Песня сохранена в облаке.');
     await refreshHubCloud();
+    await loadOnlineLibraryItems();
     // Existing-song saves do not change the editor's content. Keep its inputs
     // mounted so a refresh cannot interrupt the next edit between focus/input.
     if (saved.song.id !== snapshot.id || !sameEntryContent(saved, payload)) render();
@@ -318,7 +324,7 @@ async function removeCloudSong(id) {
   try {
     await remote.deleteSong(id);
     if (onlineSongOpen && entryFor(currentSong() || {}).songId === id) { cancelRecognition(); clearAudioPreview(); remoteDirty = false; set = { ...set, songs: [] }; selectedId = null; projectEntries.clear(); }
-    await refreshHubCloud(); render(); toast('Песня удалена из библиотеки и облачных проектов.');
+    await refreshHubCloud(); render(); await loadOnlineLibraryItems(); toast('Песня удалена из библиотеки и облачных проектов.');
   } catch (error) { toast(error.message); }
 }
 async function removeCloudProject(id) {
@@ -430,7 +436,7 @@ async function openLibrarySong(id) {
     localProjectId = null; showPreparation(); project = null; offlineProjectOpen = false; onlineSongOpen = true; remoteDirty = false;
     projectEntries = new Map([[entry.song.id, entry]]);
     set = { schemaVersion: 1, id: 'online-library', name: 'Онлайн-библиотека', songs: [entry.song] };
-    selectedId = entry.song.id; render(); return true;
+    selectedId = entry.song.id; render(); loadOnlineLibraryItems(); return true;
   } catch (error) { if (sessionActive && request === librarySelection) toast(error.message); return false; }
 }
 async function createLibraryCopy(item) {
@@ -459,10 +465,61 @@ async function createLibraryCopy(item) {
   } catch (error) { toast(error.message); }
   finally { saveBusy = false; updateRemoteState(); }
 }
+const onlineLibrarySort = $('#online-library-sort');
+for (const option of LIBRARY_SORTS) onlineLibrarySort.append(node('option', { value: option.value, text: option.label }));
+try {
+  const savedSort = sessionStorage.getItem('kaada-library-sort');
+  onlineLibrarySort.value = LIBRARY_SORTS.some(option => option.value === savedSort) ? savedSort : DEFAULT_LIBRARY_SORT;
+} catch { onlineLibrarySort.value = DEFAULT_LIBRARY_SORT; }
+
+function renderOnlineLibraryList() {
+  const list = $('#online-song-list'), query = $('#online-library-search').value.trim().toLocaleLowerCase();
+  const current = currentSong(), currentId = current && (entryFor(current).songId || current.id);
+  const items = [...onlineLibraryItems];
+  if (current && !items.some(item => item.id === currentId || item.id === current.id)) {
+    items.push({ id: current.id, title: current.title, artist: current.artist, version: current.version, createdAt: '', currentDraft: true });
+  }
+  const filtered = sortLibrarySongs(items.filter(item => String(item.title || '').toLocaleLowerCase().includes(query)), onlineLibrarySort.value);
+  list.replaceChildren();
+  for (const item of filtered) {
+    const active = item.id === currentId || item.id === selectedId;
+    const label = [item.title || 'Без названия', item.artist, item.version].filter(Boolean).join(' — ');
+    const select = button(label, `song-item library-song${active ? ' active' : ''}`, () => {
+      if (item.currentDraft) { selectedId = current.id; render(); }
+      else openLibrarySong(item.id);
+    });
+    select.setAttribute('aria-current', String(active));
+    list.append(select);
+  }
+  if (!filtered.length) list.append(node('p', { className: 'hint', text: query ? 'Нет песен с таким названием.' : 'В онлайн-библиотеке пока нет песен.' }));
+}
+
+async function loadOnlineLibraryItems() {
+  if (!sessionActive) return;
+  const request = ++onlineLibraryRequest;
+  try {
+    const result = await remote.listLibrary();
+    if (request !== onlineLibraryRequest || !onlineSongOpen || !sessionActive) return;
+    onlineLibraryItems = result.songs || [];
+    renderOnlineLibraryList();
+  } catch (error) {
+    if (request === onlineLibraryRequest && onlineSongOpen) {
+      onlineLibraryItems = librarySongs;
+      renderOnlineLibraryList();
+      toast(`Не удалось обновить список онлайн-библиотеки: ${error.message}`);
+    }
+  }
+}
+
 function renderList() {
   els.list.replaceChildren(); $('#local-song-list').replaceChildren();
   $('#project-songs').hidden = !project && !localProjectId; $('#local-library').hidden = true; $('#online-library').hidden = true;
   els.count.textContent = `${set.songs.length} ${plural(set.songs.length, 'песня', 'песни', 'песен')}`;
+  if (onlineSongOpen) {
+    $('#online-library').hidden = false;
+    renderOnlineLibraryList();
+    return;
+  }
   if (!project && !localProjectId) return;
   let draggedSongId = null;
   const moveSong = (songId, targetIndex) => {
@@ -522,7 +579,7 @@ function createLibrarySong() {
   if (remoteDirty && !confirm('Есть несохранённые изменения. Создать песню без их сохранения?')) return;
   cancelRecognition(); clearAudioPreview(); resetEditorTab(); localProjectId = null; project = null; onlineSongOpen = true; offlineProjectOpen = false; projectEntries.clear();
   const song = createSong({ language: 'ru' }); set = { schemaVersion: 1, id: 'online-library', name: 'Библиотека песен', songs: [song] }; selectedId = song.id;
-  markRemoteDirty(); showPreparation(); render();
+  markRemoteDirty(); showPreparation(); render(); loadOnlineLibraryItems();
 }
 function addSong() {
   if (!project) return createLibrarySong();
@@ -535,6 +592,7 @@ $('#show-mode').addEventListener('click', () => {
 });
 
 function launchEvent(song) {
+  eventOrigin = onlineSongOpen && !project ? 'library' : 'projects';
   let localPlayback = false;
   if (project) {
     const local = localState().projects.find(item => localState().links[`project:${item.id}`]?.id === project.id);
@@ -680,10 +738,10 @@ function updateEvent() {
   $('#event-progress').setAttribute('aria-valuetext', `${displayTime(elapsed)} из ${displayTime(song.duration)}`);
   $('#event-elapsed').textContent = displayTime(elapsed); $('#event-duration').textContent = displayTime(song.duration);
   $('#event-start').disabled = playback.starting || elapsed >= song.duration;
-  setControlIcon('event-start', playback.starting ? 'loading' : playback.running ? 'pause' : 'play', playback.starting ? 'Запуск…' : playback.running ? 'Пауза' : 'Старт', 'Пробел');
+  setControlIcon('event-start', playback.starting ? 'loading' : playback.running ? 'pause' : 'play', playback.starting ? 'Запуск…' : playback.running ? 'Пауза' : 'Старт');
   $('#event-mute').disabled = !playback.loadAudio;
   if (playback.loadAudio) {
-    setControlIcon('event-mute', playback.muted ? 'muted' : 'volume', playback.muted ? 'Включить звук' : 'Выключить звук', 'M');
+    setControlIcon('event-mute', playback.muted ? 'muted' : 'volume', playback.muted ? 'Включить звук' : 'Выключить звук');
   } else {
     setControlIcon('event-mute', 'muted', 'для этой песни нет минусовки');
   }
@@ -722,16 +780,46 @@ function positionEventMenu() {
   menu.style.top = `${top}px`;
   menu.style.left = `${Math.max(12, Math.min(bounds.left, window.innerWidth - menu.offsetWidth - 12))}px`;
 }
+async function launchLibrarySongInDisplay(id) {
+  try {
+    const entry = await remote.getSong(id);
+    if (els.event.hidden || eventOrigin !== 'library') return;
+    cancelRecognition(); clearAudioPreview();
+    localProjectId = null; project = null; offlineProjectOpen = false; onlineSongOpen = true;
+    projectEntries = new Map([[entry.song.id, entry]]);
+    set = { schemaVersion: 1, id: 'online-library', name: 'Онлайн-библиотека', songs: [entry.song] };
+    selectedId = entry.song.id; render(); launchEvent(entry.song);
+  } catch (error) { toast(`Не удалось открыть песню: ${error.message}`); }
+}
 function showEventMenu() {
   if ($('#event-menu').open) { $('#event-menu').close(); return; }
-  const list = $('#event-menu-songs'); list.replaceChildren(); $('#event-project-name').textContent = set.name;
-  for (const song of set.songs) {
-    const ready = !validateSong(song).length;
-    const item = button(`${song.title || 'Без названия'}${ready ? '' : ' · нужна подготовка'}`, 'button quiet', () => { $('#event-menu').close(); selectedId = song.id; render(); launchEvent(song); });
-    item.disabled = !ready; if (eventState.song?.id === song.id) item.setAttribute('aria-current', 'true'); list.append(item);
-  }
+  const list = $('#event-menu-songs'), request = ++eventMenuRequest;
+  list.replaceChildren(); $('#event-project-name').textContent = eventOrigin === 'library' ? 'Онлайн-библиотека' : set.name;
+  $('#event-menu-title').previousElementSibling.textContent = eventOrigin === 'library' ? 'Библиотека' : 'Проект';
+  const addSongs = songs => {
+    if (!$('#event-menu').open || request !== eventMenuRequest) return;
+    list.replaceChildren();
+    for (const song of songs) {
+      const ready = song.song ? song.reviewed === true && song.valid === true : !validateSong(song).length;
+      const item = button(`${song.title || song.song?.title || 'Без названия'}${ready ? '' : ' · нужна подготовка'}`, 'button quiet', () => {
+        $('#event-menu').close();
+        if (eventOrigin === 'library') launchLibrarySongInDisplay(song.id);
+        else { selectedId = song.id; render(); launchEvent(song); }
+      });
+      item.disabled = !ready;
+      if (eventState.song?.id === song.id || entryFor(eventState.song || {}).songId === song.id) item.setAttribute('aria-current', 'true');
+      list.append(item);
+    }
+    if (!songs.length) list.append(node('p', { className: 'hint', text: 'В библиотеке пока нет песен.' }));
+  };
+  if (eventOrigin === 'library') {
+    list.append(node('p', { className: 'hint', text: 'Загружаем песни…' }));
+    remote.listLibrary().then(result => addSongs(result.songs || [])).catch(error => {
+      if (request === eventMenuRequest) list.replaceChildren(node('p', { className: 'hint', text: error.message }));
+    });
+  } else addSongs(set.songs);
   $('#event-menu-toggle').setAttribute('aria-expanded', 'true'); $('#event-menu').show(); positionEventMenu();
-  ($('#event-menu-songs button:not(:disabled)') || $('#event-menu-close')).focus();
+  $('#event-menu-close').focus();
 }
 function showProjects() { hub.show('projects'); }
 async function showOfflineProjects() { showProjects(); }
@@ -750,7 +838,7 @@ function updateSessionUi() {
   els.login.hidden = sessionActive; els.logout.hidden = !sessionActive;
   els.login.setAttribute('aria-label', 'Войти'); els.login.setAttribute('data-tooltip', 'Войти');
   els.logout.setAttribute('aria-label', 'Выйти'); els.logout.setAttribute('data-tooltip', 'Выйти');
-  $('#projects').disabled = false; $('#projects').hidden = false; $('#event-projects').disabled = false; $('#event-projects').hidden = false;
+  $('#projects').disabled = false; $('#projects').hidden = false;
   updateRemoteState(); refreshOfflineProjectEntry(); if (typeof hub !== 'undefined') hub.render();
 }
 async function signIn() {
@@ -773,7 +861,7 @@ async function clearDownloadedProjectData() {
   if (!offlineProjectOpen || !confirm('Очистить загруженный проект и его черновики с этого устройства?')) return;
   cancelRecognition(); clearAudioPreview(); await privateMutation(() => clearPrivateProjectCache()).catch(error => toast(error.message)); project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateRemoteState(); render(); refreshOfflineProjectEntry(); toast('Загруженный проект очищен с этого устройства.');
 }
-$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project || localProjectId || onlineSongOpen) markRemoteDirty(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', resetEvent); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => changeAudienceFont(4)); $('#font-down').addEventListener('click', () => changeAudienceFont(-4));
+$('#add-song').addEventListener('click', addSong); $('#add-library-song').addEventListener('click', showLibrary); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project || localProjectId || onlineSongOpen) markRemoteDirty(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', event => { if (event.detail >= 2) resetEvent(); }); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => changeAudienceFont(4)); $('#font-down').addEventListener('click', () => changeAudienceFont(-4));
 $('#library').addEventListener('click', () => hub.show('library'));
 $('#projects').addEventListener('click', showProjects);
 $('#event-menu-toggle').addEventListener('click', showEventMenu);
@@ -783,7 +871,12 @@ document.addEventListener('pointerdown', event => {
   const menu = $('#event-menu');
   if (menu.open && !menu.contains(event.target) && !$('#event-menu-toggle').contains(event.target)) menu.close();
 });
-$('#event-projects').addEventListener('click', () => { $('#event-menu').close(); showProjects(); });
+$('#event-home').addEventListener('click', () => hub.show(eventOrigin));
+$('#online-library-search').addEventListener('input', renderOnlineLibraryList);
+onlineLibrarySort.addEventListener('change', () => {
+  try { sessionStorage.setItem('kaada-library-sort', onlineLibrarySort.value); } catch {}
+  renderOnlineLibraryList();
+});
 
 $('#event-progress').addEventListener('input', event => { if (eventState.song) playback.seek(Number(event.target.value)); });
 function toggleMute() { if (playback.loadAudio) playback.mute(!playback.muted); }
@@ -804,13 +897,6 @@ applyHighlight();
 $('#highlight-current').addEventListener('click', toggleHighlight);
 document.addEventListener('keydown', event => {
   if (els.event.hidden) return;
-  const space = event.code === 'Space' || event.key === ' ';
-  if (space) {
-    event.preventDefault(); event.stopImmediatePropagation();
-    if (event.repeat) return;
-    if (eventState.song && !$('#event-start').disabled) startEvent();
-    return;
-  }
   if (event.key === 'Escape' && $('#event-menu').open) { event.preventDefault(); $('#event-menu').close(); return; }
   if (document.querySelector('dialog[open]') || event.ctrlKey || event.altKey || event.metaKey) return;
   const target = event.target instanceof Element ? event.target : document.body;
@@ -825,16 +911,14 @@ document.addEventListener('keydown', event => {
     return;
   }
   if (editable) return;
-  const mute = key === 'm' || event.code === 'KeyM';
   const highlight = key === 'c' || event.code === 'KeyC';
   const fullscreen = key === 'f' || event.code === 'KeyF';
   const fontUp = ['+', '='].includes(event.key) || event.code === 'NumpadAdd';
   const fontDown = ['-', '−'].includes(event.key) || event.code === 'NumpadSubtract';
-  if (!mute && !highlight && !fullscreen && !library && !fontUp && !fontDown) return;
+  if (!highlight && !fullscreen && !library && !fontUp && !fontDown) return;
   event.preventDefault();
   if (event.repeat) return;
-  if (mute) toggleMute();
-  else if (fullscreen) toggleFullscreen();
+  if (fullscreen) toggleFullscreen();
   else if (library) showEventMenu();
   else if (fontUp || fontDown) changeAudienceFont(fontUp ? 4 : -4);
   else toggleHighlight();
@@ -844,10 +928,6 @@ els.audience.addEventListener('wheel', event => {
   event.preventDefault();
   scrollManualAudience(event.deltaY > 0 ? 5 : -5);
 }, { passive: false });
-document.addEventListener('keyup', event => {
-  if (els.event.hidden || (event.code !== 'Space' && event.key !== ' ')) return;
-  event.preventDefault(); event.stopImmediatePropagation();
-}, true);
 eventControls.addEventListener('pointerenter', event => {
   // Touch can leave CSS :hover sticky; only an actual hovering pointer pins the panel.
   controlsVisibility.hovered = event.pointerType !== 'touch';

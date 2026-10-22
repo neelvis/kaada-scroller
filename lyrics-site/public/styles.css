@@ -52,6 +52,7 @@
 .emphasis-future{opacity:var(--emphasis-future-opacity,1)}
 #highlight-current[aria-pressed=true]{--emphasis-past-opacity:.28;--emphasis-current-color:var(--accent);--emphasis-current-width:3;--emphasis-future-opacity:.63}
 .event-view.is-fullscreen #exit-event,.event-view:fullscreen #exit-event{display:none}
+.event-view.is-fullscreen #event-home,.event-view:fullscreen #event-home{display:none}
 .event-view.is-fullscreen.controls-dimmed .event-controls{opacity:.3}
 @media(max-width:780px){.event-controls{padding:10px}.event-control-row{gap:10px}.event-actions{gap:5px}}
 @media(max-width:500px){.event-controls{padding:8px}.event-control-row{gap:8px}.event-actions{gap:3px}.event-icon-button{width:32px;height:34px;padding:5px}.event-icon{width:20px;height:20px}.event-progress-row{grid-template-columns:30px minmax(0,1fr) 30px;gap:3px;font-size:10px}}
@@ -81,10 +82,15 @@
 /* Separate local and authenticated shared song libraries. */
 #local-library,#online-library,#project-songs{flex-shrink:0;margin-bottom:14px}
 #local-library .song-list,#online-library .song-list,#project-songs .song-list{overflow-y:auto}
+#online-library .online-library-search,#online-library .online-library-sort{gap:4px;margin:0 0 8px;font-size:11px;color:var(--muted)}
+#online-library .online-library-search input,#online-library .online-library-sort select{padding:7px 8px;font-size:12px}
+#online-library .song-list{max-height:42vh;flex:none}
 .library-song{border-radius:8px;border:1px solid var(--line);margin-bottom:6px}
 .library-song .song-select{width:100%;overflow-wrap:anywhere}
 .library-song:hover{background:var(--surface-2)}
 .song-list-panel{overflow-y:auto}
+.hub-card[tabindex="0"]{cursor:pointer}
+.hub-card[tabindex="0"]:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 
 /* Keep project names, row actions and dialog actions within the viewport. */
 #projects-dialog{width:calc(100vw - 32px);max-width:640px;max-height:calc(100dvh - 32px)}
