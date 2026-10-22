@@ -18,6 +18,21 @@ export function createWorkspaceHub({ state, actions }) {
     control.append(node('svg', { className: 'event-icon', 'aria-hidden': 'true' }, [node('use', { href: `#action-icon-${icon}` })]));
     return control;
   }
+  function cardIcon(kind) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    if (kind === 'project') {
+      const folder = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      folder.setAttribute('d', 'M3 7V5a1 1 0 0 1 1-1h5l3 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z');
+      svg.append(folder);
+    } else {
+      const note = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      note.setAttribute('d', 'M9 18V5l12-2v13M9 18c0 1.1-1.6 2-3.5 2S2 19.1 2 18s1.6-2 3.5-2S9 16.9 9 18Zm12-2c0 1.1-1.6 2-3.5 2S14 17.1 14 16s1.6-2 3.5-2 3.5.9 3.5 2Z');
+      svg.append(note);
+    }
+    return node('span', { className: 'hub-card-icon' }, [svg]);
+  }
   async function show(next = destination) {
     if (await actions.leaveEditor?.() === false) return false;
     destination = next;
@@ -87,7 +102,7 @@ export function createWorkspaceHub({ state, actions }) {
       const subtitle = `${item.songs.length} песен · ${Math.ceil(item.songs.reduce((sum, song) => sum + (song.duration || 0), 0) / 60)} мин`;
       const readiness = node('p', { className: 'hub-readiness', text: 'Проверка готовности…' });
       const card = makeOpenCard(node('article', { className: 'hub-card', 'data-local-id': item.id, 'data-cloud-id': link?.id }, [
-        node('span', { className: 'eyebrow', text: 'ПРОЕКТ' }),
+        node('div', { className: 'hub-card-top' }, [node('span', { className: 'eyebrow', text: 'ПРОЕКТ' }), cardIcon('project')]),
         node('h2', { text: metadata.name || 'Без названия' }),
         node('p', { className: 'hub-card-meta', text: subtitle }),
         node('p', { className: 'storage-badge', text: link ? 'В облаке · Есть локальная копия' : 'На этом устройстве' }),
@@ -117,7 +132,7 @@ export function createWorkspaceHub({ state, actions }) {
         iconButton('trash', 'Удалить песню', 'danger', () => actions.removeCloudSong(item.id)),
       ];
       cards.push(makeOpenCard(node('article', { className: 'hub-card cloud', 'data-cloud-id': item.id }, [
-        node('span', { className: 'eyebrow', text: isProjects ? 'ПРОЕКТ' : 'ПЕСНЯ' }),
+        node('div', { className: 'hub-card-top' }, [node('span', { className: 'eyebrow', text: isProjects ? 'ПРОЕКТ' : 'ПЕСНЯ' }), cardIcon(isProjects ? 'project' : 'song')]),
         node('h2', { text: item.name || item.title || 'Без названия' }),
         ...(isProjects ? [node('p', { className: 'hub-card-meta', text: `${item.songCount} песен` })] : songMetadata(item)),
         node('p', { className: 'storage-badge', text: 'В облаке' }),

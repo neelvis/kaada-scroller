@@ -1,7 +1,7 @@
 # Timed lyrics revision 24: backing music in display mode
 
 Feature ID: TL (extension)
-Status: Implemented — deployment pending
+Status: Deployed — acceptance pending
 Revision: 24, 2026-10-23
 Baseline: [Specification](spec.md), [backing tracks and live display controls](revision-4.md), and [preparation toolbar actions](revision-22.md).
 
@@ -68,3 +68,9 @@ Implementation evidence: `core.js` normalizes and creates the per-song
 the checkbox with its tooltip. Toggling it updates the song without invalidating
 readiness. `app.js` applies the selected song's preference as the initial mute
 state while retaining synchronized backing playback.
+
+Release evidence: paired release `20261022_225103` was activated. Production
+checks returned HTTP 200 for `/lyrics/`, `/lyrics/api/health`, `/health`, and
+the JavaScript module asset; anonymous project access returned HTTP 401. The
+deployed JavaScript includes the preference field and checkbox label. Manual
+song playback and preference persistence acceptance remains pending.

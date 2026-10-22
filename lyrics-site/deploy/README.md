@@ -20,8 +20,9 @@ From `lyrics-site/`, run the documented frontend/backend/browser checks. Then:
 pnpm build
 backend/.venv/bin/python tools/prepare-python-runtime.py
 node tools/stage-server.mjs 20261012_000000 /absolute/new/kaada-lyrics-20261012_000000
-scp -P 2222 -r /absolute/new/kaada-lyrics-20261012_000000 elvis@153.51.112.84:/home/elvis/
-ssh -p 2222 elvis@153.51.112.84 'python3 /home/elvis/kaada-lyrics-20261012_000000/prepare-service.py'
+ssh -p 2222 elvis@153.51.112.84 'mkdir -p /home/elvis/deploy-artifacts/kaada-lyrics'
+scp -P 2222 -r /absolute/new/kaada-lyrics-20261012_000000 elvis@153.51.112.84:/home/elvis/deploy-artifacts/kaada-lyrics/20261012_000000
+ssh -p 2222 elvis@153.51.112.84 'python3 /home/elvis/deploy-artifacts/kaada-lyrics/20261012_000000/prepare-service.py'
 ```
 
 Use a fresh UTC `YYYYMMDD_HHMMSS` ID. Staging includes only public files, API
@@ -33,6 +34,9 @@ staged wheelhouse. The preparer runs unprivileged and changes no live links.
 When Ubuntu lacks ensurepip it bootstraps only the isolated venv from the staged,
 verified get-pip script and pip wheel. It never installs packages into system Python.
 Upstream bootstrap checksum changes require review rather than automatic acceptance.
+Uploaded artifacts stay under `/home/elvis/deploy-artifacts/kaada-lyrics/RELEASE_ID` and
+the activation script removes that release directory only after the public health check
+succeeds. A failed activation leaves it available for inspection and retry.
 
 The legacy `stage.mjs`/`activate-release.py` commands are for the original
 local-only static release. Do not use them to deliver a server-project update.
@@ -42,7 +46,7 @@ local-only static release. Do not use them to deliver a server-project update.
 The administrator reviews `install-api.py`, then runs it interactively:
 
 ```sh
-ssh -t -p 2222 elvis@153.51.112.84 'sudo python3 /home/elvis/kaada-lyrics-20261012_000000/install-api.py'
+ssh -t -p 2222 elvis@153.51.112.84 'sudo python3 /home/elvis/deploy-artifacts/kaada-lyrics/20261012_000000/install-api.py'
 ```
 
 It checks prepared checksums, creates the restricted service user/data directory,
@@ -63,7 +67,7 @@ any course, piano, Kotlin or JAR changes.
 After staging, uploading and preparing a fresh release:
 
 ```sh
-ssh -p 2222 elvis@153.51.112.84 'python3 /home/elvis/kaada-lyrics-RELEASE_ID/activate-server.py'
+ssh -p 2222 elvis@153.51.112.84 'python3 /home/elvis/deploy-artifacts/kaada-lyrics/RELEASE_ID/activate-server.py'
 ```
 
 Activation locks the deploy operation, checks source/runtime hashes, selects the
@@ -432,3 +436,30 @@ CSS, and the service worker; anonymous project access returned 401. SHA-256 chec
 closing the prior client, SVG icon styles loaded at 22 by 22 pixels with the expected
 stroke. The previous pair `20261022_222801` remains available for rollback. Close and
 reopen existing tabs to adopt the new shell.
+
+### Backing player controls and display preference
+
+Paired release `20261022_225103` publishes application commit `945072f` with
+the custom preparation player, cue-time assignment dialog and per-song
+`includeBackingInShow` preference. The preference defaults to enabled for older
+song data and sets only the initial display mute state; the backing track stays
+available and synchronized. The unchanged API was packaged with the previously
+verified hash-locked wheelhouse because upstream `get-pip.py` had changed and
+its pinned checksum requires separate review. Production checks returned HTTP
+200 for `/lyrics/`, `/lyrics/api/health`, `/health`, and the JavaScript module
+asset; anonymous project access returned HTTP 401. Automated and manual feature
+acceptance checks remain pending. The previous paired release
+`20261022_223209` remains available for rollback. Close and reopen existing
+lyrics tabs to adopt the new shell.
+
+### Project and song card icons
+
+Paired release `20261022_230112` publishes application commit `6c28a0c` with
+inline folder and music-note icons on project and song cards. The API source and
+runtime match `20261022_225103`; no schema change was needed. The frontend build,
+paired staging, checksum validation, API preparation and activation passed.
+Production returned 200 for `/lyrics/`, API health, `workspace-hub.js`, and
+`hub.css`; anonymous project access returned 401. The live JavaScript and CSS
+hashes match the built artifacts. The previous pair `20261022_225103` remains
+available for rollback. Close and reopen existing lyrics tabs to adopt the new
+shell.

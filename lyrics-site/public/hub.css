@@ -57,6 +57,7 @@
 .hub-card:hover{transform:translateY(-2px);border-color:rgba(35,192,235,.62);box-shadow:0 16px 36px rgba(0,0,0,.2)}
 .hub-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .hub-card-icon{width:38px;height:38px;display:grid;place-items:center;border:1px solid rgba(35,192,235,.28);border-radius:11px;background:rgba(35,192,235,.09);color:var(--accent);font-size:19px}
+.hub-card-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .hub-location{display:inline-flex;align-items:center;gap:6px;max-width:65%;padding:5px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:11px;white-space:nowrap}
 .hub-location::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(35,192,235,.12)}
 .hub-location.cloud::before{background:#b59bff;box-shadow:0 0 0 3px rgba(181,155,255,.13)}

@@ -1,7 +1,7 @@
 # Timed lyrics revision 23: backing player controls and cue assignment
 
 Feature ID: TL (extension)
-Status: Implemented — deployment pending
+Status: Deployed — acceptance pending
 Revision: 23, 2026-10-23
 Baseline: [Specification](spec.md), [cue ordering and interludes](revision-17.md), and [preparation toolbar actions](revision-22.md).
 
@@ -97,4 +97,5 @@ speed and cue assignment; `lyrics-site/public/styles.css` styles the player and
 dialog; and `lyrics-site/public/cue-editor.css` removes the per-row clock
 column. The existing browser assertion for row controls was updated in
 `lyrics-site/tests/cue-interludes-browser.mjs`. Automated and manual acceptance
-checks remain pending; the production build completed and syntax checks passed.
+checks remain pending. The production build completed, syntax checks passed,
+and the feature was published in paired release `20261022_225103`.

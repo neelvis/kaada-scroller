@@ -13,6 +13,7 @@ import time
 import uuid
 
 STAGE = Path(__file__).resolve().parent
+STAGING_ROOT = Path('/home/elvis/deploy-artifacts/kaada-lyrics')
 BASE = Path('/srv/nasty-edu-lyrics')
 DATA = Path('/var/lib/kaada-lyrics')
 CONFIG = Path('/etc/nginx/sites-enabled/nasty-edu.online').resolve()
@@ -139,6 +140,14 @@ def private_write(path, content, *, mode=0o600, uid=0, gid=0):
     os.replace(temporary, path)
 
 
+def remove_staged_artifact(release_id):
+    """Remove only this project's uploaded artifact after a live release."""
+    expected = STAGING_ROOT / release_id
+    if STAGE != expected:
+        raise RuntimeError(f'Unexpected staged artifact directory: {STAGE}')
+    shutil.rmtree(STAGE)
+
+
 def main():
     if os.geteuid() != 0:
         raise SystemExit('Run this installer with sudo in an interactive terminal.')
@@ -225,7 +234,12 @@ def main():
         run('/usr/sbin/nginx', '-t')
         run('/usr/bin/systemctl', 'reload', 'nginx')
         raise
-    print(f'Shared projects published: https://nasty-edu.online/lyrics/; release {release_id}.')
+    try:
+        remove_staged_artifact(release_id)
+    except (OSError, RuntimeError) as error:
+        print(f'Shared projects published: https://nasty-edu.online/lyrics/; release {release_id}; staged artifact cleanup failed: {error}')
+    else:
+        print(f'Shared projects published: https://nasty-edu.online/lyrics/; release {release_id}; staged artifact removed.')
     print(f'Organizer password was set privately; Nginx backup: {backup}')
 
 

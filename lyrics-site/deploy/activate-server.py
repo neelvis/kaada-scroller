@@ -6,12 +6,15 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
+import sys
 import time
 import uuid
 
 BASE = Path('/srv/nasty-edu-lyrics')
 STAGE = Path(__file__).resolve().parent
+STAGING_ROOT = Path('/home/elvis/deploy-artifacts/kaada-lyrics')
 
 
 def link(path, target):
@@ -35,6 +38,14 @@ def healthy():
         if time.monotonic() >= deadline:
             raise RuntimeError('API did not become healthy.')
         time.sleep(1)
+
+
+def remove_staged_artifact(release_id):
+    """Remove only this project's uploaded artifact after a live release."""
+    expected = STAGING_ROOT / release_id
+    if STAGE != expected:
+        raise RuntimeError(f'Unexpected staged artifact directory: {STAGE}')
+    shutil.rmtree(STAGE)
 
 
 def main():
@@ -79,7 +90,12 @@ def main():
             restart()
             healthy()
             raise
-    print(f'Activated paired lyrics release {release_id}; prior frontend {previous_front}, API {previous_back}.')
+    try:
+        remove_staged_artifact(release_id)
+    except (OSError, RuntimeError) as error:
+        print(f'Activated paired lyrics release {release_id}; staged artifact cleanup failed: {error}', file=sys.stderr)
+    else:
+        print(f'Activated paired lyrics release {release_id}; prior frontend {previous_front}, API {previous_back}; staged artifact removed.')
 
 
 if __name__ == '__main__':
