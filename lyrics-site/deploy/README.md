@@ -343,3 +343,20 @@ and CSS, and 401 for anonymous project/audio requests. Automated feature tests,
 browser UI scenarios, authenticated cloud writes and native folder-picker
 interaction were not run. The previous pair `20261021_235101` remains available
 for rollback. Close and reopen existing lyrics tabs to adopt the new shell.
+
+### Library and project recovery release
+
+Paired release `20261022_213226` on 2026-10-23 publishes revision 19 from
+application commit `72c4797`. It simplifies cloud-library song editing and copy
+titles, keeps the current cloud project authoritative on entry, prompts before
+leaving a project with unsaved changes, and refreshes linked local copies after
+cloud changes and successful saves. It also adjusts readiness controls and the
+local-folder tooltip. The API source/runtime match release `20261022_210520`; no
+schema change was needed.
+
+Build, staging checks and paired activation passed. Production HTTP checks
+returned 200 for the lyrics page, API health, `app.js` and `hub.css`. Static
+JavaScript syntax checks and `git diff --check` passed. Automated behavior suites
+and manual browser scenarios were not run. The previous pair
+`20261022_210520` remains available for rollback. Close and reopen existing
+lyrics tabs to adopt the new shell.

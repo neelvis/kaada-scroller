@@ -36,7 +36,7 @@ Accepted extension: [revision 18 — focused project and song editing](revision-
 (implemented and deployed; production smoke checks passed, feature behavior tests not run;
 supersedes affected requirements in revisions 14 and 16).
 Accepted extension: [revision 19 — library editing and project recovery](revision-19.md)
-(implemented; manual acceptance pending; supersedes affected requirements in revision 18).
+(implemented and deployed; manual acceptance pending; supersedes affected requirements in revision 18).
 
 ## Purpose
 

@@ -1,7 +1,7 @@
 # Timed lyrics revision 19: library editing and project recovery
 
 Feature ID: TL (extension)
-Status: Implemented — static syntax checks passed; manual acceptance pending
+Status: Implemented and deployed — manual acceptance pending
 Revision: 19, 2026-10-23
 Baseline: [Specification](spec.md), [revision 16 — cloud library and local project copies](revision-16.md), [revision 18 — focused project and song editing](revision-18.md).
 
@@ -102,8 +102,10 @@ are included in acceptance checks. An independent review of the implementation
 found and then verified a fix for repeated trailing copy suffixes.
 
 Static JavaScript syntax checks passed for the four changed JavaScript modules;
-`git diff --check` passed. Automated and manual behavior checks were not run.
-The acceptance criteria remain pending manual UI verification.
+`git diff --check` passed. Paired release `20261022_213226` was activated, and
+the production lyrics page, API health endpoint, `app.js` and `hub.css` returned
+HTTP 200. Automated and manual behavior checks were not run. The acceptance
+criteria remain pending manual UI verification.
 
 Approved by the user on 2026-10-23 in chat after review of revision 19 at
 SHA-256 `0c865280de19ad7b6912a9ab72653a412ef90a16ce8270b9644a3bbb7572f918`.
