@@ -360,3 +360,23 @@ JavaScript syntax checks and `git diff --check` passed. Automated behavior suite
 and manual browser scenarios were not run. The previous pair
 `20261022_210520` remains available for rollback. Close and reopen existing
 lyrics tabs to adopt the new shell.
+
+### Direct card navigation and display library controls
+
+Paired release `20261022_215117` on 2026-10-23 (Europe/Moscow) publishes
+revision 20 from application commit `d199e7e`. Project/song cards open directly;
+library-song editing shows the searchable, sorted online library; display mode
+lists the full online library when launched from it and returns home to the
+launching section. Start/mute shortcuts were removed, stop/reset requires a
+double-click, and the display library no longer offers `Другой проект`.
+
+The API source and locked runtime match release `20261022_213226`; no schema
+change was needed. `pnpm build`, paired staging/preparation and activation passed.
+The 58-entry release manifest SHA-256 is
+`efd9d00d2d98595f843ecde55e43f42dabd46648f39542af4df88e47e0549574`. Production
+checks returned 200 for `/lyrics/`, API health, updated JS/CSS, the main site and
+health endpoint, and MJS/WASM assets. Anonymous project/audio API requests
+returned 401. The published public assets match the locally staged hashes. The
+previous pair `20261022_213226` remains available for rollback. Automated behavior
+suites, authenticated save/reopen, offline Start and manual browser acceptance
+were not run. Close and reopen existing lyrics tabs to adopt the new shell.

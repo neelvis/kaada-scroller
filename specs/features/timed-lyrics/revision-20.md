@@ -1,7 +1,7 @@
 # Timed lyrics revision 20: direct card navigation and display library controls
 
 Feature ID: TL (extension)
-Status: Implemented — syntax and diff checks passed; UI acceptance pending
+Status: Deployed — build and production smoke checks passed; UI acceptance pending
 Revision: 20, 2026-10-23
 Baseline: [Specification](spec.md), [revision 17 — cue ordering, interludes and library sorting](revision-17.md), [revision 18 — focused project and song editing](revision-18.md), and [revision 19 — library editing and project recovery](revision-19.md).
 
@@ -37,4 +37,4 @@ Approval: The user explicitly approved this revision in chat on 2026-10-23 with 
 
 Implementation evidence: `lyrics-site/public/workspace-hub.js` makes project and song cards open on click or keyboard activation, while keeping card actions independent. `lyrics-site/public/app.js` and `index.html` provide the complete online-library editor list with title filtering and shared sorting, load the complete online library in display mode, return home to the origin section, remove Start and mute shortcuts, and require a double-click for stop/reset. The display menu no longer offers `Другой проект`. `lyrics-site/public/styles.css` styles the new controls and hides `На главную` in full-screen mode.
 
-Validation: Node syntax checks passed for `app.js` and `workspace-hub.js`; `git diff --check` passed. Automated behavior tests and manual browser acceptance checks were not run. TL-AC86–AC91 remain pending UI verification.
+Validation: Node syntax checks passed for `app.js` and `workspace-hub.js`; `pnpm build` and `git diff --check` passed. Paired release `20261022_215117` is active. Production page/API/asset checks passed, including anonymous API rejection and JS/MJS/WASM MIME. Automated behavior tests and manual browser acceptance checks were not run. TL-AC86–AC91 remain pending UI verification.

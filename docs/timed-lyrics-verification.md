@@ -833,3 +833,30 @@ notes after seeking, real local-directory ZIP/backing playback, keyboard pause
 and 320px layout. It blocked production API writes and reported none. Private
 school songs/projects were not modified; authenticated writes were covered by
 the disposable local API suites. Close/reopen existing tabs for the new shell.
+
+
+## Revision 20 production publication (2026-10-23)
+
+Application commit `d199e7e` publishes direct project/song card navigation, a
+searchable and sorted full online-library list in the song editor, source-aware
+display library contents and home navigation, removal of Start/mute shortcuts,
+double-click stop/reset, and removal of `Другой проект` from the display menu.
+
+`pnpm build`, Node syntax checks for the changed JavaScript modules, and
+`git diff --check` passed. No API source, schema or runtime dependency changed;
+the paired package reused the exact runtime from `20261022_213226`. All 58 staged
+manifest entries matched, with manifest SHA-256
+`efd9d00d2d98595f843ecde55e43f42dabd46648f39542af4df88e47e0549574`.
+
+Paired release `20261022_215117` activated on 2026-10-23 (Europe/Moscow); the
+previous pair `20261022_213226` remains available for rollback. The API service is
+active and both release links select the new pair. Production checks returned
+200 for the lyrics page, API health, updated `app.js`, `workspace-hub.js`, CSS,
+the main site and health endpoint, and MJS/WASM assets. Anonymous project and
+audio API requests returned 401. The served `index.html`, JS, CSS and cache
+manifest bytes matched their staged counterparts.
+
+Automated behavior suites, authenticated save/reopen, offline Start, and manual
+browser acceptance were not run. TL-AC86–AC91 remain pending UI verification.
+Private library/project data was not modified. Close and reopen existing lyrics
+tabs to adopt the new cached shell.
