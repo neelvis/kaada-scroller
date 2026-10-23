@@ -89,18 +89,25 @@ def require(request: Request, write: bool = False) -> tuple[str, str] | JSONResp
 async def health(request: Request) -> Response: return JSONResponse({"ok": True})
 
 async def login(request: Request) -> Response:
-    settings=request.app.state.settings; store=request.app.state.store; ip=remote_ip(request); now=time.time(); attempts=request.app.state.login_attempts[ip]
-    while attempts and attempts[0] < now-LOGIN_WINDOW: attempts.popleft()
-    if len(attempts) >= LOGIN_ATTEMPTS: return error("Слишком много попыток. Подождите несколько минут.", "rate_limited", 429)
+    settings=request.app.state.settings; store=request.app.state.store; ip=remote_ip(request); now=time.time()
+    attempts=request.app.state.login_attempts[ip]
+    in_flight=request.app.state.login_inflight[ip]
+    while attempts and attempts[0] < time.monotonic()-LOGIN_WINDOW: attempts.popleft()
+    if len(attempts) + len(in_flight) >= LOGIN_ATTEMPTS: return error("Слишком много попыток. Подождите несколько минут.", "rate_limited", 429)
     if not check_origin(request, settings): return error("Запрос разрешён только со страницы организатора.", "csrf", 403)
-    # Reserve before the first await: delayed bodies count as in-flight attempts.
-    attempts.append(now)
-    try: data=await body_json(request); password=data["password"]
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError): return error("Введите пароль.", "invalid", 400)
-    if not isinstance(password, str) or not await run_in_threadpool(verify_password, settings, password):
-        return error("Неверный пароль.", "unauthorized", 401)
-    # A successful login releases only its own reservation.
-    if now in attempts: attempts.remove(now)
+    # In-flight requests never expire while their body or password check is pending.
+    reservation = object()
+    in_flight.add(reservation)
+    authenticated = False
+    try:
+        try: data=await body_json(request); password=data["password"]
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError): return error("Введите пароль.", "invalid", 400)
+        if not isinstance(password, str) or not await run_in_threadpool(verify_password, settings, password):
+            return error("Неверный пароль.", "unauthorized", 401)
+        authenticated = True
+    finally:
+        in_flight.remove(reservation)
+        if not authenticated: attempts.append(time.monotonic())
     token=secrets.token_urlsafe(32); csrf=secrets.token_urlsafe(32); digest=hashlib.sha256(token.encode()).hexdigest()
     with store.tx() as db:
         db.execute("DELETE FROM sessions WHERE expires_at<?", (int(now),))
@@ -294,6 +301,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     ])
     app.state.settings=settings; app.state.store=store
     app.state.login_attempts=defaultdict(deque)
+    app.state.login_inflight=defaultdict(set)
     return app
 
 # A missing credential must prevent an accidentally public or half-configured service

@@ -9,6 +9,7 @@ import unittest
 import wave
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from starlette.testclient import TestClient
@@ -63,6 +64,34 @@ class ApiTest(unittest.TestCase):
                 self.assertEqual(verify.call_count, 8)
                 self.assertEqual(sum(response.status_code == 429 for response in responses), 24)
                 self.assertEqual(sum(response.status_code == 401 for response in responses), 8)
+        asyncio.run(exercise())
+
+    def test_inflight_logins_still_count_after_failure_window_expires(self):
+        async def exercise():
+            gate, started = asyncio.Event(), asyncio.Event()
+            entered = 0
+            clock = [1000.0]
+            async def slow_body():
+                nonlocal entered
+                entered += 1
+                if entered == 8: started.set()
+                await gate.wait()
+                yield b'{"password":"wrong"}'
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.client.app), base_url="http://testserver") as client:
+                with patch("backend.app.time", SimpleNamespace(time=lambda:1000, monotonic=lambda:clock[0])), patch("backend.app.verify_password", return_value=False) as verify:
+                    pending = [asyncio.create_task(client.post("/login", headers={**self.headers, "Content-Type":"application/json"}, content=slow_body())) for _ in range(8)]
+                    try:
+                        await asyncio.wait_for(started.wait(), 2)
+                        clock[0] += 301
+                        extra = await client.post("/login", headers=self.headers, json={"password":"wrong"})
+                        self.assertEqual(extra.status_code, 429)
+                    finally:
+                        gate.set()
+                        await asyncio.gather(*pending)
+                    self.assertEqual(verify.call_count, 8)
+                    self.assertEqual((await client.post("/login", headers=self.headers, json={"password":"wrong"})).status_code, 429)
+                    clock[0] += 301
+                    self.assertEqual((await client.post("/login", headers=self.headers, json={"password":"wrong"})).status_code, 401)
         asyncio.run(exercise())
 
     def test_large_audio_ranges_stream_in_bounded_chunks(self):
