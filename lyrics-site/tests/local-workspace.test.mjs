@@ -151,3 +151,22 @@ test('failed reconnect leaves the current workspace and its staged media availab
   assert.equal(local.localState().projects[0].name, 'Current');
   assert.strictEqual(await local.getBacking('song'), staged);
 });
+
+
+test('artwork survives a fresh directory session beyond portable JSON and text limits', async () => {
+  const fs = createDirectoryFixture();
+  const local = await freshSession();
+  await local.connectWorkspace(fs.handle);
+  const snapshot = state('Artwork');
+  const cover = 'data:image/png;base64,' + 'A'.repeat(4 * 1024 * 1024);
+  snapshot.library[0].cover = cover;
+  snapshot.projects[0].cover = cover;
+  snapshot.projects[0].songs[0].cover = cover;
+  await local.saveWorkspace(snapshot);
+  const reopened = await freshSession();
+  const loaded = await reopened.connectWorkspace(fs.handle);
+  assert.equal(loaded.library[0].cover, cover);
+  assert.equal(loaded.projects[0].cover, cover);
+  assert.equal(loaded.projects[0].songs[0].cover, cover);
+  assert.deepEqual(loaded.links, snapshot.links);
+});

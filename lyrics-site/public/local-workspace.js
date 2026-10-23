@@ -1,4 +1,4 @@
-import { importSet } from './core.js';
+import { normalizeSet } from './core.js';
 import { createWorkspace, supportsWorkspaceFiles } from './workspace-files.js';
 import * as legacy from './storage.js';
 
@@ -21,9 +21,9 @@ export async function connectWorkspace(handle) {
   const retainedPending = pending, retainedFailure = failedSave;
   const next = createWorkspace(handle);
   const loaded = await next.load();
-  const parsedLibrary = importSet(JSON.stringify({ schemaVersion: 1, id: 'library', name: 'Library', songs: loaded.library }));
+  const parsedLibrary = normalizeSet({ schemaVersion: 1, id: 'library', name: 'Library', songs: loaded.library });
   loaded.library = parsedLibrary.songs;
-  loaded.projects = loaded.projects.map(project => importSet(JSON.stringify(project)));
+  loaded.projects = loaded.projects.map(project => normalizeSet(project));
   workspace = next; workspaceHandle = handle; active = loaded; pending = same ? retainedPending : new Map(); failedSave = same ? retainedFailure : null;
   changed(failedSave ? 'Не сохранено: доступ восстановлен. Повторите сохранение.' : next.recovered ? 'Восстановлена предыдущая целая версия' : 'Сохранено');
   return active;

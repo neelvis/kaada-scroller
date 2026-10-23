@@ -5,6 +5,7 @@ const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 const MAX_SONGS = 100;
 const MAX_CUES_PER_SONG = 5000;
 const MAX_TEXT_LENGTH = 20_000;
+const MAX_COVER_LENGTH = 4 * Math.ceil(8 * 1024 * 1024 / 3) + 32;
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 function id(prefix) {
@@ -26,9 +27,10 @@ function importError(message) {
   return new Error(`Нельзя импортировать набор: ${message}`);
 }
 
-function assertSafeTree(value, depth = 0) {
+function assertSafeTree(value, depth = 0, field = '') {
   if (depth > 25) throw importError('слишком глубокая структура данных.');
-  if (typeof value === 'string' && value.length > MAX_TEXT_LENGTH) {
+  const artwork = field === 'cover' && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value);
+  if (typeof value === 'string' && value.length > (artwork ? MAX_COVER_LENGTH : MAX_TEXT_LENGTH)) {
     throw importError('слишком длинное текстовое поле.');
   }
   if (Array.isArray(value)) {
@@ -39,7 +41,7 @@ function assertSafeTree(value, depth = 0) {
     if (!plainObject(value)) throw importError('ожидался обычный JSON-объект.');
     for (const key of Object.keys(value)) {
       if (FORBIDDEN_KEYS.has(key)) throw importError('обнаружено недопустимое поле.');
-      assertSafeTree(value[key], depth + 1);
+      assertSafeTree(value[key], depth + 1, key);
     }
   }
 }
@@ -323,8 +325,13 @@ export function importSet(jsonText) {
   if (new TextEncoder().encode(jsonText).byteLength > MAX_IMPORT_BYTES) throw importError('файл больше 5 МБ.');
   let raw;
   try { raw = JSON.parse(jsonText); } catch { throw importError('файл содержит некорректный JSON.'); }
-  assertSafeTree(raw);
-  return sanitizeSet(raw);
+  return normalizeSet(raw);
+}
+
+/** Normalize application-owned snapshots without the portable-file byte limit. */
+export function normalizeSet(value) {
+  assertSafeTree(value);
+  return sanitizeSet(value);
 }
 
 export function exportSet(set) {
