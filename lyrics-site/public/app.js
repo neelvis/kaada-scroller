@@ -681,7 +681,7 @@ function launchEvent(song) {
   if (validateSong(song).length) { toast('Для показа песня должна быть подготовлена и подтверждена.'); return; }
   playback.dispose(); previewPlayer.pause(); backingPreview.pause(); document.querySelectorAll('.toast').forEach(item => item.remove());
   $('#home-view').hidden = true; $('.topbar').hidden = true; els.prep.hidden = true; els.event.hidden = false; els.eventName.textContent = song.title;
-  eventState = { song: structuredClone(song), endCaption: (eventOrigin === 'projects' ? set.endCaption?.trim() : '') || song.endCaption?.trim() || 'Ваша песенка спета', frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0 };
+  eventState = { song: structuredClone(song), endCaption: song.endCaption?.trim() || (eventOrigin === 'projects' ? set.endCaption?.trim() : '') || 'Ваша песенка спета', frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0 };
   const audienceCover = $('#audience-cover'), activeCover = presentationArtwork(song, artworkProjectId, project?.cover || set.cover);
   audienceCover.hidden = !activeCover; if (activeCover) audienceCover.src = activeCover;
   els.audience.classList.toggle('has-cover', Boolean(activeCover));
@@ -747,7 +747,7 @@ function scrollManualAudience(lines) {
 }
 function renderAudience(index, ended) {
   if (ended) {
-    els.audienceLines.replaceChildren(node('div', { className: 'audience-line neutral', text: eventState.endCaption }));
+    els.audienceLines.replaceChildren(node('div', { className: 'audience-line neutral end-caption', text: eventState.endCaption }));
     centerAudience(0); return;
   }
   if (els.audienceLines.children.length !== eventState.song.cues.length || els.audienceLines.querySelector('.neutral')) buildAudience();

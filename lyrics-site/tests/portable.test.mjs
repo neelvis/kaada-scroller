@@ -165,8 +165,28 @@ test('export paths remain safe for unusual filenames and no-name remote links ge
   assert.ok(remote.set.songs[0].backing.fileName.endsWith('.wav'));
 });
 
-test('archive and track caps reject oversized Blobs without reading them', async () => {
-  class HugeBlob extends Blob { get size() { return portableLimits.archive + 1; } arrayBuffer() { assert.fail('Oversize read'); } }
-  await assert.rejects(importPortableSet(new HugeBlob(['x'])), /1 ГиБ/);
-  await assert.rejects(exportPortableSet(fixture(), async () => new HugeBlob(['x'])), /150 МиБ/);
+test('track cap rejects oversized Blobs without reading them', async () => {
+  class HugeBlob extends Blob { get size() { return portableLimits.track + 1; } arrayBuffer() { assert.fail('Oversize read'); } }
+  await assert.rejects(exportPortableSet(fixture(), async () => new HugeBlob(['x'])), /15 МиБ/);
+});
+
+test('archives above one GiB reach structural validation without a project byte cap', async () => {
+  const source = zip([['set.json', JSON.stringify(smallManifest())], ['audio/track.wav', track]]);
+  const bytes = Buffer.from(await source.arrayBuffer());
+  const end = bytes.length - 22, directory = bytes.readUInt32LE(end + 16), gap = 1024 ** 3;
+  bytes.writeUInt32LE(directory + gap, end + 16);
+  // Model a sparse gap before the directory without allocating a GiB fixture.
+  class SparseArchive extends Blob {
+    get size() { return bytes.length + gap; }
+    slice(start = 0, end = this.size) {
+      const result = Buffer.alloc(end - start);
+      for (let i = 0; i < result.length; i++) {
+        const offset = start + i;
+        if (offset < directory) result[i] = bytes[offset];
+        else if (offset >= directory + gap) result[i] = bytes[offset - gap];
+      }
+      return new Blob([result]);
+    }
+  }
+  await assert.rejects(importPortableSet(new SparseArchive()), /лишние данные перед описанием файлов/);
 });

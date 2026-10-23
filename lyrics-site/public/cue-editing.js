@@ -27,7 +27,7 @@ export function suggestRestStart(cues, boundary) {
 
 export function insertRestCue(song, boundary, cueId) {
   if (!Number.isInteger(boundary) || boundary < 0 || boundary > song.cues.length) return song;
-  const cue = { id: cueId, start: suggestRestStart(song.cues, boundary), text: 'Проигрыш', type: 'rest' };
+  const cue = { id: cueId, start: suggestRestStart(song.cues, boundary), text: '', type: 'rest' };
   const cues = [...song.cues];
   cues.splice(boundary, 0, cue);
   return invalidateReview({ ...song, cues });

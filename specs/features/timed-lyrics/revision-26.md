@@ -63,9 +63,11 @@ safety. This revision supersedes only the conflicting parts of earlier rules.
   existing timing conflict and require correction before readiness. This replaces
   revision 15's requirement to preserve negative shifted results.
 - **TL-R26.10 — End caption:** Provide optional end-caption fields for each song
-  and project. At song end, show the nonblank project caption when present,
-  otherwise the nonblank song caption, otherwise `Ваша песенка спета`.
-  Whitespace-only captions count as absent. Preserve captions through cloud and
+  and project. At song end, show the nonblank song caption when present,
+  otherwise the nonblank project caption, otherwise `Ваша песенка спета`.
+  Whitespace-only captions count as absent. Use the active lyric line color
+  and full opacity for the end caption. These refinements were requested by the
+  user on 2026-10-23. Preserve captions through cloud and
   local saving and native portable import/export. Existing records without these
   fields remain compatible. Apply the same precedence in timed and untimed
   presentation; retain existing end-of-song playback behavior.
@@ -94,7 +96,7 @@ safety. This revision supersedes only the conflicting parts of earlier rules.
   static/animated/static notes around its interval, pause, seek and reduced
   motion. Shift times `[1, 3, 8]` by `-4` and obtain `[0, 0, 4]`; flag the
   duplicate zero times without silently reordering or removing rows.
-- **TL-AC26.4 (R26.10):** Check project caption precedence, song fallback,
+- **TL-AC26.4 (R26.10):** Check song caption precedence, project fallback,
   whitespace-only values and the exact default caption, in timed and untimed
   playback. Verify cloud/local/portable round trips and legacy records.
 - **TL-AC26.5 (R26.11–R26.12):** Use portrait and landscape covers for songs

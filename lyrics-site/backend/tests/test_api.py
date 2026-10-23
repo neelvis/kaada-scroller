@@ -473,6 +473,22 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(ranged.status_code,206); self.assertEqual(len(ranged.content),10)
         self.assertEqual(ranged.headers["content-type"],"audio/wav")
 
+    def test_audio_fifteen_mib_boundary(self):
+        from dataclasses import replace
+        self.client.app.state.settings = replace(self.client.app.state.settings, quota_bytes=32 * 1024 * 1024)
+        headers = {**self.login(), "Content-Type": "audio/wav", "X-Lyrics-Filename": "boundary.wav"}
+        limit = 15 * 1024 * 1024
+        payload = io.BytesIO()
+        with wave.open(payload, "wb") as output:
+            output.setnchannels(1); output.setsampwidth(2); output.setframerate(8000)
+            output.writeframes(b"\0" * (limit - 44))
+        audio = payload.getvalue()
+        self.assertEqual(len(audio), limit)
+        self.assertEqual(self.client.post("/audio", headers=headers, content=audio).status_code, 201)
+        response = self.client.post("/audio", headers=headers, content=audio + b"x")
+        self.assertEqual(response.status_code, 413)
+        self.assertIn("15", response.text)
+
     def test_upload_reservations_and_draft_aware_cleanup(self):
         headers=self.login(); store=self.client.app.state.store
         self.assertTrue(store.reserve_upload("first",700,1000))

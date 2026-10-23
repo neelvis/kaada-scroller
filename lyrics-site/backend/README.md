@@ -28,6 +28,8 @@ backend/.venv/bin/python -m backend.credentials --output /var/lib/kaada-lyrics/c
 
 The process receives paths after proxy stripping: `/login`, `/projects`, and so on. It rejects cross-origin writes, requires `X-Lyrics-Request: 1`, then requires the session CSRF value in `X-Lyrics-CSRF` for each authenticated write. The session cookie is HttpOnly, SameSite Strict, Secure when configured, and path-scoped to the API mount.
 
+Each MP3/WAV recording is limited to 15 MiB. Projects have no aggregate audio-byte cap in portable export/import or local storage. The configured server-wide library quota remains separate.
+
 Audio uploads are streamed into private temporary files while SQLite reservations cap the combined completed and in-flight bytes at the configured quota. The SHA-256 content hash makes a lost-response retry return the original audio ID. WAV and MP3 MIME types are retained for playback. `POST /audio/cleanup` accepts `{"keepAudioIds":[...]}` and deletes only this session's uploads that are neither referenced by an immutable song revision nor listed by that browser's current draft.
 
 Back up only while the service is stopped (or use a filesystem snapshot), then validate a restore in a fresh directory:

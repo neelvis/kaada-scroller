@@ -71,12 +71,12 @@ test('rest insertion works at every boundary and leaves existing cue data unchan
   ] });
   for (const [boundary, start] of [[0, 0], [1, 15], [2, 18]]) {
     const inserted = insertRestCue(original, boundary, 'inserted');
-    assert.deepEqual(inserted.cues[boundary], { id: 'inserted', start, text: 'Проигрыш', type: 'rest' });
+    assert.deepEqual(inserted.cues[boundary], { id: 'inserted', start, text: '', type: 'rest' });
     assert.deepEqual(inserted.cues.filter(cue => cue.id !== 'inserted'), original.cues);
     assert.equal(inserted.reviewed, false);
   }
   const empty = insertRestCue(song({ cues: [] }), 0, 'intro');
-  assert.deepEqual(empty.cues, [{ id: 'intro', start: 0, text: 'Проигрыш', type: 'rest' }]);
+  assert.deepEqual(empty.cues, [{ id: 'intro', start: 0, text: '', type: 'rest' }]);
   assert.equal(insertRestCue(original, -1, 'bad'), original);
   assert.equal(insertRestCue(original, 3, 'bad'), original);
 });

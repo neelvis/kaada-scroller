@@ -69,13 +69,10 @@ export async function replaceStoredSet(set, backingAudio = new Map()) {
   if (!(backingAudio instanceof Map)) throw new Error('Минусовки должны быть переданы как Map.');
   const audio = new Map(backingAudio);
   const songIds = new Set(clean.songs.map(song => song.id));
-  let total = 0;
   for (const [songId, blob] of audio) {
     if (!songIds.has(songId)) throw new Error('Минусовка не принадлежит импортируемому набору.');
     if (!globalThis.Blob || !(blob instanceof globalThis.Blob) || !blob.size) throw new Error('Минусовка должна быть непустым Blob.');
-    if (blob.size > portableLimits.track) throw new Error('Минусовка больше 150 МиБ.');
-    total += blob.size;
-    if (total > portableLimits.archive) throw new Error('Минусовки занимают больше 1 ГиБ.');
+    if (blob.size > portableLimits.track) throw new Error('Минусовка больше 15 МиБ.');
   }
   return withDb(db => new Promise((resolve, reject) => {
     const tx = db.transaction([SET_STORE, AUDIO_STORE, BACKING_STORE], 'readwrite');

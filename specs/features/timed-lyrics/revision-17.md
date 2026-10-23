@@ -34,7 +34,7 @@ or sorting of songs inside projects.
   before the first row (also available for an empty timeline); keep drag/drop
   insertion boundaries between rows without duplicate inter-row buttons or a
   toolbar interlude button. A new interlude uses the existing rest-cue semantics and the
-  default editable label `Проигрыш`. It can be moved with the same drag handle
+  default empty editable label (updated by the user on 2026-10-23). It can be moved with the same drag handle
   and arrows as lyrics, edited and deleted. It has an editable start time and
   lasts until the next cue, or the declared song end if it is last. Preserve
   existing rest labels. Insertion, removal, type, label and timing changes

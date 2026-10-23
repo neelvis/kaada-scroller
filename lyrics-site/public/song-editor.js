@@ -390,7 +390,7 @@ export function createSongEditor(context) {
         clearBackingPreview(); changeSong(song.id, s => invalidateChanged(s, { backing: { fileName: selected.name }, mediaRevision: crypto.randomUUID() })); render();
       } catch (error) { if (current()) { toast(`Не удалось сохранить музыку: ${error.message}`); render(); } }
     });
-    const content = [node('h2', { text: 'Музыка' }), node('p', { className: 'hint', text: 'Необязательно. Запускается вместе с текстом; MP3/WAV до 150 МБ и 20 минут; Добавленную музыку можно использовать для разметки текста.' }), node('div', { className: 'action-row' }, [choose, node('span', { className: 'file-name', text: song.backing?.fileName || 'Без музыки' }), remove]), file];
+    const content = [node('h2', { text: 'Музыка' }), node('p', { className: 'hint', text: 'Необязательно. Запускается вместе с текстом; MP3/WAV до 15 МБ и 20 минут; Добавленную музыку можно использовать для разметки текста.' }), node('div', { className: 'action-row' }, [choose, node('span', { className: 'file-name', text: song.backing?.fileName || 'Без музыки' }), remove]), file];
     if (song.backing?.fileName) {
       const includeInShow = node('input', { type: 'checkbox', checked: song.includeBackingInShow !== false });
       includeInShow.addEventListener('change', () => {
@@ -403,7 +403,7 @@ export function createSongEditor(context) {
   }
 
   async function checkBackingFile(file) {
-    if (file.size > 150 * 1024 * 1024) throw new Error('Файл больше 150 МиБ.');
+    if (file.size > 15 * 1024 * 1024) throw new Error('Файл больше 15 МиБ.');
     if (!/\.(mp3|wav)$/i.test(file.name)) throw new Error('Выберите файл MP3 или WAV.');
     const player = new Audio(); const url = URL.createObjectURL(file);
     try {

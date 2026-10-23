@@ -96,7 +96,7 @@ try {
   await page.waitForFunction(async id => (await (await import('./remote.js')).getSong(id)).song.cues.length === 6, songs[0].songId);
   const saved = (await getSong(page, songs[0].songId)).song;
   assert.deepEqual(saved.cues.filter(cue => cue.id !== restId), original.cues, 'neighbors and repeated lyric identities survive edits');
-  assert.deepEqual(saved.cues[3], { id: restId, start: 18, text: 'Проигрыш', type: 'rest' });
+  assert.deepEqual(saved.cues[3], { id: restId, start: 18, text: '', type: 'rest' });
   await open(page, songs[0].songId); assert.equal(await row(page, restId).count(), 1);
   await drag(page, row(page, restId).locator('.cue-drag-handle'), page.locator('.cue-boundary').nth(3));
   assert.equal(await page.locator('.status-pill.ready').count(), 1, 'same-position drop retains confirmation');

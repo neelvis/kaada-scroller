@@ -10,7 +10,7 @@ function checkAbort(signal) { if (signal?.aborted) throw abortError(); }
 export async function decodeAudio(file, signal) {
   checkAbort(signal);
   if (!file || file.size === 0) throw new Error('Выберите непустой MP3 или WAV.');
-  if (file.size > 150 * 1024 * 1024) throw new Error('Запись слишком большая. Максимальный размер — 150 МБ.');
+  if (file.size > 15 * 1024 * 1024) throw new Error('Запись слишком большая. Максимальный размер — 15 МБ.');
   const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (!AudioContextClass) throw new Error('Этот браузер не поддерживает чтение аудио. Откройте раздел в современном браузере на компьютере.');
   const context = new AudioContextClass();

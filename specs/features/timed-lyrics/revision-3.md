@@ -77,7 +77,9 @@ synchronization, nested project folders and paid cloud inference remain deferred
   overwrite an existing library record. Repeating a successful transfer must not
   accidentally duplicate its records. Retain portable project export/import.
 - **TL-R25 — Upload and storage failures:** Accept the current MP3/WAV bounds
-  (150 MB per recording, up to 20 minutes). Use a configurable total library
+  (15 MiB per recording, up to 20 minutes; size updated by the user on
+  2026-10-23). Portable projects have no aggregate byte-size cap; retain per-file
+  and structural validation. Use a configurable total library
   allowance; the proposed initial allowance is 1 GiB on the current small host.
   Show a clear space/size error instead of discarding existing songs or filling
   the host disk. Reference replacement preserves the previous version and never

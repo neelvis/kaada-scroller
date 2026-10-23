@@ -25,7 +25,7 @@ from starlette.routing import Route
 from .config import Settings, decode_scrypt
 from .store import Conflict, DuplicateSong, InvalidSong, Missing, Store
 
-MAX_UPLOAD = 150 * 1024 * 1024
+MAX_UPLOAD = 15 * 1024 * 1024
 MAX_DURATION = 20 * 60
 LOGIN_WINDOW, LOGIN_ATTEMPTS = 300, 8
 
@@ -234,7 +234,7 @@ async def upload_audio(request: Request) -> Response:
     try:
         with os.fdopen(fd,"wb") as out:
             async for chunk in request.stream():
-                if size + len(chunk) > MAX_UPLOAD: return error("Запись больше 150 МБ.","too_large",413)
+                if size + len(chunk) > MAX_UPLOAD: return error("Запись больше 15 МБ.","too_large",413)
                 if not store.reserve_upload(reservation_id,len(chunk),request.app.state.settings.quota_bytes): return error("В библиотеке недостаточно места для этой записи.","quota",413)
                 reserved=True; size += len(chunk); digest.update(chunk)
                 out.write(chunk)

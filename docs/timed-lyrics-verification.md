@@ -906,3 +906,28 @@ not read private school songs, projects or credentials. Authenticated cloud
 writes were verified using the disposable local API before publication.
 Native OS permission prompts and projector rehearsal remain manual checks.
 Close and reopen existing lyrics tabs to adopt the new service-worker shell.
+
+## 2026-10-23 — interlude defaults, audio limits and end captions
+
+The user's bounded follow-up corrections update TL-R25, TL-R95 and TL-R26.10:
+new interludes have empty labels; portable projects/local imports have no aggregate
+byte cap; individual audio files are limited to 15 MiB; end captions prefer song,
+then project, then the standard text, and use the active-line color at full opacity.
+The server-wide library quota remains a separate operational limit.
+
+Local validation passed: `npm test` (126 tests),
+`python -m unittest backend.tests.test_api` (33 tests), `npm run build`,
+`node tests/revision-26-browser.mjs`, and `git diff --check`.
+The API boundary test accepts exactly 15 MiB and rejects one additional byte.
+The browser covers song priority, project fallback in an offline local project,
+standard fallback, final-caption color, and insertion of a new empty interlude.
+A sparse archive regression verifies that archives above 1 GiB reach structural
+validation rather than an aggregate size rejection; malformed ZIP layout still
+fails validation. No full 1 GiB real-media round trip was performed.
+
+The older `cue-interludes-browser.mjs` scenario could not reach its assertions:
+it still expects the removed `Открыть` card button. Its expected new-interlude
+label was updated; current insertion behavior is covered by the passing revision
+26 browser and cue-editing unit tests. API/browser runs used a disposable local
+Python environment because the existing backend environment lacked `httpx`.
+No commit, push or production deployment was performed for this follow-up.

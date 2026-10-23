@@ -1,6 +1,6 @@
 import { exportSet, importSet } from './core.js';
 
-export const portableLimits = Object.freeze({ track: 150 * 1024 * 1024, archive: 1024 * 1024 * 1024, json: 5 * 1024 * 1024, entries: 101 });
+export const portableLimits = Object.freeze({ track: 15 * 1024 * 1024, json: 5 * 1024 * 1024, entries: 101 });
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const crcTable = Uint32Array.from({ length: 256 }, (_, value) => {
@@ -26,7 +26,7 @@ async function read(blob, start, size) {
 }
 function checkBlob(blob) {
   if (!(blob instanceof Blob) || !blob.size) fail('аудиофайл отсутствует или пуст.');
-  if (blob.size > portableLimits.track) fail('минусовка больше 150 МиБ.');
+  if (blob.size > portableLimits.track) fail('минусовка больше 15 МиБ.');
 }
 function trackPath(song, index, blob) {
   const fallback = blob.type.includes('wav') ? 'backing.wav' : 'backing.mp3';
@@ -38,7 +38,6 @@ function trackPath(song, index, blob) {
 export async function exportPortableSet(set, loadBacking) {
   const clean = importSet(exportSet(set));
   const entries = [];
-  let total = 22;
   for (const [index, song] of clean.songs.entries()) {
     const blob = await loadBacking(set.songs[index]);
     if (blob == null) {
@@ -48,15 +47,11 @@ export async function exportPortableSet(set, loadBacking) {
     }
     checkBlob(blob);
     song.backingTrack = trackPath(song, index, blob);
-    total += blob.size + 76 + encoder.encode(song.backingTrack).length * 2;
-    if (total > portableLimits.archive) fail('архив больше 1 ГиБ.');
     entries.push({ name: song.backingTrack, blob });
   }
   const json = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
   if (json.size > portableLimits.json) fail('описание набора больше 5 МиБ.');
   entries.unshift({ name: 'set.json', blob: json });
-  total += json.size + 76 + 16;
-  if (total > portableLimits.archive) fail('архив больше 1 ГиБ.');
   const parts = [];
   const central = [];
   let offset = 0;
@@ -102,7 +97,6 @@ async function directoryEntries(file) {
   const central = new DataView(bytes.buffer);
   const entries = new Map();
   let cursor = 0;
-  let total = 0;
   for (let index = 0; index < count; index += 1) {
     if (cursor + 46 > size || central.getUint32(cursor, true) !== 0x02014b50) fail('повреждено описание файлов ZIP.');
     const flags = central.getUint16(cursor + 8, true);
@@ -117,9 +111,7 @@ async function directoryEntries(file) {
     try { name = safePath(decoder.decode(bytes.subarray(cursor + 46, cursor + 46 + nameLength))); } catch { fail('небезопасное или некорректное имя файла ZIP.'); }
     if (entries.has(name)) fail('повторяющееся имя файла ZIP.');
     const limit = name === 'set.json' ? portableLimits.json : portableLimits.track;
-    if (unpacked > limit || packed > portableLimits.archive || (method === 0 && packed !== unpacked)) fail('файл ZIP превышает допустимый размер или повреждён.');
-    total += unpacked;
-    if (total > portableLimits.archive) fail('содержимое архива больше 1 ГиБ.');
+    if (unpacked > limit || (method === 0 && packed !== unpacked)) fail('файл ZIP превышает допустимый размер или повреждён.');
     entries.set(name, { name, flags, method, packed, unpacked, crc: central.getUint32(cursor + 16, true), offset: central.getUint32(cursor + 42, true), directoryStart: start });
     cursor += recordLength;
   }
@@ -174,7 +166,6 @@ async function entryBlob(file, entry) {
 /** Validate the complete archive before callers replace any persistent or visible state. */
 export async function importPortableSet(file) {
   if (!(file instanceof Blob) || !file.size) fail('файл набора отсутствует или пуст.');
-  if (file.size > portableLimits.archive) fail('архив больше 1 ГиБ.');
   const magic = await read(file, 0, Math.min(4, file.size));
   if (magic[0] !== 0x50 || magic[1] !== 0x4b) {
     if (file.size > portableLimits.json) fail('JSON-файл больше 5 МиБ.');

@@ -157,7 +157,10 @@ try {
   await page.locator('#event-start').click();
   assert.equal(await notes.locator('span').first().evaluate(el => getComputedStyle(el).animationPlayState), 'paused');
   await seek(page, 4); assert.equal(await notes.isVisible(), true, 'past empty intro keeps static notes');
-  await seek(page, 8); assert.equal(await page.locator('.audience-line.neutral').innerText(), 'Спасибо от проекта');
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.audience-line.active')).color === 'rgb(35, 192, 235)');
+  const activeColor = await page.locator('.audience-line.active').evaluate(el => getComputedStyle(el).color);
+  await seek(page, 8); assert.equal(await page.locator('.audience-line.neutral').innerText(), 'Спасибо от песни');
+  assert.equal(await page.locator('.end-caption').evaluate(el => getComputedStyle(el).color), activeColor);
   await home(page);
   // Project caption editing uses the same save and refresh path as other metadata.
   await card(page, seeded.project).locator('h2').click();
@@ -185,6 +188,7 @@ try {
   await card(page, seeded.project).getByRole('button', { name: 'Запустить', exact: true }).click();
   await page.locator('#event-view').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#event-song-name').innerText(), 'Только текст');
+  await seek(page, 8); assert.equal(await page.locator('.audience-line.neutral').innerText(), 'Новая подпись проекта');
   await context.setOffline(false);
   await home(page); await library(page);
   await card(page, seeded.audioSong).getByRole('button', { name: 'Запустить', exact: true }).click();
@@ -223,6 +227,9 @@ try {
   assert.deepEqual(await page.locator('.cue-time').evaluateAll(fields => fields.map(field => field.value)), ['0:00', '0:00', '0:01']);
   assert.match(await page.locator('.validation').innerText(), /строго позже/);
   assert.equal(await page.locator('#save-project').isDisabled(), true);
+  await page.locator('.cue-insert-start').first().click();
+  assert.equal(await page.locator('.cue-row').first().locator('.cue-text').inputValue(), '');
+  assert.equal(await page.locator('.cue-row').first().locator('.cue-type').inputValue(), 'rest');
   assert.deepEqual(errors, []);
   console.log('PASS: revision 26 card metadata/media, nonblocking durable save/reload/retry, direct local launch, end captions, empty interludes and tooltips');
 } finally {
