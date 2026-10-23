@@ -96,6 +96,13 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(suffix.content, payload.getvalue()[-10:])
         self.assertEqual(self.client.get(path, headers={"Range":"bytes=999999-"}).status_code, 416)
 
+    def test_oversize_json_has_explicit_size_error(self):
+        headers = self.login()
+        response = self.client.post("/songs", headers=headers, json={"song":song(), "cover":"x" * (5 * 1024 * 1024)})
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()["code"], "too_large")
+        self.assertIn("5 МиБ", response.json()["error"])
+
     def test_auth_csrf_and_project_conflict_and_latest_heads(self):
         self.assertEqual(self.client.get("/projects").status_code,401)
         self.assertEqual(self.client.post("/login",json={"password":"wrong"}).status_code,403)

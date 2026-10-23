@@ -92,6 +92,17 @@ deleted is already absent from the server, its browser cache and active working
 folder entry are removed when the selected folder is writable. Older immutable
 folder snapshots remain for recovery.
 
+## Artwork storage
+
+Song and project artwork accepts JPG, PNG and WebP source files up to 8 MiB.
+Larger images are resized to at most 1600 pixels on the longest side and encoded
+as WebP until their stored size is at most 192 KiB. Small images retain their
+original bytes. Local snapshots preserve artwork when reopened. Cloud JSON writes
+have a combined 5 MiB limit; an oversized project is rejected before sending with
+an explanation to reduce its artwork or select old covers again for compression.
+Run `node tests/artwork-browser.mjs` after building to verify all three image
+formats, large-source preparation, cloud persistence and fresh local reopening.
+
 ## Find an existing LRC
 
 In the **LRCLIB** tab, use **Find LRC in LRCLIB**. The separate search fields

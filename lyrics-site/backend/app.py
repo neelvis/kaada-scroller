@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from mutagen import File as MediaFile
+from starlette.exceptions import HTTPException
 from starlette.concurrency import run_in_threadpool
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -54,7 +55,7 @@ async def body_json(request: Request) -> Any:
     chunks=[]; size=0
     async for chunk in request.stream():
         size += len(chunk)
-        if size > 5 * 1024 * 1024: raise ValueError()
+        if size > 5 * 1024 * 1024: raise HTTPException(status_code=413)
         chunks.append(chunk)
     return json.loads(b"".join(chunks))
 
@@ -278,7 +279,7 @@ async def imported_project(request: Request) -> Response:
 
 def create_app(settings: Settings | None = None) -> Starlette:
     settings=settings or Settings.from_env(); store=Store(settings.data_dir)
-    app=Starlette(routes=[
+    app=Starlette(exception_handlers={413: lambda request, exc: error("Данные для сохранения больше 5 МиБ. Уменьшите обложки проекта.", "too_large", 413)}, routes=[
         Route("/health",health), Route("/login",login,methods=["POST"]), Route("/session",get_session), Route("/logout",logout,methods=["POST"]),
         Route("/projects",projects,methods=["GET","POST"]), Route("/projects/{project_id}",project,methods=["GET","PUT","DELETE"]),
         Route("/library",library), Route("/songs",songs,methods=["POST"]), Route("/songs/{song_id}",song,methods=["GET","PUT","DELETE"]), Route("/audio",upload_audio,methods=["POST"]), Route("/audio/cleanup",cleanup_audio,methods=["POST"]), Route("/audio/{audio_id}",audio), Route("/imports",imports,methods=["POST"]), Route("/imports/{migration_key}",imported_project),

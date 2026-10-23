@@ -1,3 +1,4 @@
+import { prepareArtwork } from './artwork.js';
 import { createSong, cueAt, uniformScrollProgress, validateSong } from './core.js';
 import { getAudio, getBacking, localState, connectedWorkspace, saveWorkspace, retryWorkspaceSave, onWorkspaceStatus } from './local-workspace.js';
 import { $, node, button, iconTextButton, toast, plural, input } from './ui.js';
@@ -929,8 +930,20 @@ async function clearDownloadedProjectData() {
   if (!offlineProjectOpen || !confirm('Очистить загруженный проект и его черновики с этого устройства?')) return;
   cancelRecognition(); clearAudioPreview(); await privateMutation(() => clearPrivateProjectCache()).catch(error => toast(error.message)); project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateRemoteState(); render(); refreshOfflineProjectEntry(); toast('Загруженный проект очищен с этого устройства.');
 }
-$('#project-cover').addEventListener('change', async event => { const file = event.target.files?.[0]; if (!file) return; if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) { toast('Выберите JPG, PNG или WebP до 8 МиБ.'); event.target.value = ''; return; } const cover = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); set = { ...set, cover }; markRemoteDirty(); render(); });
-$('#project-cover-remove').addEventListener('click', () => { if (!confirm('Удалить обложку проекта?')) return; set = { ...set, cover: '' }; $('#project-cover').value = ''; markRemoteDirty(); render(); });
+let projectCoverGeneration = 0;
+$('#project-cover').addEventListener('change', async event => {
+  const file = event.target.files?.[0]; if (!file) return;
+  const generation = ++projectCoverGeneration, workspace = workspaceGeneration, owner = set.id;
+  try {
+    const cover = await prepareArtwork(file);
+    if (generation !== projectCoverGeneration || workspace !== workspaceGeneration || set.id !== owner) return;
+    set = { ...set, cover }; markRemoteDirty(); render();
+  } catch (error) { if (generation === projectCoverGeneration) toast(error.message); }
+});
+$('#project-cover-remove').addEventListener('click', () => {
+  if (!confirm('Удалить обложку проекта?')) return;
+  projectCoverGeneration += 1; set = { ...set, cover: '' }; $('#project-cover').value = ''; markRemoteDirty(); render();
+});
 $('#add-song').addEventListener('click', () => { $('#project-add-menu').open = false; addSong(); }); $('#add-library-song').addEventListener('click', () => { $('#project-add-menu').open = false; showLibrary(); }); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project || localProjectId || onlineSongOpen) markRemoteDirty(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', event => { if (event.detail >= 2) resetEvent(); }); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => changeAudienceFont(4)); $('#font-down').addEventListener('click', () => changeAudienceFont(-4));
 $('#library').addEventListener('click', () => hub.show('library'));
 $('#projects').addEventListener('click', showProjects);

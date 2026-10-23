@@ -4,6 +4,15 @@ export class RemoteError extends Error {
   constructor(message, { status = 0, code = '' } = {}) { super(message); this.name = 'RemoteError'; this.status = status; this.code = code; }
 }
 
+export const maxJsonBytes = 5 * 1024 * 1024;
+function jsonBody(payload) {
+  const body = JSON.stringify(payload);
+  if (new TextEncoder().encode(body).byteLength > maxJsonBytes) {
+    throw new RemoteError('Данные для сохранения больше 5 МиБ. Уменьшите число обложек в проекте или выберите их заново для сжатия.', { status: 413, code: 'too_large' });
+  }
+  return body;
+}
+
 let csrf = null;
 
 async function request(path, { method = 'GET', body, headers = {}, signal } = {}) {
@@ -24,13 +33,13 @@ async function request(path, { method = 'GET', body, headers = {}, signal } = {}
 }
 
 export async function session() { return request('/session', { signal: AbortSignal.timeout(5000) }); }
-export async function login(password) { return request('/login', { method: 'POST', body: JSON.stringify({ password }), headers: { 'Content-Type': 'application/json' } }); }
+export async function login(password) { return request('/login', { method: 'POST', body: jsonBody({ password }), headers: { 'Content-Type': 'application/json' } }); }
 export async function logout() { try { await request('/logout', { method: 'POST', signal: AbortSignal.timeout(10000) }); } finally { csrf = null; } }
 export async function listProjects() { return request('/projects', { signal: AbortSignal.timeout(5000) }); }
-export async function createProject(name) { return request('/projects', { method: 'POST', body: JSON.stringify({ name }), headers: { 'Content-Type': 'application/json' } }); }
+export async function createProject(name) { return request('/projects', { method: 'POST', body: jsonBody({ name }), headers: { 'Content-Type': 'application/json' } }); }
 export async function getProject(id) { return request(`/projects/${encodeURIComponent(id)}`); }
-export async function saveProject(id, project) { return request(`/projects/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(project), headers: { 'Content-Type': 'application/json' } }); }
-export async function deleteProject(id, revision) { return request(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ revision }), headers: { 'Content-Type': 'application/json' } }); }
+export async function saveProject(id, project) { return request(`/projects/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(project), headers: { 'Content-Type': 'application/json' } }); }
+export async function deleteProject(id, revision) { return request(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE', body: jsonBody({ revision }), headers: { 'Content-Type': 'application/json' } }); }
 export async function listLibrary(query = '') { return request(`/library?q=${encodeURIComponent(query)}`); }
 export async function getSong(id) { return request(`/songs/${encodeURIComponent(id)}`); }
 export async function deleteSong(id) { return request(`/songs/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
@@ -43,8 +52,8 @@ export async function downloadAudio(id) {
   if (!response.ok) throw new RemoteError('Не удалось открыть запись на сервере.', { status: response.status });
   return response.blob();
 }
-export async function importLegacy(payload) { return request('/imports', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } }); }
+export async function importLegacy(payload) { return request('/imports', { method: 'POST', body: jsonBody(payload), headers: { 'Content-Type': 'application/json' } }); }
 export async function findMigration(key) { try { return await request(`/imports/${encodeURIComponent(key)}`); } catch (error) { if (error.status === 404) return null; throw error; } }
 
-export const createSong = payload => request('/songs', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
-export const saveSong = (id, payload) => request(`/songs/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
+export const createSong = payload => request('/songs', { method: 'POST', body: jsonBody(payload), headers: { 'Content-Type': 'application/json' } });
+export const saveSong = (id, payload) => request(`/songs/${encodeURIComponent(id)}`, { method: 'PUT', body: jsonBody(payload), headers: { 'Content-Type': 'application/json' } });
