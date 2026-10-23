@@ -44,7 +44,7 @@ export function createWorkspaceActions(context) {
     if (link && !playbackOnly) return openProject(link.id);
     if (!await context.actions.confirmProjectExit()) return false;
     cancelRecognition(); clearAudioPreview(); context.state.localProjectId = id; context.state.project = null; context.state.projectEntries.clear();
-    context.state.offlineProjectOpen = false; context.state.onlineSongOpen = false; context.state.remoteDirty = false;
+    context.state.onlineSongOpen = false; context.state.remoteDirty = false;
     context.state.set = structuredClone(found); context.state.selectedId = context.state.set.songs[0]?.id || null; showPreparation(); render(); return true;
   }
   async function createLocalProject() {

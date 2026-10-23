@@ -160,7 +160,8 @@ try {
   const second = await getProject(page, seeded.second.id); assert.equal(second.songs[1].song.title, 'Общая песня — из проекта');
   assert.deepEqual(second.songs.map(entry => entry.songId), [other.songId, shared.songId]);
 
-  await page.locator('#prepare-offline').click(); await toast(page, 'Локальная копия проекта сохранена');
+  await page.locator('#projects').click();
+  await libraryCard(page, seeded.first.id).getByRole('button', { name: 'Сохранить локальную копию', exact: true }).click(); await toast(page, 'Локальная копия проекта сохранена');
   const workspace = resolve(directory, 'kaada-workspace');
   const commitsBefore = (await readdir(resolve(workspace, 'snapshots'))).filter(name => name.endsWith('.commit.json')).length;
   assert.ok(commitsBefore > 0); assert.ok((await readdir(resolve(workspace, 'audio'))).some(name => name.endsWith('.bin')));

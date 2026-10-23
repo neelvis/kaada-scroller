@@ -3,12 +3,6 @@ import { sameEntryContent } from './save-reconciliation.js';
 import { getAudio, getBacking } from './local-workspace.js';
 
 export function contentFingerprint(value) { return JSON.stringify(value); }
-export function transferState(local, link, cloudRevision) {
-  if (!link) return 'local';
-  const edited = contentFingerprint(local) !== link.fingerprint;
-  const newer = cloudRevision != null && cloudRevision !== link.revision;
-  return edited && newer ? 'conflict' : edited ? 'local-changes' : newer ? 'cloud-changes' : 'current';
-}
 async function uploadEntry(song) {
   let backingAudioId = null, audioId = null;
   if (song.backing?.fileName) {
@@ -45,14 +39,6 @@ export async function uploadLocalProject(local, link, progress = () => {}, retry
     songs.push(entry);
   }
   return link ? remote.saveProject(link.id, { revision: link.revision, name: local.name, cover: local.cover || '', songs }) : remote.importLegacy({ migrationKey: local.id, name: local.name, cover: local.cover || '', songs });
-}
-export async function uploadLocalSong(song, link) {
-  if (link) {
-    const current = await remote.getSong(link.id);
-    if (current.revisionId !== link.revision) throw new remote.RemoteError('В облаке другая версия песни. Сохраните отдельную копию.', { code: 'conflict' });
-  }
-  const entry = await uploadEntry(song);
-  return link ? remote.saveSong(link.id, { ...entry, revisionId: link.revision }) : remote.createSong({ ...entry, migrationKey: song.id });
 }
 export async function downloadProjectFiles(cloud, progress = () => {}) {
   const audio = new Map(), songs = [];

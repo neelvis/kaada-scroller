@@ -1,42 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { contentFingerprint, downloadProjectFiles, projectLink, transferState, uploadLocalProject, uploadLocalSong } from '../public/cloud-transfers.js';
+import { downloadProjectFiles, projectLink, uploadLocalProject } from '../public/cloud-transfers.js';
 import { createSong } from '../public/core.js';
-import { exportPortableSet, importPortableSet } from '../public/portable.js';
 
 const project = () => ({ schemaVersion: 1, id: 'local-project', name: 'Project', songs: [createSong({ id: 'local-song', title: 'Song' })] });
-
-test('transferState distinguishes local, current, one-sided edits, and two-sided conflicts', () => {
-  const local = project();
-  const link = { id: 'cloud-project', revision: 3, fingerprint: contentFingerprint(local) };
-  const edited = structuredClone(local);
-  edited.songs[0].title = 'Local edit';
-  assert.equal(transferState(local, null, 4), 'local');
-  assert.equal(transferState(local, link, 3), 'current');
-  assert.equal(transferState(edited, link, 3), 'local-changes');
-  assert.equal(transferState(local, link, 4), 'cloud-changes');
-  assert.equal(transferState(edited, link, 4), 'conflict');
-  assert.equal(transferState(local, link, undefined), 'current');
-  assert.equal(transferState(edited, link, null), 'local-changes');
-});
-
-test('same-name media replacement revisions survive portable roundtrip and detect conflicts', async () => {
-  const local = project();
-  local.songs[0] = createSong({ ...local.songs[0], backing: { fileName: 'same.wav' }, mediaRevision: 'old-media' });
-  const link = projectLink(local, { id: 'cloud', revision: 3, songs: [{ songId: 'song', revisionId: 'revision' }] });
-  const changed = structuredClone(local);
-  changed.songs[0].mediaRevision = 'new-media';
-  assert.equal(changed.songs[0].backing.fileName, local.songs[0].backing.fileName);
-  assert.equal(changed.songs[0].reviewed, local.songs[0].reviewed);
-  assert.equal(transferState(changed, link, 3), 'local-changes');
-  assert.equal(transferState(changed, link, 4), 'conflict');
-  const zip = await exportPortableSet(changed, async () => new Blob(['replacement bytes'], { type: 'audio/wav' }));
-  const restored = await importPortableSet(new File([zip], 'project.zip', { type: 'application/zip' }));
-  assert.equal(restored.set.songs[0].mediaRevision, 'new-media');
-  assert.equal(transferState(restored.set, link, 3), 'local-changes');
-  assert.equal(transferState(restored.set, link, 4), 'conflict');
-  assert.equal(await restored.backingAudio.get('local-song').text(), 'replacement bytes');
-});
 
 test('projectLink pins cloud song revisions to their local project version IDs', () => {
   const local = project();
@@ -52,10 +19,6 @@ test('projectLink pins cloud song revisions to their local project version IDs',
   ]);
   assert.equal(link.id, 'cloud-project');
   assert.equal(link.revision, 9);
-  assert.equal(transferState(local, link, 9), 'current');
-  local.songs[0].cues.push({ id: 'cue', start: 0, text: 'Local lyrics', type: 'lyric' });
-  assert.equal(transferState(local, link, 9), 'local-changes');
-  assert.equal(transferState(local, link, 10), 'conflict');
 });
 
 test('stale linked uploads refuse writes before touching media or cloud content', async () => {
@@ -67,8 +30,7 @@ test('stale linked uploads refuse writes before touching media or cloud content'
   };
   try {
     await assert.rejects(uploadLocalProject(project(), { id: 'project-id', revision: 3 }), error => error.code === 'conflict');
-    await assert.rejects(uploadLocalSong(project().songs[0], { id: 'song-id', revision: 'old-song-revision' }), error => error.code === 'conflict');
-    assert.deepEqual(requests.map(request => request.url), ['./api/projects/project-id', './api/songs/song-id']);
+    assert.deepEqual(requests.map(request => request.url), ['./api/projects/project-id']);
     assert.ok(requests.every(request => request.method === 'GET'));
   } finally { globalThis.fetch = originalFetch; }
 });

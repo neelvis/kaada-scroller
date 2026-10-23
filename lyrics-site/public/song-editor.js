@@ -1,19 +1,17 @@
 import { prepareArtwork } from './artwork.js';
 import { formatTime, invalidateReview, parseLrc, parseTime, validateSong } from './core.js';
-import { getAudio, putAudio, putBacking, deleteAudio, deleteBacking } from './local-workspace.js';
+import { putBacking, deleteAudio, deleteBacking } from './local-workspace.js';
 import { $, node, button, field, input, toast } from './ui.js';
 import { hasPlainLyrics, hasSynchronizedLyrics, LrclibClient, prepareLrcImport, preparePlainImport } from './lrclib.js';
-import { recognizeFile } from './recognition.js';
-import { getPrivateAudio, putPrivateAudio, removePrivateAudio } from './offline-projects.js';
+import { putPrivateAudio } from './offline-projects.js';
 import * as remote from './remote.js';
 import { insertRestCue, moveCueToBoundary } from './cue-editing.js';
 
 export function createSongEditor(context) {
   const resources = context.resources;
-  const { els, previewPlayer, backingPreview, recognition, sourceGeneration } = resources;
+  const { els, previewPlayer, backingPreview } = resources;
   const { currentSong, status, changeSong, render, showLibrary, addSong, clearAudioPreview, clearBackingPreview, setAudioPreview, setBackingPreview, entryFor, privateMutation, backingKey, markRemoteDirty, persist, displayTime } = context.actions;
   let coverGeneration = 0;
-  const recognitionProfiles = new Map();
   const backingGeneration = new Map();
   const importDrafts = new Map();
   const estimatedRestStarts = new Set();
@@ -171,7 +169,7 @@ export function createSongEditor(context) {
     });
     assignmentDialog.showModal();
   }
-  function lrclibContext() { return JSON.stringify([context.state.workspaceGeneration, context.state.set.id, context.state.project?.id, context.state.selectedId, context.state.sessionActive, context.state.offlineProjectOpen]); }
+  function lrclibContext() { return JSON.stringify([context.state.workspaceGeneration, context.state.set.id, context.state.project?.id, context.state.selectedId, context.state.sessionActive]); }
   function cancelLrclib() { lrclibState?.controller?.abort(); if (lrclibState) lrclibState.token += 1; lrclibState = null; }
   function resetPreparation({ preserveDrafts = false } = {}) { cancelLrclib(); if (!preserveDrafts) importDrafts.clear(); editorTabSongId = null; }
   function resetEditorTab() { editorTab = 'lrclib'; }
@@ -335,31 +333,6 @@ export function createSongEditor(context) {
     } finally { player.removeAttribute('src'); player.load(); URL.revokeObjectURL(url); }
   }
 
-  function renderAudioCard(song) {
-    const file = node('input', { id: 'original-file', type: 'file', accept: 'audio/mpeg,audio/mp3,audio/wav,audio/x-wav', hidden: true });
-    const choose = button('Выбрать MP3 или WAV', 'button quiet', () => file.click());
-    file.addEventListener('change', async () => { const selected = file.files?.[0]; if (!selected) return; const sourceRun = (sourceGeneration.get(song.id) || 0) + 1; sourceGeneration.set(song.id, sourceRun); const owner = audioOwner(); const sessionAtStart = context.state.sessionActive; const workspaceRun = context.state.workspaceGeneration; const current = () => context.state.workspaceGeneration === workspaceRun && audioOwner() === owner && context.state.sessionActive === sessionAtStart && (sourceGeneration.get(song.id) || 0) === sourceRun; try { recognition.get(song.id)?.controller?.abort(); if (remoteAudioMode()) { if (!sessionAtStart) throw new Error('Для загрузки записи нужна связь с сервером.'); const uploaded = await remote.uploadAudio(selected); if (!current()) return; context.state.projectEntries.set(song.id, { ...entryFor(song), audioId: uploaded.id }); const audioKey = `${owner}:${song.id}`; await privateMutation(() => putPrivateAudio(audioKey, selected)); if (!current()) { await privateMutation(() => removePrivateAudio(audioKey)); return; } } else { await putAudio(song.id, selected); if (!current()) return; } if (context.state.audioSongId === song.id) clearAudioPreview(); changeSong(song.id, s => invalidateChanged(s, { source: { kind: 'audio', fileName: selected.name }, mediaRevision: crypto.randomUUID() })); render(); } catch (error) { if (current()) toast(`Не удалось сохранить запись: ${error.message}`); } });
-    const card = node('section', { className: 'section-card' }, [node('h2', { text: 'Оригинальная запись' }), node('p', { className: 'hint', text: 'Запись нужна для распознавания, прослушивания и разметки. На выступлении она не проигрывается из приложения.' }), node('div', { className: 'action-row' }, [choose, node('span', { className: 'file-name', text: song.source?.fileName || 'Файл не выбран' })]), file]);
-    if (song.source?.fileName) card.append(node('div', { className: 'audio-preview' }, [previewPlayer, renderRecognition(song)]));
-    return card;
-  }
-  function renderRecognition(song) {
-    const job = recognition.get(song.id); const wrap = node('div', {}); const profile = node('select', { 'aria-label': 'Профиль распознавания' }); profile.append(node('option', { value: 'quality', text: 'Качество — крупнее модель' }), node('option', { value: 'fast', text: 'Быстрее — меньше модель' })); profile.value = recognitionProfiles.get(song.id) || 'quality'; profile.addEventListener('change', () => { recognitionProfiles.set(song.id, profile.value); recognition.get(song.id)?.controller?.abort(); renderEditor(); }); wrap.append(node('p', { className: 'hint', text: 'Первый запуск скачает модель. Профиль «Качество» требует больше времени и памяти на ноутбуке; при ошибке выберите «Быстрее» или подготовьте текст вручную/LRC.' }), profile);
-    if (job) { wrap.append(node('p', { className: `recognition-progress${job.error ? ' error' : ''}`, text: job.message || 'Подготовка…' })); wrap.append(button(job.controller ? 'Отменить' : 'Повторить', 'button quiet', () => job.controller ? job.controller.abort() : startRecognition(song))); return wrap; }
-    wrap.append(button(song.cues.length ? 'Рассчитать время по тексту' : 'Распознать MP3', 'button primary', () => startRecognition(song))); return wrap;
-  }
-  async function startRecognition(song) {
-    if (recognition.get(song.id)?.controller) return;
-    const controller = new AbortController(); const owner = audioOwner(); const sessionAtStart = context.state.sessionActive; const sourceRun = sourceGeneration.get(song.id) || 0; const workspaceRun = context.state.workspaceGeneration; const profile = recognitionProfiles.get(song.id) || 'quality'; const current = () => context.state.workspaceGeneration === workspaceRun && audioOwner() === owner && context.state.sessionActive === sessionAtStart && (sourceGeneration.get(song.id) || 0) === sourceRun; recognition.set(song.id, { controller, message: 'Подготовка распознавания…' }); renderEditor();
-    try { const blob = remoteAudioMode() ? ((await getPrivateAudio(`${owner}:${song.id}`)) || (entryFor(song).audioId ? await remote.downloadAudio(entryFor(song).audioId) : null)) : await getAudio(song.id); if (!blob) throw new Error('Сначала выберите запись.'); if (controller.signal.aborted) throw new DOMException('Распознавание отменено', 'AbortError'); const inputVersion = JSON.stringify({ source: song.source, cues: song.cues }); const lyrics = song.cues.length ? structuredClone(song.cues) : undefined; const result = await recognizeFile(new File([blob], song.source?.fileName || 'recording.mp3', { type: blob.type }), { language: song.language || 'ru', profile, lyrics, signal: controller.signal, onProgress: (progress) => { if (!current()) return; const message = progress.message || 'Распознаём…'; recognition.set(song.id, { controller, message }); if (currentSong()?.id === song.id) { const label = $('.recognition-progress'); if (label) label.textContent = message; } } });
-      if (!result?.cues?.length || !result.cues.some((cue) => String(cue.text || '').trim())) throw new Error('Не удалось получить текст из записи. Добавьте текст вручную и расставьте строки.');
-      const latest = context.state.set.songs.find((item) => item.id === song.id);
-      if (!current()) return;
-      if (!latest || JSON.stringify({ source: latest.source, cues: latest.cues }) !== inputVersion) throw new Error('Текст или запись изменились во время расчёта. Результат не был применён.');
-      const question = lyrics ? `Будут применены только предложенные времена; без уверенного совпадения останется: ${result.alignment?.unresolved ?? 0}.` : 'Результат распознавания заменит текущий текст и таймлайн.';
-      await replaceCues(latest, result.cues, { duration: result.duration || latest.duration, source: result.source || { kind: 'recognition', fileName: latest.source?.fileName || '' } }, question, () => !controller.signal.aborted && JSON.stringify({ source: currentSong()?.source, cues: currentSong()?.cues }) === inputVersion); recognition.delete(song.id); render();
-    } catch (error) { if (!current()) return; recognition.set(song.id, { error: true, message: error.name === 'AbortError' ? 'Распознавание отменено. Данные песни не изменены.' : error.message }); renderEditor(); }
-  }
   function renderLrclibCard(song) {
     const state = lrclibState ||= { context: lrclibContext(), title: song.title || '', artist: song.artist || '', token: 0, results: [], selected: null, loading: false, message: '', snapshot: null };
     const title = input(state.title, 'text', { id: 'lrclib-title', required: true, maxlength: 300, autocomplete: 'off' });
@@ -373,7 +346,7 @@ export function createSongEditor(context) {
     const status = node('p', { id: 'lrclib-status', className: 'hint', role: 'status', 'aria-live': 'polite' });
     const results = node('div', { className: 'lrclib-results' });
     const preview = node('div', { className: 'lrclib-preview-wrap' });
-    const active = () => lrclibState === state && state.context === lrclibContext() && !context.state.offlineProjectOpen;
+    const active = () => lrclibState === state && state.context === lrclibContext();
     const unchanged = () => active() && JSON.stringify(currentSong()) === state.snapshot;
     const importRecord = async (record, plain = false) => {
       if (!unchanged()) { state.message = 'Песня изменилась. Повторите поиск перед импортом.'; state.paint(); return; }
@@ -398,11 +371,9 @@ export function createSongEditor(context) {
       } catch (error) { if (active()) { state.message = error.message; state.paint(); } }
     };
     state.paint = () => {
-      status.textContent = context.state.offlineProjectOpen
-        ? 'Поиск LRCLIB недоступен в автономном снимке. Для редактирования откройте проект с сервера.'
-        : !navigator.onLine ? 'Поиск LRCLIB доступен при подключении к интернету. Можно вставить LRC вручную.' : state.message;
+      status.textContent = !navigator.onLine ? 'Поиск LRCLIB доступен при подключении к интернету. Можно вставить LRC вручную.' : state.message;
       status.hidden = !status.textContent;
-      search.disabled = state.loading || !state.title.trim() || context.state.offlineProjectOpen;
+      search.disabled = state.loading || !state.title.trim();
       search.textContent = state.loading ? 'Поиск…' : 'Найти LRC';
       cancel.hidden = !state.loading;
       results.replaceChildren(...state.results.map(record => {
@@ -667,7 +638,6 @@ export function createSongEditor(context) {
     const del = button(projectMode ? 'Убрать из проекта' : 'Удалить песню', 'button danger', async () => {
       const question = projectMode ? 'Убрать песню только из этого проекта?' : libraryMode ? 'Удалить песню из облачной библиотеки и всех облачных проектов?' : 'Удалить песню и локальную запись?';
       if (!libraryDelete && !confirm(question)) return;
-      recognition.get(song.id)?.controller?.abort();
       if (libraryDelete) {
         try { await context.actions.deleteLibrarySong(song); }
         catch (error) { toast(`Не удалось удалить песню: ${error.message}`); }
