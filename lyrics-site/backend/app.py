@@ -237,8 +237,16 @@ async def audio(request: Request) -> Response:
     if not row or not path.is_file(): return error("Запись не найдена.","not_found",404)
     size=path.stat().st_size; headers={"Accept-Ranges":"bytes","Content-Disposition":"inline"}
     range_header=request.headers.get("range")
-    if range_header and not re.fullmatch(r"bytes=(\d*)-(\d*)", range_header):
-        return Response(status_code=416, headers={"Content-Range":f"bytes */{size}"})
+    if range_header:
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header)
+        start, end = match.groups() if match else ("", "")
+        invalid = not match or not (start or end)
+        if start:
+            invalid = invalid or int(start) >= size or (bool(end) and int(end) < int(start))
+        else:
+            invalid = invalid or (bool(end) and int(end) == 0)
+        if invalid:
+            return Response(status_code=416, headers={"Content-Range":f"bytes */{size}"})
     # FileResponse handles ranges with bounded asynchronous reads (64 KiB),
     # including suffix ranges and If-Range, without buffering recordings.
     return FileResponse(path, media_type=row["mime_type"], headers=headers)

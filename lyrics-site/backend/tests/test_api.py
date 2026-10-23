@@ -94,7 +94,10 @@ class ApiTest(unittest.TestCase):
         suffix = self.client.get(path, headers={"Range":"bytes=-10"})
         self.assertEqual(suffix.status_code, 206)
         self.assertEqual(suffix.content, payload.getvalue()[-10:])
-        self.assertEqual(self.client.get(path, headers={"Range":"bytes=999999-"}).status_code, 416)
+        for value in ("bytes=999999-", "bytes=2-1", "bytes=-0", "bytes=-", "malformed"):
+            invalid = self.client.get(path, headers={"Range":value})
+            self.assertEqual(invalid.status_code, 416)
+            self.assertEqual(invalid.headers["content-range"], f"bytes */{len(payload.getvalue())}")
 
     def test_oversize_json_has_explicit_size_error(self):
         headers = self.login()
