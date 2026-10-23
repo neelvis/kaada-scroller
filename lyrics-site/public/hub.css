@@ -55,8 +55,10 @@
 .hub-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px}
 .hub-card{position:relative;min-width:0;display:flex;flex-direction:column;min-height:190px;padding:19px;border:1px solid var(--line);border-radius:15px;background:linear-gradient(145deg,rgba(20,55,70,.94),rgba(13,37,49,.96));box-shadow:0 12px 30px rgba(0,0,0,.12);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
 .hub-card:hover{transform:translateY(-2px);border-color:rgba(35,192,235,.62);box-shadow:0 16px 36px rgba(0,0,0,.2)}
-.hub-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.hub-card-top{display:flex;min-height:38px;align-items:flex-start;justify-content:space-between;gap:10px}
 .hub-card-icon{width:38px;height:38px;display:grid;place-items:center;border:1px solid rgba(35,192,235,.28);border-radius:11px;background:rgba(35,192,235,.09);color:var(--accent);font-size:19px}
+.hub-card-icons{display:inline-flex;align-items:center;gap:6px}
+.hub-media-icon{width:30px;height:30px;border-radius:9px;font-size:16px;line-height:1}
 .hub-card-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .hub-location{display:inline-flex;align-items:center;gap:6px;max-width:65%;padding:5px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:11px;white-space:nowrap}
 .hub-location::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(35,192,235,.12)}
@@ -131,16 +133,28 @@
 .prep-actions{flex-wrap:wrap}
 @media(max-width:780px){.topbar-actions{flex:1 1 100%;width:100%}.primary-nav{flex:1 1 100%;min-width:0}.primary-nav .nav-button{min-width:0;font-size:13px}.topbar .offline-state{font-size:11px}.hub-create{white-space:normal;height:auto;min-height:42px}}
 .hub-card-actions{display:flex;gap:8px;align-items:center;margin-top:auto;padding-top:8px}
-.hub-card .storage-badge{font-size:12px;color:var(--accent);margin:12px 0}
 .hub-card .hub-readiness{font-size:13px;color:var(--upcoming);line-height:1.5;margin:8px 0}
+.hub-card .hub-readiness:empty{display:none}
 @media(max-width:560px){.cue-row .has-tooltip::after{left:auto;right:0;transform:none;max-width:min(240px,calc(100vw - 80px))}}
 @media(max-width:780px) and (min-width:561px){.cue-row{grid-template-columns:82px minmax(0,1fr) 88px 30px 30px}}
 @media(max-width:560px){.cue-row{grid-template-columns:70px minmax(0,1fr) 30px 30px}.has-tooltip::after{max-width:min(240px,calc(100vw - 50px))}}
 
-.hub-recording-version{margin-top:4px;overflow-wrap:anywhere}
+.hub-artist{font-weight:750;color:var(--text)}
+.hub-album{font-size:13px}
+.hub-recording-version{margin-top:3px;overflow-wrap:anywhere;font-size:11px}
+.hub-download{position:relative;overflow:visible}
+.hub-download.is-transferring{background-image:linear-gradient(to right,color-mix(in srgb,var(--accent) 32%,transparent) var(--transfer-progress,0%),transparent var(--transfer-progress,0%));transition:background-size .16s linear}
+.hub-local-copy-check{position:absolute;right:-4px;bottom:-4px;display:grid;place-items:center;width:15px;height:15px;border:2px solid var(--surface);border-radius:50%;background:#67d7ad;color:#06221d;font-size:11px;font-weight:900;line-height:1}
+.hub-card-icons .hub-card-icon{position:static;flex:none}
 .hub-disabled-play{position:relative;display:inline-flex;border-radius:9px}
 .hub-disabled-play:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 .hub-disabled-play button:disabled{opacity:.5;cursor:not-allowed;pointer-events:none}
 .hub-play-tooltip{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:30;width:max-content;max-width:min(260px,calc(100vw - 72px));padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);color:var(--text);font-size:12px;line-height:1.4;pointer-events:none;opacity:0;visibility:hidden}
 .hub-disabled-play:hover .hub-play-tooltip,.hub-disabled-play:focus-within .hub-play-tooltip{opacity:1;visibility:visible}
 @media(max-width:780px){.local-copy-control{margin-left:auto}.workspace-status{max-width:150px}.hub-create-row .hub-create{flex:0 1 auto}}
+@keyframes hub-transfer-pulse{from{background-position:100% 0}to{background-position:-100% 0}}
+.hub-download.is-transferring.is-indeterminate{background-image:linear-gradient(90deg,transparent 25%,color-mix(in srgb,var(--accent) 38%,transparent) 50%,transparent 75%);background-size:200% 100%;animation:hub-transfer-pulse 1.3s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.hub-download.is-indeterminate{animation:none;background-position:50% 0}}
+.hub-card-icons{position:absolute;top:15px;right:15px}
+.hub-card-icons .hub-media-icon{position:relative;inset:auto}
+.hub-card-icons .hub-media-icon.has-tooltip::after{left:auto;right:0;transform:none;max-width:min(300px,calc(100vw - 32px))}

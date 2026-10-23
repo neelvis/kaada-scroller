@@ -153,6 +153,30 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(stale.status_code,409)
         self.assertEqual(self.client.delete(f"/songs/{first['songId']}",headers=headers).status_code,204)
 
+    def test_project_and_song_end_captions_and_blank_interludes_persist(self):
+        headers=self.login()
+        project=self.client.post("/projects",headers=headers,json={"name":"Captions"}).json()
+        ready=song()
+        ready["endCaption"]="Song ending"
+        ready["cues"]=[{"id":"rest","start":0,"text":"","type":"rest"}]
+        saved=self.client.put(f"/projects/{project['id']}",headers=headers,json={
+            "revision":project["revision"], "name":"Captions", "endCaption":"Project ending", "songs":[{"song":ready}],
+        })
+        self.assertEqual(saved.status_code,200)
+        self.assertEqual(saved.json()["endCaption"],"Project ending")
+        self.assertEqual(saved.json()["songs"][0]["song"]["endCaption"],"Song ending")
+        self.assertEqual(self.client.get(f"/projects/{project['id']}").json()["songs"][0]["song"]["cues"][0]["text"],"")
+        self.assertEqual(self.client.get("/projects",headers=headers).json()["projects"][0]["endCaption"],"Project ending")
+        too_long=self.client.put(f"/projects/{project['id']}",headers=headers,json={
+            "revision":saved.json()["revision"], "name":"Captions", "endCaption":"x"*1001, "songs":saved.json()["songs"],
+        })
+        self.assertEqual(too_long.status_code,400)
+        oversized_song=dict(ready, endCaption="x"*1001)
+        too_long_song=self.client.put(f"/projects/{project['id']}",headers=headers,json={
+            "revision":saved.json()["revision"], "name":"Captions", "songs":[{"song":oversized_song}],
+        })
+        self.assertEqual(too_long_song.status_code,400)
+
     def test_standalone_song_auth_and_validation(self):
         data={"migrationKey":"local-song", "song":song()}
         self.assertEqual(self.client.post("/songs",headers=self.headers,json=data).status_code,401)

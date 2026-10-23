@@ -4,16 +4,23 @@ import * as legacy from './storage.js';
 
 let workspace = null;
 let workspaceHandle = null;
+let knownHandle = null;
 let pending = new Map();
 let active = { schemaVersion: 1, library: [], projects: [], links: {} };
+let durable = active;
 let chain = Promise.resolve();
 let changed = () => {};
 let pendingSaves = 0;
 let failedSave = null;
 export const localState = () => active;
+export const durableLocalState = () => durable;
 export const connectedWorkspace = () => workspace;
+export const knownWorkspaceHandle = () => knownHandle || workspaceHandle;
 export const filesSupported = supportsWorkspaceFiles;
 export function onWorkspaceStatus(callback) { changed = callback; }
+// Keep the handle that IndexedDB restores even while browser permission is
+// pending, so a save click can ask for access to this exact folder.
+export function rememberWorkspaceHandle(handle) { knownHandle = handle || null; }
 export async function connectWorkspace(handle) {
   await chain;
   const same = workspaceHandle && (handle === workspaceHandle || (typeof handle.isSameEntry === 'function' && await handle.isSameEntry(workspaceHandle)));
@@ -24,7 +31,7 @@ export async function connectWorkspace(handle) {
   const parsedLibrary = normalizeSet({ schemaVersion: 1, id: 'library', name: 'Library', songs: loaded.library });
   loaded.library = parsedLibrary.songs;
   loaded.projects = loaded.projects.map(project => normalizeSet(project));
-  workspace = next; workspaceHandle = handle; active = loaded; pending = same ? retainedPending : new Map(); failedSave = same ? retainedFailure : null;
+  workspace = next; workspaceHandle = handle; knownHandle = handle; active = loaded; durable = loaded; pending = same ? retainedPending : new Map(); failedSave = same ? retainedFailure : null;
   changed(failedSave ? 'Не сохранено: доступ восстановлен. Повторите сохранение.' : next.recovered ? 'Восстановлена предыдущая целая версия' : 'Сохранено');
   return active;
 }
@@ -38,6 +45,7 @@ export function saveWorkspace(next = active, audio = new Map()) {
   const run = async () => {
     try {
       await target.save(snapshot, { audio: captured });
+      durable = snapshot;
       for (const [id, blob] of captured) if (pending.get(id) === blob) pending.delete(id);
       failedSave = null; pendingSaves--; changed(pendingSaves ? 'Сохранение…' : 'Сохранено');
     } catch (error) { failedSave = { snapshot, audio: captured }; pendingSaves--; if (active === snapshot) active = previous; changed(`Не сохранено: ${error.message}`); throw error; }

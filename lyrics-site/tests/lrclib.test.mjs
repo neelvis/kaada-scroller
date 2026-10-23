@@ -140,10 +140,11 @@ test('LRC import preserves literal repeated occurrences and fills only missing m
   assert.deepEqual(imported.cues.map(({ start, text }) => ({ start, text })), [
     { start: 1, text: 'Припев' }, { start: 3, text: 'Again <tag>' }, { start: 8, text: 'Again <tag>' },
   ]);
-  assert.deepEqual(imported.details, { title: 'Песня & Song', artist: 'Исполнитель', duration: 123 });
+  assert.deepEqual(imported.details, { title: 'Песня & Song', artist: 'Исполнитель', album: 'Album', duration: 123 });
   assert.deepEqual(song, snapshot);
   const complete = prepareLrcImport({ ...song, title: 'Own', artist: 'Own artist', duration: 1 }, record());
-  assert.deepEqual(complete.details, {});
+  assert.deepEqual(complete.details, { album: 'Album' });
+  assert.deepEqual(prepareLrcImport({ ...song, title: 'Own', artist: 'Own artist', duration: 1, album: 'Existing album' }, record({ albumName: '  ' })).details, {});
   assert.throws(() => prepareLrcImport(song, record({ syncedLyrics: '[00:70]bad' })), /некорректен/);
   assert.throws(() => prepareLrcImport(song, record({ instrumental: true })), /Инструментальную/);
   assert.throws(() => prepareLrcImport(song, record({ syncedLyrics: '' })), /нет синхронизированного/);
@@ -158,10 +159,11 @@ test('plain-text import preserves lines and repeats, leaves times empty, and app
     { start: null, text: 'Again <tag>', type: 'lyric' },
     { start: null, text: 'Again <tag>', type: 'lyric' },
   ]);
-  assert.deepEqual(imported.details, { title: 'Песня & Song', artist: 'Исполнитель', duration: 123 });
+  assert.deepEqual(imported.details, { title: 'Песня & Song', artist: 'Исполнитель', album: 'Album', duration: 123 });
   assert.deepEqual(song, snapshot);
-  assert.deepEqual(preparePlainImport({ title: 'Own', artist: 'Own artist', duration: 90 }, record({ plainLyrics: 'line', duration: null })).details, {});
-  assert.deepEqual(preparePlainImport({ title: 'Own', artist: 'Own artist', duration: 90 }, record({ plainLyrics: 'line', duration: -1 })).details, {});
+  assert.deepEqual(preparePlainImport({ title: 'Own', artist: 'Own artist', duration: 90 }, record({ plainLyrics: 'line', duration: null })).details, { album: 'Album' });
+  assert.deepEqual(preparePlainImport({ title: 'Own', artist: 'Own artist', duration: 90, album: 'Existing album' }, record({ plainLyrics: 'line', albumName: null })).details, { duration: 123 });
+  assert.deepEqual(preparePlainImport({ title: 'Own', artist: 'Own artist', duration: 90 }, record({ plainLyrics: 'line', duration: -1 })).details, { album: 'Album' });
   assert.throws(() => preparePlainImport(song, record({ plainLyrics: ' \n\t ' })), /нет обычного текста/);
   assert.throws(() => preparePlainImport(song, record({ plainLyrics: 'Текст', instrumental: true })), /Инструментальную/);
 });

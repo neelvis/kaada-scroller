@@ -860,3 +860,27 @@ Automated behavior suites, authenticated save/reopen, offline Start, and manual
 browser acceptance were not run. TL-AC86–AC91 remain pending UI verification.
 Private library/project data was not modified. Close and reopen existing lyrics
 tabs to adopt the new cached shell.
+
+
+## Revision 26 local verification (2026-10-23)
+
+[Revision 26](../specs/features/timed-lyrics/revision-26.md) is implemented locally.
+The Node unit suite passes 121 tests; the Python API suite passes 29 tests.
+The portable build and whitespace checks pass. The authenticated
+`tests/revision-26-browser.mjs` suite verifies TL-AC26.1–AC26.5 at desktop and
+375px widths, including a real directory handle restored through IndexedDB,
+blocked media downloads with usable navigation, a delayed commit without an
+optimistic success mark, repeated local saving after reload, an offline local
+launch that skips an unready first song, project/song/default end captions,
+caption editing and cloud persistence, empty interludes, reduced motion,
+nonnegative time shifts with duplicate-time validation, icon placement, artwork
+proportions and removal of duplicate native tooltips. Screenshots are retained
+under ignored `lyrics-site/test-results/revision-26/`.
+
+`tests/artwork-browser.mjs` passes large PNG/JPEG/WebP preparation, cloud round
+trips and fresh local directory reopening. Action tests cover access renewal and
+denial, transfer deduplication, concurrent edits, folder replacement, target
+removal and durable-copy progress. Independent read-only review resolved the
+premature-success indication and found no remaining actionable metadata or
+local lifecycle findings. Native OS folder permission prompts and real
+performance/projector rehearsal remain manual checks. Nothing was deployed.

@@ -132,6 +132,29 @@ test('ignore timecodes preserves text validation and bypasses all stored timing 
   assert.equal(cueAt(untimed, 120).ended, true);
 });
 
+test('blank interlude labels and optional end captions survive portable round trips', () => {
+  const original = {
+    schemaVersion: 1, id: 'set', name: 'Концерт', endCaption: 'Финальная подпись проекта', songs: [{ ...song({
+      endCaption: 'Финальная подпись песни',
+      cues: [{ id: 'rest', start: 1, text: '', type: 'rest' }],
+    }), reviewed: true }],
+  };
+  assert.deepEqual(validateSong(original.songs[0]), []);
+  const restored = importSet(exportSet(original));
+  assert.equal(restored.endCaption, 'Финальная подпись проекта');
+  assert.equal(restored.songs[0].endCaption, 'Финальная подпись песни');
+  assert.equal(restored.songs[0].cues[0].text, '');
+  assert.ok(validateSong({ ...original.songs[0], cues: [{ id: 'lyric', start: 1, text: '', type: 'lyric' }] }).some(error => error.includes('введите текст')));
+});
+
+test('legacy sets receive empty end captions and reject oversized captions', () => {
+  const legacy = importSet(JSON.stringify({ schemaVersion: 1, id: 'legacy', name: 'Legacy', songs: [song()] }));
+  assert.equal(legacy.endCaption, '');
+  assert.equal(legacy.songs[0].endCaption, '');
+  const oversized = { schemaVersion: 1, id: 'set', name: 'Set', endCaption: 'x'.repeat(1001), songs: [] };
+  assert.throws(() => exportSet(oversized), /финальная подпись набора.*слишком длинное/);
+});
+
 test('ignore timecodes survives portable normalization and defaults off for legacy songs', () => {
   const original = song({ ignoreTimecodes: true, cues: [{ id: 'a', start: null, text: 'Line' }] });
   const set = { schemaVersion: 1, id: 'set', name: 'Test', songs: [original] };

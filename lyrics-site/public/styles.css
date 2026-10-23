@@ -115,12 +115,21 @@
 .audience .audience-lines.timed-rests .audience-line.rest.active{color:var(--accent);font-weight:800;opacity:1}
 .timed-rests .rest.active .interlude-label{display:none}
 .timed-rests .rest.active .interlude-notes{display:inline-block}
+.rest.empty-interlude .interlude-label{display:none}
+.rest.empty-interlude .interlude-notes{display:inline-block}
 .timed-rests .rest.active .interlude-notes span{display:inline-block;animation:interlude-note 1.6s ease-in-out infinite;animation-play-state:paused}
 .timed-rests.playback-running .rest.active .interlude-notes span{animation-play-state:running}
 .interlude-notes span:nth-child(2){animation-delay:-.4s}
 .interlude-notes span:nth-child(3){animation-delay:-.8s}
 @keyframes interlude-note{0%,100%{transform:translateY(.08em) rotate(-7deg);opacity:.65}50%{transform:translateY(-.16em) rotate(7deg);opacity:1}}
 @media(prefers-reduced-motion:reduce){.timed-rests .rest.active .interlude-notes span{animation:none}}
+
+/* Song metadata in project editing mirrors the card hierarchy. */
+.song-item-artist{display:block;color:var(--text);font-weight:750;font-size:12px;margin-top:2px}
+.song-item-album{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.song-item-version{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.song-item-status.ready{color:var(--accent)}
+.song-item-status.needs-preparation{color:var(--danger)}
 .song-reorder.has-tooltip::after,
 #projects-dialog .project-row .has-tooltip::after{
   top:50%;
@@ -184,13 +193,13 @@
 
 /* Optional cover artwork for songs, projects, and presentation mode. */
 .audience-cover{display:none}
-.audience.has-cover .audience-cover{display:block!important;position:absolute;right:4vw;top:50%;transform:translateY(-50%);width:30%;max-height:82%;aspect-ratio:1;object-fit:cover;border-radius:18px;z-index:2}
+.audience.has-cover .audience-cover{display:block!important;position:absolute;right:4vw;top:50%;transform:translateY(-50%);width:30%;max-height:82%;height:auto;object-fit:contain;border-radius:18px;z-index:2}
 .audience.has-cover .audience-lines{left:4vw;width:60vw}
-.hub-card-cover{position:absolute;right:16px;bottom:16px;width:25%;aspect-ratio:1;object-fit:cover;border-radius:12px}
+.hub-card-cover{position:absolute;right:16px;bottom:16px;width:25%;max-height:48%;height:auto;object-fit:contain;border-radius:12px}
 .hub-card.song-cover-card{position:relative;padding-right:30%}
 .hub-card.project-cover-card{padding-right:30%}
-.project-cover-picker{display:block;margin-top:8px;color:var(--muted);font-size:12px}.project-cover-picker input{display:block;max-width:190px;font-size:11px}.project-cover-preview{width:70px;height:70px;object-fit:cover;border-radius:10px;margin-top:6px}
-.song-cover-preview{width:96px;height:96px;object-fit:cover;border-radius:12px;margin-top:10px}
+.project-cover-picker{display:block;margin-top:8px;color:var(--muted);font-size:12px}.project-cover-picker input{display:block;max-width:190px;font-size:11px}.project-cover-preview{max-width:120px;max-height:90px;width:auto;height:auto;object-fit:contain;border-radius:10px;margin-top:6px}
+.song-cover-preview{max-width:140px;max-height:110px;width:auto;height:auto;object-fit:contain;border-radius:12px;margin-top:10px}
 @media(max-width:650px){.audience.has-cover .audience-cover{right:5vw;width:min(32vw,28vh);max-height:35%}.audience.has-cover .audience-lines{left:4vw;width:60vw}}
 
 /* Cover controls use the same button treatment as the rest of the app. */

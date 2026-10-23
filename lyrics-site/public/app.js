@@ -21,6 +21,7 @@ let cloudProjects = [];
 let hubMessage = '';
 let savedStatus = 'Выберите рабочую папку';
 let transferBusy = false;
+const transfers = new Map();
 let offlineShellReady = false;
 let selectedId = null;
 let audioUrl = null;
@@ -74,6 +75,7 @@ const { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, c
     get hubMessage() { return hubMessage; }, set hubMessage(value) { hubMessage = value; },
     get savedStatus() { return savedStatus; },
     get transferBusy() { return transferBusy; }, set transferBusy(value) { transferBusy = value; },
+    transfers,
     get selectedId() { return selectedId; }, set selectedId(value) { selectedId = value; },
     get persistChain() { return persistChain; },
     get sessionActive() { return sessionActive; },
@@ -85,7 +87,7 @@ const { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, c
     get librarySongs() { return librarySongs; }, set librarySongs(value) { librarySongs = value; }
   },
   resources: { els, get hub() { return hub; } },
-  actions: { cancelRecognition, clearAudioPreview, render, openProject, createLibrarySong, backingKey },
+  actions: { cancelRecognition, clearAudioPreview, render, openProject, createLibrarySong, backingKey, confirmProjectExit },
 });
 
 const { renderEditor, cancelLrclib, resetPreparation, resetEditorTab, refreshConnectivity } = createSongEditor({
@@ -240,7 +242,7 @@ function cancelRecognition() { resetPreparation(); workspaceGeneration += 1; }
 function entryFor(song) { return projectEntries.get(song.id) || {}; }
 function projectPayload() {
   return {
-    revision: project.revision, name: set.name || project.name, cover: set.cover || '',
+    revision: project.revision, name: set.name || project.name, cover: set.cover || '', endCaption: set.endCaption || '',
     songs: set.songs.map(song => ({ ...entryFor(song), song: structuredClone(song) })),
   };
 }
@@ -255,7 +257,7 @@ function adoptProject(next, { preserveSelection = false } = {}) {
   const link = local && localState().links[`project:${local.id}`];
   if (link && (link.revision !== next.revision || link.entries?.length !== next.songs.length || next.songs.some((entry, index) => link.entries?.[index]?.revisionId !== entry.revisionId))) pendingLocalRefresh = next.id;
   projectEntries = new Map((next.songs || []).map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null }]));
-  set = { schemaVersion: 1, id: next.id, name: next.name, cover: next.cover || '', songs: (next.songs || []).map(entry => entry.song) };
+  set = { schemaVersion: 1, id: next.id, name: next.name, cover: next.cover || '', endCaption: next.endCaption || '', songs: (next.songs || []).map(entry => entry.song) };
   selectedId = set.songs.some(song => song.id === previousSelection) ? previousSelection : (set.songs[selectedIndex]?.id || null);
   remoteDirty = false; remoteFailed = false; updateRemoteState(); render();
 }
@@ -573,7 +575,7 @@ function renderList() {
     const ready = !validateSong(song).length;
     const select = node('button', { type: 'button', className: 'song-select', onclick: () => { selectedId = song.id; resetEditorTab(); render(); } }, [
       node('span', { className: `song-dot${ready ? ' ready' : ''}`, 'aria-hidden': true }),
-      node('span', { className: 'song-item-copy' }, [node('span', { className: 'song-item-title', text: song.title || 'Без названия' }), ...(song.artist ? [node('span', { className: 'song-item-status', text: song.artist })] : []), ...(song.album ? [node('span', { className: 'song-item-status', text: song.album })] : []), ...(song.version ? [node('span', { className: 'song-item-status', text: song.version })] : []), node('span', { className: 'song-item-status', text: status(song) })])
+      node('span', { className: 'song-item-copy' }, [node('span', { className: 'song-item-title', text: song.title || 'Без названия' }), ...(song.artist ? [node('span', { className: 'song-item-artist', text: song.artist })] : []), ...(song.album ? [node('span', { className: 'song-item-album', text: song.album })] : []), ...(song.version ? [node('span', { className: 'song-item-version', text: song.version })] : []), node('span', { className: `song-item-status ${ready ? 'ready' : 'needs-preparation'}`, text: status(song) })])
     ]);
     const move = direction => { const target = index + direction; if (target < 0 || target >= set.songs.length) return; const songs = [...set.songs]; [songs[index], songs[target]] = [songs[target], songs[index]]; set = { ...set, songs }; markRemoteDirty(); render(); };
     const up = iconTextButton('↑', 'Переместить песню выше', 'song-reorder', () => move(-1)); up.disabled = index === 0;
@@ -616,6 +618,9 @@ function render() {
   $('#project-cover-label').textContent = set.cover ? 'Изменить обложку' : 'Выбрать обложку';
   $('#project-cover-remove').hidden = projectCoverInput.disabled;
   els.setName.disabled = onlineSongOpen || (!project && !localProjectId);
+  $('#project-end-caption-field').hidden = !project && !localProjectId;
+  $('#project-end-caption').value = set.endCaption || '';
+  $('#project-end-caption').disabled = els.setName.disabled;
   updateSetNameMarquee(); $('#add-song').disabled = !sessionActive;
   renderEditor(); updateRemoteState();
 }
@@ -652,7 +657,7 @@ function launchEvent(song) {
   if (validateSong(song).length) { toast('Для показа песня должна быть подготовлена и подтверждена.'); return; }
   playback.dispose(); previewPlayer.pause(); backingPreview.pause(); document.querySelectorAll('.toast').forEach(item => item.remove());
   $('#home-view').hidden = true; $('.topbar').hidden = true; els.prep.hidden = true; els.event.hidden = false; els.eventName.textContent = song.title;
-  eventState = { song: structuredClone(song), frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0 };
+  eventState = { song: structuredClone(song), endCaption: (eventOrigin === 'projects' ? set.endCaption?.trim() : '') || song.endCaption?.trim() || 'Ваша песенка спета', frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0 };
   const audienceCover = $('#audience-cover'), activeCover = project?.cover || set.cover || song.cover;
   audienceCover.hidden = !activeCover; if (activeCover) audienceCover.src = activeCover;
   els.audience.classList.toggle('has-cover', Boolean(activeCover));
@@ -674,7 +679,7 @@ function buildAudience() {
   els.audienceLines.classList.toggle('manual-scroll', untimed && eventState.song.autoScrollEnabled === false);
   els.audienceLines.replaceChildren(...eventState.song.cues.map(cue => {
     if (cue.type !== 'rest') return node('div', { className: 'audience-line', text: cue.text });
-    return node('div', { className: 'audience-line rest', role: 'group', 'aria-label': cue.text || 'Проигрыш' }, [
+    return node('div', { className: `audience-line rest${cue.text?.trim() ? '' : ' empty-interlude'}`, role: 'group', 'aria-label': cue.text || 'Проигрыш' }, [
       node('span', { className: 'interlude-label', text: `— ${cue.text || 'Проигрыш'} —` }),
       node('span', { className: 'interlude-notes', 'aria-hidden': 'true' },
         [node('span', { text: '♪' }), ' ', node('span', { text: '♪' }), ' ', node('span', { text: '♪' })]),
@@ -718,7 +723,7 @@ function scrollManualAudience(lines) {
 }
 function renderAudience(index, ended) {
   if (ended) {
-    els.audienceLines.replaceChildren(node('div', { className: 'audience-line neutral', text: 'Песня закончилась' }));
+    els.audienceLines.replaceChildren(node('div', { className: 'audience-line neutral', text: eventState.endCaption }));
     centerAudience(0); return;
   }
   if (els.audienceLines.children.length !== eventState.song.cues.length || els.audienceLines.querySelector('.neutral')) buildAudience();
@@ -912,6 +917,10 @@ async function signOut() {
   els.login.disabled = false;
   toast(!cleared ? 'Очистка локальных данных не завершилась. Откройте приложение заново, чтобы повторить её.' : revoked ? 'Вы вышли. Локальный набор и его записи не изменены.' : 'Данные на этом устройстве очищены, но сервер пока не подтвердил выход. Подключитесь к сети и откройте приложение ещё раз.');
 }
+$('#project-end-caption').addEventListener('change', event => {
+  if (!project && !localProjectId) return;
+  set = { ...set, endCaption: event.target.value }; markRemoteDirty();
+});
 let projectCoverGeneration = 0;
 $('#project-cover').addEventListener('change', async event => {
   const file = event.target.files?.[0]; if (!file) return;
@@ -1013,7 +1022,7 @@ $('#delete-library-song').addEventListener('click', () => deleteLibrarySong());
 els.login.addEventListener('click', () => $('#login-dialog').showModal()); els.logout.addEventListener('click', signOut); $('#login-form').addEventListener('submit', event => { event.preventDefault(); signIn(); }); $('#library-search').addEventListener('input', () => searchLibrary());
 
 const hub = createWorkspaceHub({
-  state: () => ({ ...localState(), cloudProjects, cloudSongs: librarySongs, session: sessionActive, message: hubMessage }),
+  state: () => ({ ...localState(), cloudProjects, cloudSongs: librarySongs, session: sessionActive, message: hubMessage, transfers }),
   actions: {
     leaveEditor: async () => {
       if (!await confirmProjectExit()) return false;
@@ -1034,7 +1043,7 @@ const hub = createWorkspaceHub({
     download: downloadItem, remove: removeLocalItem, readiness, removeCloudSong, removeCloudProject, createLibraryCopy,
     playCloudSong: async id => { if (await openLibrarySong(id)) { const song = currentSong(); if (song) launchEvent(song); } },
     playCloudProject: async id => { if (!await openProject(id)) return; const song = set.songs.find(item => !validateSong(item).length); if (song) { selectedId = song.id; launchEvent(song); } else toast('Сначала подготовьте песни проекта.'); },
-    play: async id => { if (!await openLocalProject(id, { playbackOnly: true })) return; const song = set.songs.find(item => !validateSong(item).length); if (song) launchEvent(song); else toast('Сначала подготовьте песни проекта.'); },
+    play: async id => { if (!await openLocalProject(id, { playbackOnly: true })) return; const song = set.songs.find(item => !validateSong(item).length); if (song) { selectedId = song.id; launchEvent(song); } else toast('Сначала подготовьте песни проекта.'); },
   },
 });
 onWorkspaceStatus(text => { savedStatus = text; $('#local-save-status').textContent = text; $('#retry-local-save').hidden = !text.startsWith('Не сохранено:'); if ($('#workspace-retry')) $('#workspace-retry').hidden = !text.startsWith('Не сохранено:'); updateRemoteState(); });

@@ -6,6 +6,8 @@ of current songs; cloud projects use those songs and resolve their latest saved
 versions when opened. A selected folder stores local project snapshots. The same
 public artifact runs at `/lyrics/` or an origin's root.
 
+Card, local-copy and presentation refinements follow
+[revision 26](../specs/features/timed-lyrics/revision-26.md).
 The current workflow follows [revision 20](../specs/features/timed-lyrics/revision-20.md),
 [revision 19](../specs/features/timed-lyrics/revision-19.md),
 [revision 18](../specs/features/timed-lyrics/revision-18.md),
@@ -45,7 +47,11 @@ starts use the previous interval, 5 seconds after a single predecessor, or zero
 without a predecessor. Review and edit the suggestion; later cues are not shifted.
 An interlude lasts until the next cue or song end. During timed display its active
 row shows **♪ ♪ ♪** in the current-line color; notes freeze on pause and remain
-static with reduced motion enabled. Ignored-timecode mode keeps text labels.
+static with reduced motion enabled. Interlude labels may be empty: those rows
+show three notes before, during and after playback, with animation only during
+an active timed interval. Ignored-timecode mode keeps nonempty text labels and
+shows static notes for empty labels. **Подвинуть время** clamps shifted starts at
+zero; any resulting duplicate timestamps must be corrected before readiness.
 
 Open **Projects** to assemble a performance from the current library songs. Use
 the arrows or drag songs to change project order. Saving a song edit from a project
@@ -66,7 +72,11 @@ per-song upload/update actions.
 **Сохранить проект** writes cloud project and song changes and, when that project
 already has a local copy, updates its local snapshot as well. Use **Сохранить
 локальную копию** on a project card to create its first copy in the selected
-folder. Cloud and local results are reported separately; failed work remains
+folder. Saving shows progress on the download button while navigation remains
+usable. A small green check and the tooltip **есть локальная копия** identify a
+completed local copy. The configured folder is reused after reload; if browser
+permission expired, the app requests access to that same folder when saving.
+Cloud and local results are reported separately; failed work remains
 available for retry. A local snapshot contains
 the last successfully saved project and backing files. When a saved local project
 is opened, playback reads its lyrics and backing audio from that snapshot without
@@ -126,7 +136,9 @@ replaces duration with the selected record’s positive duration. Without a usab
 duration, the current duration is retained and a manual-entry notice appears.
 The button is disabled when ordinary lyrics are unavailable. Replacing existing rows requires
 confirmation; invalid LRC leaves the song unchanged. The original/backing audio,
-delay, recording-version description and existing metadata are preserved. For synchronized LRC, only
+delay and recording-version description are preserved. A nonblank album name
+from the selected result fills the album field; an absent album keeps the
+existing value. For synchronized LRC, only
 blank title/artist and missing duration are filled. A differing duration remains
 visible after import. Check every line and confirm readiness again; save cloud
 project changes with **Save**. Prepared playback uses the saved timeline and does
@@ -208,6 +220,13 @@ the cloud project and local snapshot. Reopen the saved project to rehearse from 
 local files. Keep the laptop awake and the performance tab in front. Reload returns
 to Projects.
 
+Songs and projects accept optional rectangular cover artwork with preserved
+proportions. The optional **Подпись в конце песни** field supplies a song's end
+message; the project's **Подпись в конце песни для проекта** overrides it for
+that project. Blank or whitespace-only values fall through to the song caption,
+then to **Ваша песенка спета**. Captions are retained in cloud saves and local
+copies.
+
 ## Development and validation
 
 ```sh
@@ -218,9 +237,15 @@ pnpm test:workspace
 pnpm test:plain
 pnpm test:display-controls
 pnpm test:cloud-library
+pnpm test:cards
 backend/.venv/bin/python -m unittest discover -s backend/tests -v
 pnpm serve
 ```
+
+`pnpm test:cards` runs `tests/revision-26-browser.mjs` against an ephemeral API
+and native browser directory handles. It covers card metadata and media icons,
+nonblocking download and durable-copy indication, reload/repeated saving, direct
+offline local launch, captions, empty interludes, timing clamping and tooltips.
 
 `pnpm test:workspace` and `pnpm test:workspace:cloud` are aliases for
 `pnpm test:cloud-library`, which runs `tests/cloud-library-browser.mjs`.

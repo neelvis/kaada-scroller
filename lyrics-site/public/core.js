@@ -110,6 +110,7 @@ function sanitizeSong(raw, songNumber) {
     artist: text(raw.artist, `исполнитель песни ${songNumber}`, { optional: true, max: 1000 }),
     version: text(raw.version, `версия песни ${songNumber}`, { optional: true, max: 1000 }),
     album: text(raw.album, `альбом песни ${songNumber}`, { optional: true, max: 1000 }),
+    endCaption: text(raw.endCaption, `финальная подпись песни ${songNumber}`, { optional: true, max: 1000 }),
     cover: typeof raw.cover === 'string' ? raw.cover : '',
     language: text(raw.language, `язык песни ${songNumber}`, { optional: true, max: 100 }),
     duration,
@@ -148,6 +149,7 @@ function sanitizeSet(raw) {
     id: text(raw.id, 'id набора', { max: 200 }),
     name: text(raw.name, 'название набора', { max: 1000 }),
     cover: typeof raw.cover === 'string' ? raw.cover : '',
+    endCaption: text(raw.endCaption, 'финальная подпись набора', { optional: true, max: 1000 }),
     songs,
   };
 }
@@ -239,7 +241,7 @@ export function validateSong(song) {
     const label = `Строка ${index + 1}`;
     if (!plainObject(cue)) { errors.push(`${label}: неверная структура.`); continue; }
     if (cue.type !== 'lyric' && cue.type !== 'rest') errors.push(`${label}: неизвестный тип.`);
-    if (typeof cue.text !== 'string' || !cue.text.trim()) errors.push(`${label}: введите текст.`);
+    if (typeof cue.text !== 'string' || (cue.type !== 'rest' && !cue.text.trim())) errors.push(`${label}: введите текст.`);
     if (song.ignoreTimecodes === true) continue;
     if (cue.start === null || cue.start === undefined) { errors.push(`${label}: не задано время начала.`); continue; }
     if (!Number.isFinite(cue.start)) { errors.push(`${label}: время должно быть конечным числом.`); continue; }
@@ -290,6 +292,7 @@ export function createSong(partial = {}) {
     artist: typeof partial.artist === 'string' ? partial.artist : '',
     version: typeof partial.version === 'string' ? partial.version : '',
     album: typeof partial.album === 'string' ? partial.album : '',
+    endCaption: typeof partial.endCaption === 'string' ? partial.endCaption : '',
     cover: typeof partial.cover === 'string' ? partial.cover : '',
     language: typeof partial.language === 'string' ? partial.language : '',
     duration: finiteNumber(partial.duration, 0),

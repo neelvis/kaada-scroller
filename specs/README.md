@@ -21,3 +21,4 @@
 | TL revision 22 | Preparation toolbar actions and grouping | Implemented — UI acceptance pending | [Requirements](features/timed-lyrics/revision-22.md) |
 | TL revision 23 | Backing player controls and cue assignment | Deployed — acceptance pending | [Requirements](features/timed-lyrics/revision-23.md) |
 | TL revision 24 | Backing music in display mode | Deployed — acceptance pending | [Requirements](features/timed-lyrics/revision-24.md) |
+| TL revision 26 | Cards, local copies and song presentation | Implemented and locally verified; not deployed | [Requirements](features/timed-lyrics/revision-26.md) |

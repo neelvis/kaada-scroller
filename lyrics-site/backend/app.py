@@ -35,7 +35,9 @@ def error(message: str, code: str, status: int) -> JSONResponse:
 
 
 def valid_song(song: Any) -> bool:
-    return isinstance(song, dict) and isinstance(song.get("title"), str) and isinstance(song.get("cues"), list) and isinstance(song.get("duration"), (int, float))
+    return (isinstance(song, dict) and isinstance(song.get("title"), str) and isinstance(song.get("cues"), list)
+            and isinstance(song.get("duration"), (int, float))
+            and ("endCaption" not in song or isinstance(song["endCaption"], str) and len(song["endCaption"]) <= 1000))
 
 
 def valid_entry(entry: Any) -> bool:
@@ -151,7 +153,9 @@ async def project(request: Request) -> Response:
         name=data["name"].strip(); entries=data["songs"]
         if not isinstance(data["revision"],int) or not isinstance(entries,list) or len(entries)>250 or not name: raise ValueError()
         if not all(valid_entry(e) for e in entries): raise ValueError()
-        return JSONResponse(store.save_project(project_id,data["revision"],name,entries,data.get("cover", "")))
+        end_caption=data.get("endCaption", "")
+        if not isinstance(end_caption, str) or len(end_caption)>1000: raise ValueError()
+        return JSONResponse(store.save_project(project_id,data["revision"],name,entries,data.get("cover", ""),end_caption))
     except Conflict: return error("Проект уже изменён другим организатором. Загрузите новую версию перед повторной попыткой.","conflict",409)
     except DuplicateSong: return error("Песня с таким названием, исполнителем, альбомом и версией записи уже есть. Измените одно из полей.","duplicate_song",409)
     except InvalidSong: return error("Подтвердите готовность песни и проверьте её текст, длительность и таймлайн.","not_ready",400)
@@ -278,7 +282,9 @@ async def imports(request: Request) -> Response:
         data=await body_json(request); key=data["migrationKey"]; name=data["name"].strip(); songs=data["songs"]
         if not isinstance(key,str) or not key or not name or not isinstance(songs,list) or len(songs)>250 or not all(valid_entry(item) for item in songs): raise ValueError()
         entries=[{"song":item["song"],"audioId":item.get("audioId"),"backingAudioId":item.get("backingAudioId")} for item in songs]
-        project, created=store.import_project(key,name,entries,data.get("cover", ""))
+        end_caption=data.get("endCaption", "")
+        if not isinstance(end_caption, str) or len(end_caption)>1000: raise ValueError()
+        project, created=store.import_project(key,name,entries,data.get("cover", ""),end_caption)
         return JSONResponse(project,status_code=201 if created else 200)
     except Conflict: return error("Импорт уже изменён.","conflict",409)
     except DuplicateSong: return error("Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.","duplicate_song",409)

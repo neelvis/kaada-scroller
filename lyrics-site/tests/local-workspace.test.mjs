@@ -107,7 +107,7 @@ test('fresh session reconnect restores core-valid library, pinned projects, link
   await local.saveWorkspace(original, new Map([['backing:song', new Blob(['backing'])], ['original:song', new Blob(['recording'])]]));
   const nextSession = await freshSession();
   const restored = await nextSession.connectWorkspace(fs.handle);
-  assert.deepEqual(restored, { ...original, projects: original.projects.map(project => ({ ...project, cover: '' })) });
+  assert.deepEqual(restored, { ...original, projects: original.projects.map(project => ({ ...project, cover: '', endCaption: '' })) });
   assert.equal(restored.projects[0].cover, '', 'legacy projects without artwork normalize to an empty cover');
   assert.equal(await (await nextSession.getBacking('song')).text(), 'backing');
   assert.equal(await (await nextSession.getAudio('song')).text(), 'recording');

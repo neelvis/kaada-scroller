@@ -8,9 +8,30 @@ export function node(tag, props = {}, children = []) {
     else if (key.startsWith('on')) el.addEventListener(key.slice(2), value);
     else if (value !== false && value != null) el.setAttribute(key, value === true ? '' : value);
   }
+  if (el.hasAttribute('data-tooltip')) el.removeAttribute('title');
   for (const child of Array.isArray(children) ? children : [children]) if (child) el.append(child);
   return el;
 }
+
+// A native title appears after the custom tooltip in many browsers.  Keep ARIA
+// labels intact, but remove title attributes from every current and future
+// custom-tooltip control, including controls updated after a render.
+function removeNativeTooltip(target) {
+  if (target instanceof Element && target.hasAttribute('data-tooltip') && target.hasAttribute('title')) target.removeAttribute('title');
+}
+function removeNativeTooltips(root) {
+  if (!(root instanceof Element || root instanceof Document)) return;
+  if (root instanceof Element) removeNativeTooltip(root);
+  root.querySelectorAll?.('[data-tooltip][title]').forEach(removeNativeTooltip);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => removeNativeTooltips(document), { once: true });
+else removeNativeTooltips(document);
+new MutationObserver(records => {
+  for (const record of records) {
+    if (record.type === 'attributes') removeNativeTooltip(record.target);
+    else for (const added of record.addedNodes) removeNativeTooltips(added);
+  }
+}).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['title', 'data-tooltip'] });
 export function button(text, className = 'button', click) { return node('button', { type: 'button', className, text, onclick: click }); }
 export function iconTextButton(text, label, className, click) {
   const control = button(text, `${className} has-tooltip`, click);

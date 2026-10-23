@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { downloadProjectFiles, projectLink, uploadLocalProject } from '../public/cloud-transfers.js';
-import { createSong } from '../public/core.js';
+import { contentFingerprint, downloadProjectFiles, matchesContentFingerprint, projectLink, uploadLocalProject } from '../public/cloud-transfers.js';
+import { createSong, normalizeSet } from '../public/core.js';
 
 const project = () => ({ schemaVersion: 1, id: 'local-project', name: 'Project', songs: [createSong({ id: 'local-song', title: 'Song' })] });
 
@@ -19,6 +19,16 @@ test('projectLink pins cloud song revisions to their local project version IDs',
   ]);
   assert.equal(link.id, 'cloud-project');
   assert.equal(link.revision, 9);
+});
+
+test('project fingerprints survive local normalization and still accept stored legacy fingerprints', () => {
+  const original = project();
+  const song = original.songs[0];
+  original.songs[0] = Object.fromEntries(Object.entries(song).reverse());
+  const oldFingerprint = JSON.stringify(original);
+  const normalized = normalizeSet(original);
+  assert.ok(matchesContentFingerprint(normalized, oldFingerprint));
+  assert.equal(contentFingerprint(normalized), contentFingerprint(original));
 });
 
 test('stale linked uploads refuse writes before touching media or cloud content', async () => {
@@ -63,6 +73,22 @@ test('project downloads keep cloud IDs unchanged and assign independent local me
     assert.equal(await downloaded.audio.get(`original:${localSong.id}`).text(), 'original bytes');
     assert.equal(downloaded.audio.size, 2);
     await assert.rejects(downloadProjectFiles({ ...cloud, songs: [{ song: source, backingAudioId: null }] }), /отсутствует в облаке/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('project download reports structured song progress and preserves the project closing caption', async () => {
+  const originalFetch = globalThis.fetch;
+  const source = createSong({ id: 'cloud-song', title: 'Song' });
+  const cloud = { name: 'Cloud project', endCaption: 'Спасибо за песню', songs: [{ song: source, backingAudioId: null, audioId: null }] };
+  const progress = [];
+  globalThis.fetch = async () => { throw new Error('no media should be requested'); };
+  try {
+    const downloaded = await downloadProjectFiles(cloud, update => progress.push(update));
+    assert.equal(downloaded.local.endCaption, 'Спасибо за песню');
+    assert.deepEqual(progress, [
+      { phase: 'downloading', completed: 0, total: 1, label: 'Скачивание: 1 из 1' },
+      { phase: 'downloading', completed: 1, total: 1, label: 'Скачивание: 1 из 1' },
+    ]);
   } finally { globalThis.fetch = originalFetch; }
 });
 

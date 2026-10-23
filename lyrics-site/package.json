@@ -20,7 +20,8 @@
     "test:workspace": "node tests/cloud-library-browser.mjs",
     "test:workspace:cloud": "node tests/cloud-library-browser.mjs",
     "test:cloud-library": "node tests/cloud-library-browser.mjs",
-    "test:cues": "node tests/cue-interludes-browser.mjs"
+    "test:cues": "node tests/cue-interludes-browser.mjs",
+    "test:cards": "node tests/revision-26-browser.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1"

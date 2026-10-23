@@ -1,8 +1,18 @@
 import * as remote from './remote.js';
 import { sameEntryContent } from './save-reconciliation.js';
 import { getAudio, getBacking } from './local-workspace.js';
+import { normalizeSet } from './core.js';
 
-export function contentFingerprint(value) { return JSON.stringify(value); }
+const legacyFingerprint = value => JSON.stringify(value);
+export function contentFingerprint(value) { return JSON.stringify(normalizeSet(value)); }
+export function matchesContentFingerprint(value, fingerprint) {
+  if (fingerprint === contentFingerprint(value) || fingerprint === legacyFingerprint(value)) return true;
+  // Older links stored the unnormalized JSON string. Parse and canonicalize
+  // that snapshot so property order and defaults added on reconnect do not
+  // make an unchanged project appear edited.
+  try { return contentFingerprint(JSON.parse(fingerprint)) === contentFingerprint(value); }
+  catch { return false; }
+}
 async function uploadEntry(song) {
   let backingAudioId = null, audioId = null;
   if (song.backing?.fileName) {
@@ -38,19 +48,21 @@ export async function uploadLocalProject(local, link, progress = () => {}, retry
     if (prior && prior.localId === song.id) Object.assign(entry, { songId: prior.songId, revisionId: prior.revisionId });
     songs.push(entry);
   }
-  return link ? remote.saveProject(link.id, { revision: link.revision, name: local.name, cover: local.cover || '', songs }) : remote.importLegacy({ migrationKey: local.id, name: local.name, cover: local.cover || '', songs });
+  return link ? remote.saveProject(link.id, { revision: link.revision, name: local.name, cover: local.cover || '', endCaption: local.endCaption || '', songs }) : remote.importLegacy({ migrationKey: local.id, name: local.name, cover: local.cover || '', endCaption: local.endCaption || '', songs });
 }
 export async function downloadProjectFiles(cloud, progress = () => {}) {
   const audio = new Map(), songs = [];
+  const total = cloud.songs.length;
   for (const [index, entry] of cloud.songs.entries()) {
-    progress(`Скачивание: ${index + 1} из ${cloud.songs.length}`);
+    progress({ phase: 'downloading', completed: index, total, label: `Скачивание: ${index + 1} из ${total}` });
     const song = structuredClone(entry.song); song.id = `song-${crypto.randomUUID()}`;
     if (entry.backingAudioId) audio.set(`backing:${song.id}`, await remote.downloadAudio(entry.backingAudioId));
     else if (song.backing?.fileName) throw new Error(`Минусовка «${song.title}» отсутствует в облаке.`);
     if (entry.audioId) audio.set(`original:${song.id}`, await remote.downloadAudio(entry.audioId));
     songs.push(song);
+    progress({ phase: 'downloading', completed: index + 1, total, label: `Скачивание: ${index + 1} из ${total}` });
   }
-  return { local: { schemaVersion: 1, id: `project-${crypto.randomUUID()}`, name: cloud.name, cover: cloud.cover || '', songs }, audio };
+  return { local: { schemaVersion: 1, id: `project-${crypto.randomUUID()}`, name: cloud.name, cover: cloud.cover || '', endCaption: cloud.endCaption || '', songs }, audio };
 }
 export function projectLink(local, cloud) {
   return { id: cloud.id, revision: cloud.revision, fingerprint: contentFingerprint(local), entries: cloud.songs.map((entry, index) => ({ localId: local.songs[index]?.id, songId: entry.songId, revisionId: entry.revisionId })) };

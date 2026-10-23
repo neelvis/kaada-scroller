@@ -239,6 +239,7 @@ export function prepareLrcImport(song, record) {
   const details = {};
   if (!String(song?.title || '').trim() && typeof record.trackName === 'string' && record.trackName.trim()) details.title = record.trackName.trim();
   if (!String(song?.artist || '').trim() && typeof record.artistName === 'string' && record.artistName.trim()) details.artist = record.artistName.trim();
+  if (typeof record.albumName === 'string' && record.albumName.trim()) details.album = record.albumName.trim();
   if (!(typeof song?.duration === 'number' && Number.isFinite(song.duration) && song.duration > 0)
       && typeof record.duration === 'number' && Number.isFinite(record.duration) && record.duration > 0) details.duration = record.duration;
   // Apply the same portable-data limits before changing the editable song.
@@ -267,6 +268,7 @@ export function preparePlainImport(song, record) {
   const details = {};
   if (!String(song?.title || '').trim() && typeof record.trackName === 'string' && record.trackName.trim()) details.title = record.trackName.trim();
   if (!String(song?.artist || '').trim() && typeof record.artistName === 'string' && record.artistName.trim()) details.artist = record.artistName.trim();
+  if (typeof record.albumName === 'string' && record.albumName.trim()) details.album = record.albumName.trim();
   if (typeof record.duration === 'number' && Number.isFinite(record.duration) && record.duration > 0) details.duration = record.duration;
   try {
     const candidate = createSong({ ...song, ...details, cues });

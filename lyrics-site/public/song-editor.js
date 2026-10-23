@@ -205,6 +205,7 @@ export function createSongEditor(context) {
     const artist = input(song.artist, 'text', { autocomplete: 'off' }); artist.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, artist: artist.value })); render(); });
     const version = input(song.version, 'text', { placeholder: 'Например, студийная версия' }); version.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, version: version.value })); render(); });
     const album = input(song.album || '', 'text', { placeholder: 'Необязательно' }); album.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, album: album.value.trim() })); render(); });
+    const endCaption = input(song.endCaption || '', 'text', { placeholder: 'Необязательно', maxlength: '1000' }); endCaption.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, endCaption: endCaption.value })); render(); });
     const cover = input('', 'file', { className: 'cover-file-input', accept: 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp', 'aria-label': 'Выбрать обложку песни' });
     cover.addEventListener('change', async () => {
       const file = cover.files?.[0]; if (!file) return;
@@ -232,7 +233,7 @@ export function createSongEditor(context) {
     const header = node('div', { className: 'editor-header' }, [node('div', {}, [node('h1', { className: 'editor-title', text: song.title || 'Новая песня' }), node('p', { className: 'editor-subtitle', text: 'Текст, таймлайн и музыка для выступления' })]), statusControl]);
     const coverControl = node('div', { className: 'field cover-field' }, [node('span', { text: 'Обложка песни · JPG, PNG, WebP' }), coverPicker]);
     const coverPreview = song.cover ? node('div', { className: 'cover-preview-wrap' }, [node('img', { className: 'song-cover-preview', src: song.cover, alt: 'Обложка песни' }), button('×', 'cover-remove button quiet', () => { if (!globalThis.confirm('Удалить обложку песни?')) return; coverGeneration += 1; changeSong(song.id, s => ({ ...s, cover: '' })); render(); })]) : null;
-    const details = node('section', { className: 'section-card song-details' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Альбом', album), field('Версия записи', version), field('Длительность, ММ:СС', duration), coverControl]), coverPreview]);
+    const details = node('section', { className: 'section-card song-details' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Альбом', album), field('Версия записи', version), field('Подпись в конце песни', endCaption), field('Длительность, ММ:СС', duration), coverControl]), coverPreview]);
     if (editorTabSongId !== song.id) { editorTabSongId = song.id; editorTab = 'lrclib'; }
     const drafts = importDrafts.get(song.id) || { lrc: '', plain: '' }; importDrafts.set(song.id, drafts);
     const panels = {
@@ -509,7 +510,7 @@ export function createSongEditor(context) {
       const cueCount = song.cues.filter(cue => Number.isFinite(cue.start)).length;
       if (!cueCount || shift === 0) return;
       changeSong(song.id, current => invalidateChanged(current, {
-        cues: current.cues.map(cue => Number.isFinite(cue.start) ? { ...cue, start: cue.start + shift } : cue),
+        cues: current.cues.map(cue => Number.isFinite(cue.start) ? { ...cue, start: Math.max(0, cue.start + shift) } : cue),
       }));
       render();
     });
