@@ -1,4 +1,6 @@
+import asyncio
 import io
+import httpx
 import json
 import os
 import sqlite3
@@ -38,6 +40,30 @@ class ApiTest(unittest.TestCase):
     def login(self):
         response=self.client.post("/login",headers=self.headers,json={"password":"organizer password"})
         self.assertEqual(response.status_code,200); return {**self.headers,"X-Lyrics-CSRF":response.json()["csrf"]}
+
+    def test_concurrent_login_bodies_cannot_bypass_attempt_limit(self):
+        async def exercise():
+            gate = asyncio.Event()
+            entered = 0
+
+            async def slow_body():
+                nonlocal entered
+                entered += 1
+                if entered == 8:
+                    gate.set()
+                await gate.wait()
+                yield b'{"password":"wrong"}'
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.client.app), base_url="http://testserver") as client:
+                with patch("backend.app.verify_password", return_value=False) as verify:
+                    responses = await asyncio.gather(*(
+                        client.post("/login", headers={**self.headers, "Content-Type":"application/json"}, content=slow_body())
+                        for _ in range(32)
+                    ))
+                self.assertEqual(verify.call_count, 8)
+                self.assertEqual(sum(response.status_code == 429 for response in responses), 24)
+                self.assertEqual(sum(response.status_code == 401 for response in responses), 8)
+        asyncio.run(exercise())
 
     def test_auth_csrf_and_project_conflict_and_latest_heads(self):
         self.assertEqual(self.client.get("/projects").status_code,401)

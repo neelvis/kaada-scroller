@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from mutagen import File as MediaFile
+from starlette.concurrency import run_in_threadpool
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
@@ -26,7 +27,6 @@ from .store import Conflict, DuplicateSong, InvalidSong, Missing, Store
 MAX_UPLOAD = 150 * 1024 * 1024
 MAX_DURATION = 20 * 60
 LOGIN_WINDOW, LOGIN_ATTEMPTS = 300, 8
-login_attempts: dict[str, deque[float]] = defaultdict(deque)
 
 
 def error(message: str, code: str, status: int) -> JSONResponse:
@@ -88,15 +88,19 @@ def require(request: Request, write: bool = False) -> tuple[str, str] | JSONResp
 async def health(request: Request) -> Response: return JSONResponse({"ok": True})
 
 async def login(request: Request) -> Response:
-    settings=request.app.state.settings; store=request.app.state.store; ip=remote_ip(request); now=time.time(); attempts=login_attempts[ip]
+    settings=request.app.state.settings; store=request.app.state.store; ip=remote_ip(request); now=time.time(); attempts=request.app.state.login_attempts[ip]
     while attempts and attempts[0] < now-LOGIN_WINDOW: attempts.popleft()
     if len(attempts) >= LOGIN_ATTEMPTS: return error("Слишком много попыток. Подождите несколько минут.", "rate_limited", 429)
     if not check_origin(request, settings): return error("Запрос разрешён только со страницы организатора.", "csrf", 403)
+    # Reserve before the first await: delayed bodies count as in-flight attempts.
+    attempts.append(now)
     try: data=await body_json(request); password=data["password"]
     except (ValueError, KeyError, TypeError, json.JSONDecodeError): return error("Введите пароль.", "invalid", 400)
-    if not isinstance(password, str) or not verify_password(settings, password):
-        attempts.append(now); return error("Неверный пароль.", "unauthorized", 401)
-    attempts.clear(); token=secrets.token_urlsafe(32); csrf=secrets.token_urlsafe(32); digest=hashlib.sha256(token.encode()).hexdigest()
+    if not isinstance(password, str) or not await run_in_threadpool(verify_password, settings, password):
+        return error("Неверный пароль.", "unauthorized", 401)
+    # A successful login releases only its own reservation.
+    if now in attempts: attempts.remove(now)
+    token=secrets.token_urlsafe(32); csrf=secrets.token_urlsafe(32); digest=hashlib.sha256(token.encode()).hexdigest()
     with store.tx() as db:
         db.execute("DELETE FROM sessions WHERE expires_at<?", (int(now),))
         db.execute("INSERT INTO sessions(token_hash,csrf,expires_at) VALUES(?,?,?)", (digest,csrf,int(now)+12*3600))
@@ -283,6 +287,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         Route("/library",library), Route("/songs",songs,methods=["POST"]), Route("/songs/{song_id}",song,methods=["GET","PUT","DELETE"]), Route("/audio",upload_audio,methods=["POST"]), Route("/audio/cleanup",cleanup_audio,methods=["POST"]), Route("/audio/{audio_id}",audio), Route("/imports",imports,methods=["POST"]), Route("/imports/{migration_key}",imported_project),
     ])
     app.state.settings=settings; app.state.store=store
+    app.state.login_attempts=defaultdict(deque)
     return app
 
 # A missing credential must prevent an accidentally public or half-configured service
