@@ -65,6 +65,37 @@ class ApiTest(unittest.TestCase):
                 self.assertEqual(sum(response.status_code == 401 for response in responses), 8)
         asyncio.run(exercise())
 
+    def test_large_audio_ranges_stream_in_bounded_chunks(self):
+        headers = self.login()
+        payload = io.BytesIO()
+        with wave.open(payload, "wb") as output:
+            output.setnchannels(1); output.setsampwidth(2); output.setframerate(8000)
+            output.writeframes(b"\0\0" * 100000)
+        uploaded = self.client.post("/audio", headers={**headers, "Content-Type":"audio/wav"}, content=payload.getvalue())
+        self.assertEqual(uploaded.status_code, 201)
+        path = f"/audio/{uploaded.json()['id']}"
+        sizes = []
+
+        async def inspect(scope, receive, send):
+            async def record(message):
+                if message["type"] == "http.response.body":
+                    sizes.append(len(message.get("body", b"")))
+                await send(message)
+            await self.client.app(scope, receive, record)
+
+        async def exercise():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=inspect), base_url="http://testserver", cookies=self.client.cookies) as client:
+                response = await client.get(path, headers={"Range":"bytes=0-"})
+                self.assertEqual(response.status_code, 206)
+                self.assertEqual(response.content, payload.getvalue())
+        asyncio.run(exercise())
+        self.assertGreater(len(sizes), 1)
+        self.assertLessEqual(max(sizes), 64 * 1024)
+        suffix = self.client.get(path, headers={"Range":"bytes=-10"})
+        self.assertEqual(suffix.status_code, 206)
+        self.assertEqual(suffix.content, payload.getvalue()[-10:])
+        self.assertEqual(self.client.get(path, headers={"Range":"bytes=999999-"}).status_code, 416)
+
     def test_auth_csrf_and_project_conflict_and_latest_heads(self):
         self.assertEqual(self.client.get("/projects").status_code,401)
         self.assertEqual(self.client.post("/login",json={"password":"wrong"}).status_code,403)
