@@ -10,6 +10,7 @@ import { Playback } from './playback.js';
 import { sameEntryContent, reconcileProjectSave } from './save-reconciliation.js';
 import * as remote from './remote.js';
 import { clearPrivateProjectCache, getPrivateAudio, removeDraft, removePreparedProject } from './offline-projects.js';
+import { createSessionLifecycle } from './session-lifecycle.js';
 import { DEFAULT_LIBRARY_SORT, LIBRARY_SORTS, sortLibrarySongs } from './library-sort.js';
 
 const els = { editor: $('#editor'), list: $('#song-list'), count: $('#song-count'), setName: $('#set-name'), prep: $('#preparation-view'), event: $('#event-view'), eventName: $('#event-song-name'), audience: $('#audience'), audienceLines: $('#audience-lines'), offline: $('#offline-state'), remote: $('#remote-state'), save: $('#save-project'), login: $('#login'), logout: $('#logout') };
@@ -62,6 +63,7 @@ backingPreview.preload = 'metadata';
 backingPreview.setAttribute('aria-hidden', 'true');
 let privateMutationChain = Promise.resolve();
 function privateMutation(operation) { const next = privateMutationChain.then(operation, operation); privateMutationChain = next.catch(() => {}); return next; }
+const sessionLifecycle = createSessionLifecycle({ remote, clearPrivateData: () => privateMutation(() => clearPrivateProjectCache()) });
 
 const { showPreparation, syncLocalLibrary, restoreDirectory, openLocalProject, createLocalProject, submitLocalProject, createLocalSong, refreshHubCloud, readiness, downloadItem, removeLocalItem, removeMissingCloudProject, chooseDirectory } = createWorkspaceActions({
   state: {
@@ -897,17 +899,16 @@ function updateSessionUi() {
 }
 async function signIn() {
   const password = $('#login-password').value; const error = $('#login-error'); error.hidden = true;
-  try { if (localStorage.getItem('lyrics-v2-pending-logout')) { await privateMutation(() => clearPrivateProjectCache()); try { await remote.session(); await remote.logout(); } catch (problem) { if (problem.status !== 401) throw problem; } localStorage.removeItem('lyrics-v2-pending-logout'); } await remote.login(password); sessionActive = true; $('#login-dialog').close(); $('#login-password').value = ''; cancelLrclib(); updateSessionUi(); render(); refreshHubCloud(); toast('Вход выполнен.'); }
+  try { await sessionLifecycle.signIn(password); sessionActive = true; $('#login-dialog').close(); $('#login-password').value = ''; cancelLrclib(); updateSessionUi(); render(); refreshHubCloud(); toast('Вход выполнен.'); }
   catch (problem) { error.textContent = problem.message; error.hidden = false; }
 }
 async function signOut() {
   if (!els.event.hidden) exitEvent();
   playback.dispose();
   cancelRecognition(); clearAudioPreview();
-  localStorage.setItem('lyrics-v2-pending-logout', '1');
-  localProjectId = null; cloudProjects = []; sessionActive = false; onlineSongOpen = false; librarySongs = []; librarySelection += 1; $('#library-dialog').close(); $('#library-list').replaceChildren(); project = null; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateSessionUi(); render(); els.login.disabled = true;
-  let cleared = true; await privateMutation(() => clearPrivateProjectCache()).catch(() => { cleared = false; });
-  let revoked = true; try { await remote.logout(); if (cleared) localStorage.removeItem('lyrics-v2-pending-logout'); } catch { revoked = false; }
+  const { cleared, revoked } = await sessionLifecycle.signOut(() => {
+    localProjectId = null; cloudProjects = []; sessionActive = false; onlineSongOpen = false; librarySongs = []; librarySelection += 1; $('#library-dialog').close(); $('#library-list').replaceChildren(); project = null; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateSessionUi(); render(); els.login.disabled = true;
+  });
   els.login.disabled = false;
   toast(!cleared ? 'Очистка локальных данных не завершилась. Откройте приложение заново, чтобы повторить её.' : revoked ? 'Вы вышли. Локальный набор и его записи не изменены.' : 'Данные на этом устройстве очищены, но сервер пока не подтвердил выход. Подключитесь к сети и откройте приложение ещё раз.');
 }
@@ -1054,7 +1055,7 @@ window.addEventListener('beforeunload', event => { if ((savedStatus.startsWith('
 syncLocalLibrary(); set = legacySet;
 updateSessionUi(); render(); initOffline();
 await restoreDirectory(); hub.show('projects');
-try { if (localStorage.getItem('lyrics-v2-pending-logout')) { await privateMutation(() => clearPrivateProjectCache()); try { await remote.session(); await remote.logout(); localStorage.removeItem('lyrics-v2-pending-logout'); } catch (error) { if (error.status === 401) localStorage.removeItem('lyrics-v2-pending-logout'); } } else { await remote.session(); sessionActive = true; } } catch {} updateSessionUi(); render(); if (sessionActive) refreshHubCloud();
+sessionActive = await sessionLifecycle.restore(); updateSessionUi(); render(); if (sessionActive) refreshHubCloud();
 
 window.addEventListener('resize', () => { if (!els.event.hidden) { centerAudience(eventState.lastIndex ?? -1); positionEventMenu(); } });
 els.setName.addEventListener('input', updateSetNameMarquee);

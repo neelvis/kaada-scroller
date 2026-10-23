@@ -32,10 +32,13 @@ try {
   const directory = resolve(temporary, 'workspace'); await mkdir(directory);
   await installWorkspaceDirectory(page, directory);
   await page.goto(origin);
+  await page.locator('#login').click();
+  await page.locator('#login-password').fill(password);
+  await page.locator('#login-form button[type=submit]').click();
+  await page.locator('#logout').waitFor({ state:'visible' });
   const result = await page.evaluate(async password => {
     const { prepareArtwork, artworkLimits } = await import('./artwork.js');
     const remote = await import('./remote.js');
-    await remote.login(password);
     const canvas = document.createElement('canvas'); canvas.width = 1100; canvas.height = 1100;
     const context = canvas.getContext('2d'), pixels = context.createImageData(canvas.width, canvas.height);
     let seed = 37;
@@ -74,6 +77,13 @@ try {
     return { songCover:state.projects[0].songs[0].cover, projectCover:state.projects[0].cover };
   });
   assert.equal(reopened.songCover, result.expectedSong); assert.equal(reopened.projectCover, result.expectedProject);
+  await page.evaluate(async () => (await import('./offline-projects.js')).putPrivateAudio('session-regression', new Blob(['private audio'])));
+  await page.locator('#logout').click();
+  await page.waitForFunction(() => !document.querySelector('#login').hidden && !document.querySelector('#login').disabled);
+  assert.equal(await page.evaluate(async () => (await import('./offline-projects.js')).getPrivateAudio('session-regression')), null);
+  assert.equal(await page.evaluate(async () => (await fetch('./api/session')).status), 401);
+  await page.reload();
+  assert.equal(await page.locator('#login').isVisible(), true);
   assert.deepEqual(errors, []);
   console.log('PASS: large PNG/JPEG/WebP preparation, authenticated cloud roundtrip and fresh local folder reopening');
 } finally {

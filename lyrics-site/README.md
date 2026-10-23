@@ -26,6 +26,10 @@ and leaves the source unchanged. Copy creation requires a confirmed, valid song.
 The optional **Recording version** field describes the audio take and appears on
 cards when nonempty.
 
+Signing out hides the cloud session, clears cached private audio and drafts from
+the browser, and revokes the server session. If cleanup or revocation is
+interrupted, the app retries that work at startup or before the next sign-in.
+
 Library sorting defaults to newest additions first. The dropdown also offers
 oldest first and ascending/descending artist or title order. Dates refer to
 original library creation; editing a song does not move its creation date.
@@ -95,6 +99,8 @@ folder snapshots remain for recovery.
 ## Artwork storage
 
 Song and project artwork accepts JPG, PNG and WebP source files up to 8 MiB.
+Images are limited to 40 megapixels and 16000 pixels on either side before
+decoding.
 Larger images are resized to at most 1600 pixels on the longest side and encoded
 as WebP until their stored size is at most 192 KiB. Small images retain their
 original bytes. Local snapshots preserve artwork when reopened. Cloud JSON writes
@@ -243,6 +249,7 @@ Release instructions: [deployment](deploy/README.md).
 ## Source organization
 
 - `app.js`: application state, navigation wiring and performance lifecycle.
+- `session-lifecycle.js`: startup, sign-in and logout cleanup recovery.
 - `song-editor.js`: preparation forms, lyric import/search and cue editing.
 - `workspace-actions.js`: cloud project saves and local snapshot selection.
 - `workspace-hub.js` and `hub.css`: project/library destinations and responsive UI.
