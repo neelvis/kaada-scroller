@@ -245,7 +245,7 @@ function cancelRecognition({ preserveDrafts = false } = {}) { resetPreparation({
 function entryFor(song) { return projectEntries.get(song.id) || {}; }
 function projectPayload() {
   return {
-    revision: project.revision, name: set.name || project.name,
+    revision: project.revision, name: set.name || project.name, cover: set.cover || '',
     songs: set.songs.map(song => ({ ...entryFor(song), song: structuredClone(song) })),
   };
 }
@@ -260,7 +260,7 @@ function adoptProject(next, { preserveSelection = false } = {}) {
   const link = local && localState().links[`project:${local.id}`];
   if (link && (link.revision !== next.revision || link.entries?.length !== next.songs.length || next.songs.some((entry, index) => link.entries?.[index]?.revisionId !== entry.revisionId))) pendingLocalRefresh = next.id;
   projectEntries = new Map((next.songs || []).map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null }]));
-  set = { schemaVersion: 1, id: next.id, name: next.name, songs: (next.songs || []).map(entry => entry.song) };
+  set = { schemaVersion: 1, id: next.id, name: next.name, cover: next.cover || '', songs: (next.songs || []).map(entry => entry.song) };
   selectedId = set.songs.some(song => song.id === previousSelection) ? previousSelection : (set.songs[selectedIndex]?.id || null);
   remoteDirty = false; remoteFailed = false; updateRemoteState(); render();
 }
@@ -498,12 +498,12 @@ async function createLibraryCopy(item) {
     if (!source.song.reviewed || validateSong(source.song).length) throw new Error('Сначала подтвердите готовность песни.');
     const { songs } = await remote.listLibrary();
     const baseTitle = source.song.title.replace(/(?:\s+\(копия\s+\d+\))+\s*$/iu, '').trim() || source.song.title;
-    const identity = (title, artist, version) => JSON.stringify([title, artist, version].map(value => (value || '').trim().toLocaleLowerCase('ru')));
-    const occupied = new Set(songs.map(song => identity(song.title, song.artist, song.version)));
+    const identity = (title, artist, version, album) => JSON.stringify([title, artist, version, album].map(value => (value || '').trim().toLocaleLowerCase('ru')));
+    const occupied = new Set(songs.map(song => identity(song.title, song.artist, song.version, song.album)));
     let title = '';
     for (let number = 1; number <= songs.length + 1; number += 1) {
       const candidate = `${baseTitle} (копия ${number})`;
-      if (!occupied.has(identity(candidate, source.song.artist, source.song.version))) { title = candidate; break; }
+      if (!occupied.has(identity(candidate, source.song.artist, source.song.version, source.song.album))) { title = candidate; break; }
     }
     if (!title) throw new Error('Не удалось подобрать свободное название копии.');
     const copiedSong = { ...source.song, title }; delete copiedSong.id;
@@ -583,7 +583,7 @@ function renderList() {
     const ready = !validateSong(song).length;
     const select = node('button', { type: 'button', className: 'song-select', onclick: () => { selectedId = song.id; resetEditorTab(); render(); } }, [
       node('span', { className: `song-dot${ready ? ' ready' : ''}`, 'aria-hidden': true }),
-      node('span', { className: 'song-item-copy' }, [node('span', { className: 'song-item-title', text: song.title || 'Без названия' }), ...(song.artist ? [node('span', { className: 'song-item-status', text: song.artist })] : []), ...(song.version ? [node('span', { className: 'song-item-status', text: song.version })] : []), node('span', { className: 'song-item-status', text: status(song) })])
+      node('span', { className: 'song-item-copy' }, [node('span', { className: 'song-item-title', text: song.title || 'Без названия' }), ...(song.artist ? [node('span', { className: 'song-item-status', text: song.artist })] : []), ...(song.album ? [node('span', { className: 'song-item-status', text: song.album })] : []), ...(song.version ? [node('span', { className: 'song-item-status', text: song.version })] : []), node('span', { className: 'song-item-status', text: status(song) })])
     ]);
     const move = direction => { const target = index + direction; if (target < 0 || target >= set.songs.length) return; const songs = [...set.songs]; [songs[index], songs[target]] = [songs[target], songs[index]]; set = { ...set, songs }; markRemoteDirty(); render(); };
     const up = iconTextButton('↑', 'Переместить песню выше', 'song-reorder', () => move(-1)); up.disabled = index === 0;
@@ -620,6 +620,11 @@ function render() {
   $('#local-save-status').textContent = localProjectId ? savedStatus : '';
   $('#upload-current').hidden = true;
   renderList(); els.setName.value = set.name || 'Библиотека песен';
+  const projectCoverInput = $('#project-cover'), projectCoverPreview = $('#project-cover-preview');
+  projectCoverInput.disabled = offlineProjectOpen || onlineSongOpen || (!project && !localProjectId);
+  $('#project-cover-wrap').hidden = !set.cover; if (set.cover) projectCoverPreview.src = set.cover;
+  $('#project-cover-label').textContent = set.cover ? 'Изменить обложку' : 'Выбрать обложку';
+  $('#project-cover-remove').hidden = projectCoverInput.disabled;
   els.setName.disabled = offlineProjectOpen || onlineSongOpen || (!project && !localProjectId);
   updateSetNameMarquee(); $('#add-song').disabled = offlineProjectOpen || !sessionActive;
   renderEditor(); updateRemoteState();
@@ -659,6 +664,9 @@ function launchEvent(song) {
   playback.dispose(); previewPlayer.pause(); backingPreview.pause(); document.querySelectorAll('.toast').forEach(item => item.remove());
   $('#home-view').hidden = true; $('.topbar').hidden = true; els.prep.hidden = true; els.event.hidden = false; els.eventName.textContent = song.title;
   eventState = { song: structuredClone(song), frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0 };
+  const audienceCover = $('#audience-cover'), activeCover = project?.cover || set.cover || song.cover;
+  audienceCover.hidden = !activeCover; if (activeCover) audienceCover.src = activeCover;
+  els.audience.classList.toggle('has-cover', Boolean(activeCover));
   $('#event-progress').disabled = false;
   const owner = localPlayback ? null : project, entry = localPlayback ? {} : { ...entryFor(song) }, offline = offlineProjectOpen;
   let loaded = null;
@@ -921,6 +929,8 @@ async function clearDownloadedProjectData() {
   if (!offlineProjectOpen || !confirm('Очистить загруженный проект и его черновики с этого устройства?')) return;
   cancelRecognition(); clearAudioPreview(); await privateMutation(() => clearPrivateProjectCache()).catch(error => toast(error.message)); project = null; offlineProjectOpen = false; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateRemoteState(); render(); refreshOfflineProjectEntry(); toast('Загруженный проект очищен с этого устройства.');
 }
+$('#project-cover').addEventListener('change', async event => { const file = event.target.files?.[0]; if (!file) return; if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) { toast('Выберите JPG, PNG или WebP до 8 МиБ.'); event.target.value = ''; return; } const cover = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); set = { ...set, cover }; markRemoteDirty(); render(); });
+$('#project-cover-remove').addEventListener('click', () => { if (!confirm('Удалить обложку проекта?')) return; set = { ...set, cover: '' }; $('#project-cover').value = ''; markRemoteDirty(); render(); });
 $('#add-song').addEventListener('click', () => { $('#project-add-menu').open = false; addSong(); }); $('#add-library-song').addEventListener('click', () => { $('#project-add-menu').open = false; showLibrary(); }); $('#offline-projects').addEventListener('click', showOfflineProjects); $('#event-offline-projects').addEventListener('click', () => { $('#event-menu').close(); showOfflineProjects(); }); els.setName.addEventListener('change', () => { set = { ...set, name: els.setName.value.trim() || 'Мой набор' }; if (project || localProjectId || onlineSongOpen) markRemoteDirty(); }); $('#exit-event').addEventListener('click', exitEvent); $('#event-start').addEventListener('click', startEvent); $('#event-reset').addEventListener('click', event => { if (event.detail >= 2) resetEvent(); }); $('#fullscreen').addEventListener('click', toggleFullscreen); $('#font-up').addEventListener('click', () => changeAudienceFont(4)); $('#font-down').addEventListener('click', () => changeAudienceFont(-4));
 $('#library').addEventListener('click', () => hub.show('library'));
 $('#projects').addEventListener('click', showProjects);

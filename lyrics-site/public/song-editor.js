@@ -204,6 +204,10 @@ export function createSongEditor(context) {
     title.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, title: title.value })); render(); });
     const artist = input(song.artist, 'text', { autocomplete: 'off' }); artist.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, artist: artist.value })); render(); });
     const version = input(song.version, 'text', { placeholder: 'Например, студийная версия' }); version.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, version: version.value })); render(); });
+    const album = input(song.album || '', 'text', { placeholder: 'Необязательно' }); album.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, album: album.value.trim() })); render(); });
+    const cover = input('', 'file', { className: 'cover-file-input', accept: 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp', 'aria-label': 'Выбрать обложку песни' });
+    cover.addEventListener('change', async () => { const file = cover.files?.[0]; if (!file) return; if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { toast('Выберите JPG, PNG или WebP.'); return; } if (file.size > 8 * 1024 * 1024) { toast('Обложка должна быть меньше 8 МиБ.'); return; } const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); changeSong(song.id, s => ({ ...s, cover: data })); render(); });
+    const coverPicker = node('label', { className: 'cover-picker button quiet' }, [song.cover ? 'Изменить обложку' : 'Выбрать обложку', cover]);
     const duration = input(formatDurationInput(song.duration), 'text', { inputmode: 'numeric', placeholder: 'ММ:СС', pattern: '[0-9]+:[0-5][0-9]', 'aria-label': 'Длительность, ММ:СС' });
     duration.addEventListener('change', () => {
       const parsed = parseDurationInput(duration.value);
@@ -218,7 +222,9 @@ export function createSongEditor(context) {
       })
       : node('span', { className: `status-pill${song.reviewed && !validation.length ? ' ready' : ''}`, text: status(song) });
     const header = node('div', { className: 'editor-header' }, [node('div', {}, [node('h1', { className: 'editor-title', text: song.title || 'Новая песня' }), node('p', { className: 'editor-subtitle', text: 'Текст, таймлайн и музыка для выступления' })]), statusControl]);
-    const details = node('section', { className: 'section-card' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Версия записи', version), field('Длительность, ММ:СС', duration)])]);
+    const coverControl = node('div', { className: 'field cover-field' }, [node('span', { text: 'Обложка песни · JPG, PNG, WebP' }), coverPicker]);
+    const coverPreview = song.cover ? node('div', { className: 'cover-preview-wrap' }, [node('img', { className: 'song-cover-preview', src: song.cover, alt: 'Обложка песни' }), button('×', 'cover-remove button quiet', () => { if (!globalThis.confirm('Удалить обложку песни?')) return; changeSong(song.id, s => ({ ...s, cover: '' })); render(); })]) : null;
+    const details = node('section', { className: 'section-card song-details' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Альбом', album), field('Версия записи', version), field('Длительность, ММ:СС', duration), coverControl]), coverPreview]);
     if (editorTabSongId !== song.id) { editorTabSongId = song.id; editorTab = 'lrclib'; }
     const drafts = importDrafts.get(song.id) || { lrc: '', plain: '' }; importDrafts.set(song.id, drafts);
     const panels = {

@@ -15,23 +15,17 @@ export function createWorkspaceHub({ state, actions }) {
   function iconButton(icon, label, className, onClick) {
     const control = button('', `button quiet event-icon-button action-icon-button has-tooltip ${className}`, onClick);
     control.setAttribute('aria-label', label); control.setAttribute('data-tooltip', label); control.title = label;
-    control.append(node('svg', { className: 'event-icon', 'aria-hidden': 'true' }, [node('use', { href: `#action-icon-${icon}` })]));
+    control.append(node('span', { className: 'hub-action-glyph', text: ({ play: '▶', download: '↓', trash: '×', copy: '⧉' })[icon] || '•', 'aria-hidden': 'true' }));
     return control;
   }
   function cardIcon(kind) {
+    if (kind !== 'project') return node('span', { className: 'hub-card-icon', 'aria-hidden': 'true', text: '♫' });
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('aria-hidden', 'true');
-    if (kind === 'project') {
-      const folder = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      folder.setAttribute('d', 'M3 7V5a1 1 0 0 1 1-1h5l3 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z');
-      svg.append(folder);
-    } else {
-      const note = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      note.setAttribute('d', 'M9 18V5l12-2v13M9 18c0 1.1-1.6 2-3.5 2S2 19.1 2 18s1.6-2 3.5-2S9 16.9 9 18Zm12-2c0 1.1-1.6 2-3.5 2S14 17.1 14 16s1.6-2 3.5-2 3.5.9 3.5 2Z');
-      svg.append(note);
-    }
-    return node('span', { className: 'hub-card-icon' }, [svg]);
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    const folder = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    folder.setAttribute('d', 'M3 7V5a1 1 0 0 1 1-1h5l3 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z');
+    svg.append(folder);
+    return node('span', { className: 'hub-card-icon project-card-icon' }, [svg]);
   }
   async function show(next = destination) {
     if (await actions.leaveEditor?.() === false) return false;
@@ -57,6 +51,7 @@ export function createWorkspaceHub({ state, actions }) {
   function songMetadata(item) {
     return [
       node('p', { className: 'hub-card-meta', text: item.artist || 'Без исполнителя' }),
+      item.album ? node('p', { className: 'hub-card-meta hub-album', text: item.album }) : null,
       item.version ? node('p', { className: 'hub-card-meta hub-recording-version', text: `Версия записи: ${item.version}` }) : null,
     ].filter(Boolean);
   }
@@ -86,7 +81,7 @@ export function createWorkspaceHub({ state, actions }) {
     const cloudItems = isProjects ? data.cloudProjects : sortLibrarySongs(data.cloudSongs, sortSelect.value);
     const linkedIds = new Set(localItems.map(item => data.links[`project:${item.id}`]?.id).filter(Boolean));
     const cards = [];
-    const matches = item => `${item.name || item.title || ''} ${item.artist || ''} ${item.version || ''}`.toLocaleLowerCase().includes(query);
+    const matches = item => `${item.name || item.title || ''} ${item.artist || ''} ${item.album || ''} ${item.version || ''}`.toLocaleLowerCase().includes(query);
     for (const item of localItems) {
       const link = data.links[`project:${item.id}`];
       const cloud = cloudItems.find(entry => entry.id === link?.id);
@@ -101,9 +96,10 @@ export function createWorkspaceHub({ state, actions }) {
       } else if (!link) controls.push(iconButton('trash', 'Удалить проект', 'danger', () => actions.remove('project', item.id)));
       const subtitle = `${item.songs.length} песен · ${Math.ceil(item.songs.reduce((sum, song) => sum + (song.duration || 0), 0) / 60)} мин`;
       const readiness = node('p', { className: 'hub-readiness', text: 'Проверка готовности…' });
-      const card = makeOpenCard(node('article', { className: 'hub-card', 'data-local-id': item.id, 'data-cloud-id': link?.id }, [
+      const card = makeOpenCard(node('article', { className: `hub-card${metadata.cover ? ' project-cover-card' : ''}`, 'data-local-id': item.id, 'data-cloud-id': link?.id }, [
         node('div', { className: 'hub-card-top' }, [node('span', { className: 'eyebrow', text: 'ПРОЕКТ' }), cardIcon('project')]),
         node('h2', { text: metadata.name || 'Без названия' }),
+        metadata.cover ? node('img', { className: 'hub-card-cover', src: metadata.cover, alt: 'Обложка проекта' }) : null,
         node('p', { className: 'hub-card-meta', text: subtitle }),
         node('p', { className: 'storage-badge', text: link ? 'В облаке · Есть локальная копия' : 'На этом устройстве' }),
         readiness,
@@ -131,10 +127,13 @@ export function createWorkspaceHub({ state, actions }) {
         })(),
         iconButton('trash', 'Удалить песню', 'danger', () => actions.removeCloudSong(item.id)),
       ];
-      cards.push(makeOpenCard(node('article', { className: 'hub-card cloud', 'data-cloud-id': item.id }, [
+      const songInfo = item.song || item;
+      cards.push(makeOpenCard(node('article', { className: `hub-card cloud${isProjects ? (item.cover ? ' project-cover-card' : '') : ' song-cover-card'}`, 'data-cloud-id': item.id }, [
         node('div', { className: 'hub-card-top' }, [node('span', { className: 'eyebrow', text: isProjects ? 'ПРОЕКТ' : 'ПЕСНЯ' }), cardIcon(isProjects ? 'project' : 'song')]),
         node('h2', { text: item.name || item.title || 'Без названия' }),
         ...(isProjects ? [node('p', { className: 'hub-card-meta', text: `${item.songCount} песен` })] : songMetadata(item)),
+        isProjects && item.cover ? node('img', { className: 'hub-card-cover', src: item.cover, alt: 'Обложка проекта' }) : null,
+        !isProjects && songInfo.cover ? node('img', { className: 'hub-card-cover', src: songInfo.cover, alt: 'Обложка песни' }) : null,
         node('p', { className: 'storage-badge', text: 'В облаке' }),
         node('div', { className: 'hub-card-actions' }, controls),
       ]), `${isProjects ? 'проект' : 'песню'} ${item.name || item.title || 'Без названия'}`, () => isProjects ? actions.openCloudProject(item.id) : actions.openCloudSong(item.id)));

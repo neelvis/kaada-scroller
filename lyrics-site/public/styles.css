@@ -181,3 +181,33 @@
   .cue-assignment-row{grid-template-columns:22px 24px minmax(0,1fr) 70px;gap:6px;padding:6px}
   .cue-assignment-type{grid-column:3 / 5;text-align:left;font-size:11px}
 }
+
+/* Optional cover artwork for songs, projects, and presentation mode. */
+.audience-cover{display:none}
+.audience.has-cover .audience-cover{display:block!important;position:absolute;right:4vw;top:50%;transform:translateY(-50%);width:30%;max-height:82%;aspect-ratio:1;object-fit:cover;border-radius:18px;z-index:2}
+.audience.has-cover .audience-lines{left:4vw;width:60vw}
+.hub-card-cover{position:absolute;right:16px;bottom:16px;width:25%;aspect-ratio:1;object-fit:cover;border-radius:12px}
+.hub-card.song-cover-card{position:relative;padding-right:30%}
+.hub-card.project-cover-card{padding-right:30%}
+.project-cover-picker{display:block;margin-top:8px;color:var(--muted);font-size:12px}.project-cover-picker input{display:block;max-width:190px;font-size:11px}.project-cover-preview{width:70px;height:70px;object-fit:cover;border-radius:10px;margin-top:6px}
+.song-cover-preview{width:96px;height:96px;object-fit:cover;border-radius:12px;margin-top:10px}
+@media(max-width:650px){.audience.has-cover .audience-cover{right:5vw;width:min(32vw,28vh);max-height:35%}.audience.has-cover .audience-lines{left:4vw;width:60vw}}
+
+/* Cover controls use the same button treatment as the rest of the app. */
+.song-details .field-grid{grid-template-columns:repeat(3,minmax(0,1fr));align-items:end}
+.song-details .field{min-width:0}
+.cover-picker,.project-cover-picker{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer}
+.cover-picker:hover,.project-cover-picker:hover{border-color:var(--accent);background:#174354}
+.cover-file-input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.cover-field>span{display:block;margin-bottom:5px;color:var(--upcoming);font-size:13px}
+.cover-preview-wrap{position:relative;width:max-content;margin-top:12px}
+.cover-remove,.cover-remove-project{width:28px;height:28px;min-width:28px;padding:0;border:1px solid rgba(255,255,255,.5);border-radius:50%;background:rgba(4,18,25,.85);color:#fff;font-size:21px;line-height:1}
+.cover-preview-wrap .cover-remove{position:absolute;right:0;top:0;transform:translate(50%,-50%);z-index:2}
+.project-cover-preview-wrap{margin-top:14px}
+.project-cover-tools{display:flex;align-items:center;gap:7px;margin-top:8px}
+.project-cover-tools .project-cover-picker{margin:0}
+.project-cover-tools .cover-remove-project{display:grid;place-items:center}
+.hub-card-icon{position:absolute;right:15px;top:15px;width:36px;height:36px;display:grid;place-items:center;border:0;background:transparent;font-size:25px;line-height:1}
+.hub-action-glyph{display:grid;place-items:center;width:100%;height:100%;font-size:20px;line-height:1;font-weight:700}
+@media(max-width:780px){.song-details .field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){.song-details .field-grid{grid-template-columns:1fr}.song-details .field-grid .field:first-child{grid-column:auto}}

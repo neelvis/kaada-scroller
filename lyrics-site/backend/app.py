@@ -139,9 +139,9 @@ async def project(request: Request) -> Response:
         name=data["name"].strip(); entries=data["songs"]
         if not isinstance(data["revision"],int) or not isinstance(entries,list) or len(entries)>250 or not name: raise ValueError()
         if not all(valid_entry(e) for e in entries): raise ValueError()
-        return JSONResponse(store.save_project(project_id,data["revision"],name,entries))
+        return JSONResponse(store.save_project(project_id,data["revision"],name,entries,data.get("cover", "")))
     except Conflict: return error("Проект уже изменён другим организатором. Загрузите новую версию перед повторной попыткой.","conflict",409)
-    except DuplicateSong: return error("Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.","duplicate_song",409)
+    except DuplicateSong: return error("Песня с таким названием, исполнителем, альбомом и версией записи уже есть. Измените одно из полей.","duplicate_song",409)
     except InvalidSong: return error("Подтвердите готовность песни и проверьте её текст, длительность и таймлайн.","not_ready",400)
     except Missing: return error("Проект, песня, версия или запись не найдены.","not_found",404)
     except (ValueError,KeyError,AttributeError,TypeError,json.JSONDecodeError): return error("Проверьте название, версию и список песен.","invalid",400)
@@ -261,7 +261,7 @@ async def imports(request: Request) -> Response:
         data=await body_json(request); key=data["migrationKey"]; name=data["name"].strip(); songs=data["songs"]
         if not isinstance(key,str) or not key or not name or not isinstance(songs,list) or len(songs)>250 or not all(valid_entry(item) for item in songs): raise ValueError()
         entries=[{"song":item["song"],"audioId":item.get("audioId"),"backingAudioId":item.get("backingAudioId")} for item in songs]
-        project, created=store.import_project(key,name,entries)
+        project, created=store.import_project(key,name,entries,data.get("cover", ""))
         return JSONResponse(project,status_code=201 if created else 200)
     except Conflict: return error("Импорт уже изменён.","conflict",409)
     except DuplicateSong: return error("Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.","duplicate_song",409)

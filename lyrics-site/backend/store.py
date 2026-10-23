@@ -76,13 +76,15 @@ class Store:
             CREATE TABLE IF NOT EXISTS song_revisions(id TEXT PRIMARY KEY, song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE, audio_id TEXT REFERENCES audio(id), backing_audio_id TEXT REFERENCES audio(id), body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS song_uploads(migration_key TEXT PRIMARY KEY, revision_id TEXT NOT NULL REFERENCES song_revisions(id) ON DELETE CASCADE);
             CREATE TABLE IF NOT EXISTS deleted_song_uploads(migration_key TEXT PRIMARY KEY);
-            CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, migration_key TEXT UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+            CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, migration_key TEXT UNIQUE, cover TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS project_entries(project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, position INTEGER NOT NULL, song_id TEXT NOT NULL REFERENCES songs(id), revision_id TEXT NOT NULL REFERENCES song_revisions(id), PRIMARY KEY(project_id,position));
             CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires_at INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS revision_song_idx ON song_revisions(song_id, created_at);
             CREATE INDEX IF NOT EXISTS entry_song_idx ON project_entries(song_id);
             """)
             columns={row[1] for row in db.execute("PRAGMA table_info(audio)")}
+            project_columns={row[1] for row in db.execute("PRAGMA table_info(projects)")}
+            if "cover" not in project_columns: db.execute("ALTER TABLE projects ADD COLUMN cover TEXT NOT NULL DEFAULT ''")
             if "mime_type" not in columns: db.execute("ALTER TABLE audio ADD COLUMN mime_type TEXT NOT NULL DEFAULT 'audio/mpeg'")
             if "content_hash" not in columns: db.execute("ALTER TABLE audio ADD COLUMN content_hash TEXT")
             if "owner_token_hash" not in columns: db.execute("ALTER TABLE audio ADD COLUMN owner_token_hash TEXT")
@@ -147,7 +149,7 @@ class Store:
         rows = db.execute("""SELECT r.* FROM project_entries e JOIN song_revisions r ON r.song_id=e.song_id
             WHERE e.project_id=? AND r.rowid=(SELECT MAX(head.rowid) FROM song_revisions head WHERE head.song_id=e.song_id)
             ORDER BY e.position""", (project_id,)).fetchall()
-        return {"id": project["id"], "name": project["name"], "revision": project["revision"], "songs": [self.entry(row) for row in rows]}
+        return {"id": project["id"], "name": project["name"], "cover": project["cover"] if "cover" in project.keys() else "", "revision": project["revision"], "songs": [self.entry(row) for row in rows]}
 
     def create_project(self, name: str, migration_key: str | None = None) -> dict[str, Any]:
         project_id = str(uuid.uuid4())
@@ -157,8 +159,8 @@ class Store:
 
     def list_projects(self) -> list[dict[str, Any]]:
         with self.read() as db:
-            rows = db.execute("SELECT p.id,p.name,p.revision,COUNT(e.position) song_count FROM projects p LEFT JOIN project_entries e ON e.project_id=p.id GROUP BY p.id ORDER BY p.created_at,p.id").fetchall()
-            return [{"id": r["id"], "name": r["name"], "revision": r["revision"], "songCount": r["song_count"]} for r in rows]
+            rows = db.execute("SELECT p.id,p.name,p.cover,p.revision,COUNT(e.position) song_count FROM projects p LEFT JOIN project_entries e ON e.project_id=p.id GROUP BY p.id ORDER BY p.created_at,p.id").fetchall()
+            return [{"id": r["id"], "name": r["name"], "cover": r["cover"], "revision": r["revision"], "songCount": r["song_count"]} for r in rows]
 
     def library(self, query: str) -> list[dict[str, Any]]:
         with self.read() as db:
@@ -166,7 +168,7 @@ class Store:
         result=[]
         for row in rows:
             song=json.loads(row["body"])
-            if query and query.lower() not in " ".join(str(song.get(field, "")) for field in ("title", "artist", "version")).lower(): continue
+            if query and query.lower() not in " ".join(str(song.get(field, "")) for field in ("title", "artist", "album", "version")).lower(): continue
             try:
                 self._validate_ready(song)
                 valid=True
@@ -177,7 +179,7 @@ class Store:
                 created_at = created_at.replace(" ", "T", 1)
             if not created_at.endswith("Z"):
                 created_at += "Z"
-            result.append({"id": row["song_id"], "title": song.get("title", ""), "artist": song.get("artist", ""), "version": song.get("version", ""), "revisionId": row["id"], "createdAt": created_at, "reviewed": song.get("reviewed") is True, "valid":valid, "hasAudio": bool(row["audio_id"]), "hasBackingAudio": bool(row["backing_audio_id"])})
+            result.append({"id": row["song_id"], "title": song.get("title", ""), "artist": song.get("artist", ""), "album": song.get("album", ""), "cover": song.get("cover", ""), "version": song.get("version", ""), "revisionId": row["id"], "createdAt": created_at, "reviewed": song.get("reviewed") is True, "valid":valid, "hasAudio": bool(row["audio_id"]), "hasBackingAudio": bool(row["backing_audio_id"])})
         return result
 
     def get_song(self, song_id: str) -> dict[str, Any]:
@@ -271,23 +273,23 @@ class Store:
             db.executemany("DELETE FROM audio WHERE id=?", [(audio_id,) for audio_id in deleted])
             return deleted
 
-    def save_project(self, project_id: str, revision: int, name: str, entries: list[dict[str, Any]]) -> dict[str, Any]:
+    def save_project(self, project_id: str, revision: int, name: str, entries: list[dict[str, Any]], cover: str = "") -> dict[str, Any]:
         with self.tx() as db:
             p=self.project_row(db, project_id)
             if p["revision"] != revision: raise Conflict()
             resolved=[self._resolve_entry(db, e) for e in entries]
-            db.execute("UPDATE projects SET name=?,revision=revision+1 WHERE id=?", (name, project_id))
+            db.execute("UPDATE projects SET name=?,cover=?,revision=revision+1 WHERE id=?", (name, cover, project_id))
             db.execute("DELETE FROM project_entries WHERE project_id=?", (project_id,))
             db.executemany("INSERT INTO project_entries(project_id,position,song_id,revision_id) VALUES(?,?,?,?)", [(project_id, i, row["song_id"], row["id"]) for i,row in enumerate(resolved)])
             return self.full_project(db, project_id)
 
-    def import_project(self, migration_key: str, name: str, entries: list[dict[str, Any]]) -> tuple[dict[str, Any], bool]:
+    def import_project(self, migration_key: str, name: str, entries: list[dict[str, Any]], cover: str = "") -> tuple[dict[str, Any], bool]:
         """Create the project and all revisions together, so a failed retry leaves no key behind."""
         with self.tx() as db:
             existing=db.execute("SELECT id FROM projects WHERE migration_key=?", (migration_key,)).fetchone()
             if existing: return self.full_project(db, existing["id"]), False
             project_id=str(uuid.uuid4())
-            db.execute("INSERT INTO projects(id,name,migration_key) VALUES(?,?,?)", (project_id,name,migration_key))
+            db.execute("INSERT INTO projects(id,name,migration_key,cover) VALUES(?,?,?,?)", (project_id,name,migration_key,cover))
             resolved=[self._resolve_entry(db, entry) for entry in entries]
             db.executemany("INSERT INTO project_entries(project_id,position,song_id,revision_id) VALUES(?,?,?,?)", [(project_id,index,row["song_id"],row["id"]) for index,row in enumerate(resolved)])
             return self.full_project(db, project_id), True
@@ -339,12 +341,12 @@ class Store:
 
     def _new_revision(self, db: sqlite3.Connection, song_id: str, audio_id: str | None, backing_audio_id: str | None, song: dict[str, Any]) -> sqlite3.Row:
         self._validate_ready(song)
-        identity=tuple((song.get(field) or "").strip() for field in ("title", "artist", "version"))
+        identity=tuple((song.get(field) or "").strip() for field in ("title", "artist", "version", "album"))
         # BEGIN IMMEDIATE serializes this check and insert across processes. Only
         # current heads participate; historical and pre-existing duplicates stay.
         for row in db.execute("SELECT r.song_id,r.body FROM song_revisions r WHERE r.rowid=(SELECT MAX(h.rowid) FROM song_revisions h WHERE h.song_id=r.song_id) AND r.song_id<>?", (song_id,)):
             other=json.loads(row["body"])
-            if tuple(str(other.get(field) or "").strip() for field in ("title", "artist", "version")) == identity: raise DuplicateSong()
+            if tuple(str(other.get(field) or "").strip() for field in ("title", "artist", "version", "album")) == identity: raise DuplicateSong()
         revision_id=str(uuid.uuid4()); body=json.dumps(song, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         db.execute("INSERT INTO song_revisions(id,song_id,audio_id,backing_audio_id,body) VALUES(?,?,?,?,?)", (revision_id,song_id,audio_id,backing_audio_id,body))
         return self.revision(db, revision_id)

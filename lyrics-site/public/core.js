@@ -107,6 +107,8 @@ function sanitizeSong(raw, songNumber) {
     title: text(raw.title, `название песни ${songNumber}`, { max: 1000 }),
     artist: text(raw.artist, `исполнитель песни ${songNumber}`, { optional: true, max: 1000 }),
     version: text(raw.version, `версия песни ${songNumber}`, { optional: true, max: 1000 }),
+    album: text(raw.album, `альбом песни ${songNumber}`, { optional: true, max: 1000 }),
+    cover: typeof raw.cover === 'string' ? raw.cover : '',
     language: text(raw.language, `язык песни ${songNumber}`, { optional: true, max: 100 }),
     duration,
     delayMs: raw.delayMs,
@@ -143,6 +145,7 @@ function sanitizeSet(raw) {
     schemaVersion: SCHEMA_VERSION,
     id: text(raw.id, 'id набора', { max: 200 }),
     name: text(raw.name, 'название набора', { max: 1000 }),
+    cover: typeof raw.cover === 'string' ? raw.cover : '',
     songs,
   };
 }
@@ -284,6 +287,8 @@ export function createSong(partial = {}) {
     title: typeof partial.title === 'string' ? partial.title : '',
     artist: typeof partial.artist === 'string' ? partial.artist : '',
     version: typeof partial.version === 'string' ? partial.version : '',
+    album: typeof partial.album === 'string' ? partial.album : '',
+    cover: typeof partial.cover === 'string' ? partial.cover : '',
     language: typeof partial.language === 'string' ? partial.language : '',
     duration: finiteNumber(partial.duration, 0),
     delayMs: finiteNumber(partial.delayMs, 0),

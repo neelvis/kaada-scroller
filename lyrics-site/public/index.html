@@ -85,7 +85,7 @@
       <aside class="song-list-panel" aria-label="Список песен">
         <div class="prep-actions"><button class="button quiet" id="upload-current" type="button">Загрузить в облако</button></div>
         <span class="local-save-status" id="local-save-status" aria-live="polite"></span><button class="button quiet" id="retry-local-save" type="button" hidden>Повторить сохранение</button>
-        <div class="panel-heading"><div><p class="eyebrow">Набор</p><div class="set-name-clip" id="set-name-clip"><input id="set-name" class="set-name" aria-label="Название набора" value="Мой набор"><div class="set-name-marquee" id="set-name-marquee" aria-hidden="true"><div class="set-name-marquee-track"><span class="set-name-marquee-copy"></span><span class="set-name-marquee-copy"></span></div></div><span class="set-name-measure" id="set-name-measure" aria-hidden="true"></span></div></div><span class="song-count" id="song-count">0 песен</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">Набор</p><div class="set-name-clip" id="set-name-clip"><input id="set-name" class="set-name" aria-label="Название набора" value="Мой набор"><div class="set-name-marquee" id="set-name-marquee" aria-hidden="true"><div class="set-name-marquee-track"><span class="set-name-marquee-copy"></span><span class="set-name-marquee-copy"></span></div></div><span class="set-name-measure" id="set-name-measure" aria-hidden="true"></span></div><label class="project-cover-picker button quiet"><span id="project-cover-label">Выбрать обложку</span><input id="project-cover" class="cover-file-input" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"></label><div id="project-cover-wrap" class="cover-preview-wrap project-cover-preview-wrap" hidden><img id="project-cover-preview" class="project-cover-preview" alt="Обложка проекта"><button id="project-cover-remove" class="button quiet cover-remove" type="button" aria-label="Удалить обложку проекта" title="Удалить обложку проекта">×</button></div></div><span class="song-count" id="song-count">0 песен</span></div>
         <section id="project-songs" hidden><h2 class="eyebrow">Песни проекта</h2><div class="song-list" id="song-list"></div></section>
         <section id="local-library" aria-labelledby="local-library-heading"><h2 class="eyebrow" id="local-library-heading">Библиотека песен</h2><div class="song-list" id="local-song-list"></div></section>
         <section id="online-library" aria-labelledby="online-library-heading" hidden>
@@ -119,7 +119,7 @@
         <div><button class="button quiet" id="font-down" type="button" aria-label="Уменьшить текст" title="Уменьшить текст · −" aria-keyshortcuts="-">A−</button><button class="button quiet" id="font-up" type="button" aria-label="Увеличить текст" title="Увеличить текст · +" aria-keyshortcuts="= Shift+=">A+</button></div>
       </div>
       <div class="audience" id="audience" style="--audience-size: 54px">
-        <div class="audience-lines" id="audience-lines"></div>
+        <img id="audience-cover" class="audience-cover" alt="Обложка" hidden><div class="audience-lines" id="audience-lines"></div>
       </div>
       <div class="event-controls" id="event-controls">
         <div class="event-control-row">

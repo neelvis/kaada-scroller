@@ -44,7 +44,7 @@ export async function uploadLocalProject(local, link, progress = () => {}, retry
     if (prior && prior.localId === song.id) Object.assign(entry, { songId: prior.songId, revisionId: prior.revisionId });
     songs.push(entry);
   }
-  return link ? remote.saveProject(link.id, { revision: link.revision, name: local.name, songs }) : remote.importLegacy({ migrationKey: local.id, name: local.name, songs });
+  return link ? remote.saveProject(link.id, { revision: link.revision, name: local.name, cover: local.cover || '', songs }) : remote.importLegacy({ migrationKey: local.id, name: local.name, cover: local.cover || '', songs });
 }
 export async function uploadLocalSong(song, link) {
   if (link) {
@@ -64,7 +64,7 @@ export async function downloadProjectFiles(cloud, progress = () => {}) {
     if (entry.audioId) audio.set(`original:${song.id}`, await remote.downloadAudio(entry.audioId));
     songs.push(song);
   }
-  return { local: { schemaVersion: 1, id: `project-${crypto.randomUUID()}`, name: cloud.name, songs }, audio };
+  return { local: { schemaVersion: 1, id: `project-${crypto.randomUUID()}`, name: cloud.name, cover: cloud.cover || '', songs }, audio };
 }
 export function projectLink(local, cloud) {
   return { id: cloud.id, revision: cloud.revision, fingerprint: contentFingerprint(local), entries: cloud.songs.map((entry, index) => ({ localId: local.songs[index]?.id, songId: entry.songId, revisionId: entry.revisionId })) };
