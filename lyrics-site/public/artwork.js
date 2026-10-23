@@ -1,5 +1,7 @@
+import { artworkDimensions } from './artwork-dimensions.js';
+
 /** Keep accepted source images small enough for JSON storage and screen display. */
-export const artworkLimits = Object.freeze({ source: 8 * 1024 * 1024, stored: 192 * 1024, dimension: 1600 });
+export const artworkLimits = Object.freeze({ source: 8 * 1024 * 1024, stored: 192 * 1024, dimension: 1600, pixels: 40_000_000, sourceDimension: 16_000 });
 const supported = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const dataUrl = blob => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -10,6 +12,10 @@ const dataUrl = blob => new Promise((resolve, reject) => {
 
 export async function prepareArtwork(file) {
   if (!supported.has(file.type) || file.size > artworkLimits.source) throw new Error('Выберите JPG, PNG или WebP до 8 МиБ.');
+  const dimensions = artworkDimensions(new Uint8Array(await file.arrayBuffer()));
+  if (!dimensions.width || !dimensions.height || Math.max(dimensions.width, dimensions.height) > artworkLimits.sourceDimension || dimensions.width * dimensions.height > artworkLimits.pixels) {
+    throw new Error('Обложка слишком большая по разрешению: максимум 40 мегапикселей и 16000 пикселей по стороне.');
+  }
   let image;
   try { image = await createImageBitmap(file); }
   catch { throw new Error('Не удалось открыть изображение обложки.'); }
