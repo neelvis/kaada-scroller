@@ -1,7 +1,7 @@
 # Revision 26 — card clarity, local copies and song presentation
 
 Feature ID: TL (extension)
-Status: Implemented — locally verified; not deployed
+Status: Implemented, verified and deployed
 Date: 2026-10-23
 Related requirements: [cue shifting](revision-15.md),
 [interludes](revision-17.md), [card actions](revision-21.md),
@@ -115,8 +115,8 @@ and requires regression verification rather than an assumed new limit increase.
 The user explicitly approved this draft with `подверждаю` in Codex on
 2026-10-23. Approved draft SHA-256:
 `64ea4f53ceb6bb612aa286e58f2af349d4fa064ac8494818d31c956aa3c7e8b3`.
-This authorizes the scoped implementation and validation, without committing or
-deploying it.
+The user subsequently authorized commit and push, then explicitly requested
+deployment in Codex on 2026-10-23.
 
 
 ## Delivery evidence
@@ -136,4 +136,22 @@ Action tests cover permission renewal/denial without choosing another folder,
 duplicate transfers, concurrent edits, target deletion and workspace replacement.
 The final independent read-only reviews found no remaining actionable metadata
 or local-copy lifecycle issues. Native OS folder permission prompts and projector
-rehearsal remain manual checks. No commit or deployment was performed.
+rehearsal remain manual checks. Publication evidence follows below.
+
+
+## Production publication
+
+Application commit `e456691bf6a89bf94f224e88158989af3a2a4daa` was pushed to
+`main` and published as paired release `20261023_121724` on 2026-10-23.
+Independent review verified all 61 staged payload hashes, unchanged pinned
+runtime inputs and synthetic old/new/old database compatibility for the additive
+`end_caption` column. Both frontend and API select the new release; the API is
+active with zero automatic restarts. Previous pair `20261023_110500` is retained
+for rollback.
+
+Production checks passed: 35 public source hashes, eight health/access endpoints
+and three JavaScript/MJS/WASM MIME checks. Isolated production Chrome verified
+synthetic local project save/reload, direct launch, blank-interlude notes and
+pause, the project end caption, and the 375px layout, with no API writes or
+browser errors. Private school songs, projects and credentials were not read or
+modified by smoke checks. Close and reopen existing tabs to adopt the new shell.

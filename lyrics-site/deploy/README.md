@@ -463,3 +463,25 @@ Production returned 200 for `/lyrics/`, API health, `workspace-hub.js`, and
 hashes match the built artifacts. The previous pair `20261022_225103` remains
 available for rollback. Close and reopen existing lyrics tabs to adopt the new
 shell.
+
+
+## Revision 26 production publication (2026-10-23)
+
+Paired release `20261023_121724` publishes application commit `e456691` from
+`main`. The 61-entry staged payload manifest SHA-256 is
+`6086d6349e3f64b32c255cd987b4dfdd1779c42ba57ffc1392108d483494dbd2`.
+Independent review verified source/generated files, the unchanged pinned runtime
+and synthetic old/new/old Store compatibility for the additive project
+`end_caption` column. Preparation and paired activation succeeded; both live
+links select the release and the API is active with zero automatic restarts.
+Previous pair `20261023_110500` remains available for rollback.
+
+All 35 public source hashes matched the staged payload. Eight health/access
+endpoint checks and three JavaScript/MJS/WASM MIME checks passed. An isolated
+production browser verified native OPFS project saving and restoration after
+reload, direct card launch, blank-interlude animation/pause, project caption
+precedence and 375px layout. It reported no browser errors or API writes and did
+not read private school songs, projects or credentials. Authenticated cloud
+writes were verified using the disposable local API before publication.
+Native OS permission prompts and projector rehearsal remain manual checks.
+Close and reopen existing lyrics tabs to adopt the new service-worker shell.
