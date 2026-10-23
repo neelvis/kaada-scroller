@@ -151,8 +151,16 @@ test('legacy sets receive empty end captions and reject oversized captions', () 
   const legacy = importSet(JSON.stringify({ schemaVersion: 1, id: 'legacy', name: 'Legacy', songs: [song()] }));
   assert.equal(legacy.endCaption, '');
   assert.equal(legacy.songs[0].endCaption, '');
+  assert.deepEqual(legacy.songs[0].projectCovers, []);
   const oversized = { schemaVersion: 1, id: 'set', name: 'Set', endCaption: 'x'.repeat(1001), songs: [] };
   assert.throws(() => exportSet(oversized), /финальная подпись набора.*слишком длинное/);
+});
+
+test('project song covers round trip and malformed or duplicate project IDs are rejected', () => {
+  const set = { schemaVersion: 1, id: 'set', name: 'Set', songs: [{ ...song(), projectCovers: [{ projectId: 'project-a', cover: 'data:image/webp;base64,YQ==' }] }] };
+  assert.deepEqual(importSet(exportSet(set)).songs[0].projectCovers, set.songs[0].projectCovers);
+  assert.throws(() => importSet(JSON.stringify({ ...set, songs: [{ ...set.songs[0], projectCovers: [...set.songs[0].projectCovers, ...set.songs[0].projectCovers] }] })), /повторяется/);
+  assert.throws(() => importSet(JSON.stringify({ ...set, songs: [{ ...set.songs[0], projectCovers: [{ projectId: 'project-a', cover: 'invalid' }] }] })), /обложка проекта/);
 });
 
 test('ignore timecodes survives portable normalization and defaults off for legacy songs', () => {

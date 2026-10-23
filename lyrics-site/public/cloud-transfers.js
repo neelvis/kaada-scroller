@@ -33,7 +33,13 @@ export async function uploadLocalProject(local, link, progress = () => {}, retry
     const found = await remote.findMigration(local.id);
     if (found) {
       if (!retryBaseline) return found;
-      if (found.name !== retryBaseline.name || found.songs.length !== retryBaseline.songs.length || found.songs.some((entry, index) => !sameEntryContent(entry, { ...entry, song: retryBaseline.songs[index] }))) {
+      if (found.name !== retryBaseline.name || found.songs.length !== retryBaseline.songs.length || found.songs.some((entry, index) => {
+        const song = retryBaseline.songs[index];
+        // Import replaces the local project ID with the newly created cloud ID.
+        // Compare that same association before deciding whether cloud content diverged.
+        const baselineSong = Array.isArray(song.projectCovers) ? { ...song, projectCovers: song.projectCovers.map(item => ({ ...item, projectId: item.projectId === retryBaseline.id ? found.id : item.projectId })) } : song;
+        return !sameEntryContent(entry, { ...entry, song: baselineSong });
+      })) {
         throw new remote.RemoteError('Проект уже создан, но его песни изменились в облаке. Черновик сохранён; откройте облачный проект для сверки.', { code: 'conflict' });
       }
       if (contentFingerprint(local) === contentFingerprint(retryBaseline)) return found;
@@ -43,7 +49,7 @@ export async function uploadLocalProject(local, link, progress = () => {}, retry
   const songs = [];
   for (const [index, song] of local.songs.entries()) {
     progress(`Загрузка файлов: ${index + 1} из ${local.songs.length}`);
-    const entry = await uploadEntry(song);
+    const entry = await uploadEntry({ ...song, projectCovers: (song.projectCovers || []).map(item => ({ ...item, projectId: item.projectId === local.id && link ? link.id : item.projectId })) });
     const prior = link?.entries?.find(entry => entry.localId === song.id);
     if (prior && prior.localId === song.id) Object.assign(entry, { songId: prior.songId, revisionId: prior.revisionId });
     songs.push(entry);
@@ -51,18 +57,19 @@ export async function uploadLocalProject(local, link, progress = () => {}, retry
   return link ? remote.saveProject(link.id, { revision: link.revision, name: local.name, cover: local.cover || '', endCaption: local.endCaption || '', songs }) : remote.importLegacy({ migrationKey: local.id, name: local.name, cover: local.cover || '', endCaption: local.endCaption || '', songs });
 }
 export async function downloadProjectFiles(cloud, progress = () => {}) {
-  const audio = new Map(), songs = [];
+  const audio = new Map(), songs = [], localProjectId = `project-${crypto.randomUUID()}`;
   const total = cloud.songs.length;
   for (const [index, entry] of cloud.songs.entries()) {
     progress({ phase: 'downloading', completed: index, total, label: `Скачивание: ${index + 1} из ${total}` });
     const song = structuredClone(entry.song); song.id = `song-${crypto.randomUUID()}`;
+    song.projectCovers = (song.projectCovers || []).map(item => ({ ...item, projectId: item.projectId === cloud.id ? localProjectId : item.projectId }));
     if (entry.backingAudioId) audio.set(`backing:${song.id}`, await remote.downloadAudio(entry.backingAudioId));
     else if (song.backing?.fileName) throw new Error(`Минусовка «${song.title}» отсутствует в облаке.`);
     if (entry.audioId) audio.set(`original:${song.id}`, await remote.downloadAudio(entry.audioId));
     songs.push(song);
     progress({ phase: 'downloading', completed: index + 1, total, label: `Скачивание: ${index + 1} из ${total}` });
   }
-  return { local: { schemaVersion: 1, id: `project-${crypto.randomUUID()}`, name: cloud.name, cover: cloud.cover || '', endCaption: cloud.endCaption || '', songs }, audio };
+  return { local: { schemaVersion: 1, id: localProjectId, name: cloud.name, cover: cloud.cover || '', endCaption: cloud.endCaption || '', songs }, audio };
 }
 export function projectLink(local, cloud) {
   return { id: cloud.id, revision: cloud.revision, fingerprint: contentFingerprint(local), entries: cloud.songs.map((entry, index) => ({ localId: local.songs[index]?.id, songId: entry.songId, revisionId: entry.revisionId })) };

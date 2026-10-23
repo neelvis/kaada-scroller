@@ -11,7 +11,12 @@ export function createSongEditor(context) {
   const resources = context.resources;
   const { els, previewPlayer, backingPreview } = resources;
   const { currentSong, status, changeSong, render, showLibrary, addSong, clearAudioPreview, clearBackingPreview, setAudioPreview, setBackingPreview, entryFor, privateMutation, backingKey, markRemoteDirty, persist, displayTime } = context.actions;
-  let coverGeneration = 0;
+  const artworkGenerations = new Map();
+  let projectMembership = null;
+  let membershipGeneration = 0;
+  let artworkEditorEpoch = 0;
+  let projectArtworkSection = null;
+  let projectArtworkItems = null;
   const backingGeneration = new Map();
   const importDrafts = new Map();
   const estimatedRestStarts = new Set();
@@ -171,11 +176,96 @@ export function createSongEditor(context) {
   }
   function lrclibContext() { return JSON.stringify([context.state.workspaceGeneration, context.state.set.id, context.state.project?.id, context.state.selectedId, context.state.sessionActive]); }
   function cancelLrclib() { lrclibState?.controller?.abort(); if (lrclibState) lrclibState.token += 1; lrclibState = null; }
-  function resetPreparation({ preserveDrafts = false } = {}) { cancelLrclib(); if (!preserveDrafts) importDrafts.clear(); editorTabSongId = null; }
-  function resetEditorTab() { editorTab = 'lrclib'; }
+  function resetPreparation({ preserveDrafts = false } = {}) { cancelLrclib(); if (!preserveDrafts) importDrafts.clear(); editorTabSongId = null; projectMembership = null; membershipGeneration += 1; artworkEditorEpoch += 1; }
+  function resetEditorTab() { editorTab = 'lrclib'; projectMembership = null; membershipGeneration += 1; artworkEditorEpoch += 1; }
   function invalidateChanged(song, changes) { return invalidateReview({ ...song, ...changes }); }
   function audioOwner() { return context.state.project?.id || (context.state.onlineSongOpen ? 'library' : null); }
   function remoteAudioMode() { return Boolean(context.state.project || context.state.onlineSongOpen); }
+
+  function artworkContext(song) {
+    return JSON.stringify([context.state.workspaceGeneration, context.state.set?.id, context.state.project?.id,
+      context.state.localProjectId, context.state.selectedId, song?.id, context.state.sessionActive, context.state.onlineSongOpen, artworkEditorEpoch]);
+  }
+  function ensureProjectMembership(song) {
+    const key = artworkContext(song);
+    if (projectMembership?.key === key) return;
+    projectMembership = { key, status: 'loading', projects: [], error: null };
+    const generation = ++membershipGeneration;
+    const loader = context.actions.loadSongProjects;
+    if (typeof loader !== 'function') {
+      projectMembership = { key, status: 'error', projects: [], error: new Error('Информация о проектах недоступна.') };
+      return;
+    }
+    Promise.resolve().then(() => loader(song)).then(projects => {
+      if (generation !== membershipGeneration || artworkContext(currentSong()) !== key || currentSong()?.id !== song.id) return;
+      projectMembership = { key, status: 'ready', projects: Array.isArray(projects) ? projects : [], error: null };
+      refreshProjectArtwork(song, key);
+    }).catch(error => {
+      if (generation !== membershipGeneration || artworkContext(currentSong()) !== key || currentSong()?.id !== song.id) return;
+      projectMembership = { key, status: 'error', projects: [], error };
+      refreshProjectArtwork(song, key);
+    });
+  }
+  function setArtwork(song, target, data) {
+    changeSong(song.id, latest => {
+      if (target === 'primary') return { ...latest, cover: data };
+      const covers = (Array.isArray(latest.projectCovers) ? latest.projectCovers : []).filter(item => item?.projectId !== target);
+      return { ...latest, projectCovers: data ? [...covers, { projectId: target, cover: data }] : covers };
+    });
+  }
+  function renderArtworkTarget(song, target, label, data) {
+    const file = input('', 'file', { className: 'cover-file-input', accept: 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp', 'aria-label': `Выбрать обложку: ${label}` });
+    file.addEventListener('change', async () => {
+      const selected = file.files?.[0]; if (!selected) return;
+      const key = artworkContext(song), generationKey = `${song.id}/${target}`;
+      const generation = (artworkGenerations.get(generationKey) || 0) + 1;
+      artworkGenerations.set(generationKey, generation);
+      try {
+        const image = await prepareArtwork(selected);
+        if (artworkGenerations.get(generationKey) !== generation || artworkContext(currentSong()) !== key || currentSong()?.id !== song.id) return;
+        setArtwork(song, target, image); render();
+      } catch (error) {
+        if (artworkGenerations.get(generationKey) === generation && artworkContext(currentSong()) === key) toast(error.message);
+      }
+    });
+    const picker = node('label', { className: 'cover-picker button quiet' }, [data ? 'Изменить обложку' : 'Выбрать обложку', file]);
+    const children = [node('span', { text: label }), picker];
+    let removeButton = null;
+    if (data) {
+      removeButton = button('×', 'cover-remove button quiet', () => {
+        if (!globalThis.confirm(`Удалить обложку «${label}»?`)) return;
+        artworkGenerations.set(`${song.id}/${target}`, (artworkGenerations.get(`${song.id}/${target}`) || 0) + 1);
+        setArtwork(song, target, ''); render();
+      });
+      removeButton.setAttribute('aria-label', `Удалить обложку: ${label}`);
+    }
+    const preview = data ? node('div', { className: 'cover-preview-wrap' }, [
+      node('img', { className: 'song-cover-preview', src: data, alt: label }), removeButton,
+    ]) : null;
+    return node('div', { className: 'field cover-field project-song-cover-field', ...(target === 'primary' ? {} : { 'data-project-id': target }) }, [...children, ...(preview ? [preview] : [])]);
+  }
+
+  function renderProjectArtworkItems(song) {
+    const membership = projectMembership?.key === artworkContext(song) ? projectMembership : null;
+    if (!membership || membership.status === 'loading') return [node('p', { className: 'hint', text: 'Загружаем проекты, в которых есть эта песня…', 'aria-live': 'polite' })];
+    if (membership.status === 'error') return [
+      node('p', { className: 'hint artwork-load-error', text: 'Не удалось загрузить проекты. Повторите попытку.' }),
+      button('Повторить загрузку проектов', 'button quiet', () => {
+        projectMembership = null;
+        ensureProjectMembership(song);
+        if (projectArtworkItems && els.editor.contains(projectArtworkItems)) projectArtworkItems.replaceChildren(...renderProjectArtworkItems(song));
+      }),
+    ];
+    return (membership.projects || []).map(project => {
+      const coverData = (Array.isArray(song.projectCovers) ? song.projectCovers : []).find(item => item?.projectId === project.id)?.cover || '';
+      return renderArtworkTarget(song, project.id, `Обложка песни · ${project.name}`, coverData);
+    });
+  }
+
+  function refreshProjectArtwork(song, key) {
+    if (artworkContext(currentSong()) !== key || currentSong()?.id !== song.id || !projectArtworkSection || !els.editor.contains(projectArtworkSection)) return;
+    projectArtworkItems?.replaceChildren(...renderProjectArtworkItems(song));
+  }
 
   function renderEditor() {
     if (committingCueBeforeRender) return;
@@ -206,17 +296,7 @@ export function createSongEditor(context) {
     const version = input(song.version, 'text', { placeholder: 'Например, студийная версия' }); version.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, version: version.value })); render(); });
     const album = input(song.album || '', 'text', { placeholder: 'Необязательно' }); album.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, album: album.value.trim() })); render(); });
     const endCaption = input(song.endCaption || '', 'text', { placeholder: 'Необязательно', maxlength: '1000' }); endCaption.addEventListener('change', () => { changeSong(song.id, s => ({ ...s, endCaption: endCaption.value })); render(); });
-    const cover = input('', 'file', { className: 'cover-file-input', accept: 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp', 'aria-label': 'Выбрать обложку песни' });
-    cover.addEventListener('change', async () => {
-      const file = cover.files?.[0]; if (!file) return;
-      const generation = ++coverGeneration, workspace = context.state.workspaceGeneration;
-      try {
-        const data = await prepareArtwork(file);
-        if (generation !== coverGeneration || workspace !== context.state.workspaceGeneration || currentSong()?.id !== song.id) return;
-        changeSong(song.id, s => ({ ...s, cover: data })); render();
-      } catch (error) { if (generation === coverGeneration) toast(error.message); }
-    });
-    const coverPicker = node('label', { className: 'cover-picker button quiet' }, [song.cover ? 'Изменить обложку' : 'Выбрать обложку', cover]);
+    ensureProjectMembership(song);
     const duration = input(formatDurationInput(song.duration), 'text', { inputmode: 'numeric', placeholder: 'ММ:СС', pattern: '[0-9]+:[0-5][0-9]', 'aria-label': 'Длительность, ММ:СС' });
     duration.addEventListener('change', () => {
       const parsed = parseDurationInput(duration.value);
@@ -231,9 +311,11 @@ export function createSongEditor(context) {
       })
       : node('span', { className: `status-pill${song.reviewed && !validation.length ? ' ready' : ''}`, text: status(song) });
     const header = node('div', { className: 'editor-header' }, [node('div', {}, [node('h1', { className: 'editor-title', text: song.title || 'Новая песня' }), node('p', { className: 'editor-subtitle', text: 'Текст, таймлайн и музыка для выступления' })]), statusControl]);
-    const coverControl = node('div', { className: 'field cover-field' }, [node('span', { text: 'Обложка песни · JPG, PNG, WebP' }), coverPicker]);
-    const coverPreview = song.cover ? node('div', { className: 'cover-preview-wrap' }, [node('img', { className: 'song-cover-preview', src: song.cover, alt: 'Обложка песни' }), button('×', 'cover-remove button quiet', () => { if (!globalThis.confirm('Удалить обложку песни?')) return; coverGeneration += 1; changeSong(song.id, s => ({ ...s, cover: '' })); render(); })]) : null;
-    const details = node('section', { className: 'section-card song-details' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Альбом', album), field('Версия записи', version), field('Подпись в конце песни', endCaption), field('Длительность, ММ:СС', duration), coverControl]), coverPreview]);
+    const primaryCover = renderArtworkTarget(song, 'primary', 'Основная обложка · JPG, PNG, WebP', song.cover || '');
+    primaryCover.classList.add('field');
+    const details = node('section', { className: 'section-card song-details' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Альбом', album), field('Версия записи', version), field('Подпись в конце песни', endCaption), field('Длительность, ММ:СС', duration), primaryCover])]);
+    projectArtworkItems = node('div', { className: 'project-song-artwork-items' }, renderProjectArtworkItems(song));
+    projectArtworkSection = node('section', { className: 'section-card project-song-artwork' }, [node('h2', { text: 'Обложки песни в проектах' }), node('p', { className: 'hint', text: 'Доступны только проекты, в которых есть эта песня.' }), projectArtworkItems]);
     if (editorTabSongId !== song.id) { editorTabSongId = song.id; editorTab = 'lrclib'; }
     const drafts = importDrafts.get(song.id) || { lrc: '', plain: '' }; importDrafts.set(song.id, drafts);
     const panels = {
@@ -260,7 +342,7 @@ export function createSongEditor(context) {
     selectTab(editorTab);
     // Keep the original player available while tapping in the text tab.
     const listen = node('div', { className: 'audio-preview text-reference', hidden: !song.source?.fileName }, [node('p', { className: 'hint', text: 'Оригинал для разметки' }), previewPlayer]);
-    els.editor.append(header, details, tabs, ...Object.values(panels), timeline, listen, renderBackingCard(song), renderReview(song), renderSongActions(song));
+    els.editor.append(header, details, projectArtworkSection, tabs, ...Object.values(panels), timeline, listen, renderBackingCard(song), renderReview(song), renderSongActions(song));
     setAudioPreview(song); setBackingPreview(song);
   }
   function formatDurationInput(value) {

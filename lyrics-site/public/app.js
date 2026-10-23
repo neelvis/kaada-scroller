@@ -1,4 +1,4 @@
-import { prepareArtwork } from './artwork.js';
+import { prepareArtwork, presentationArtwork } from './artwork.js';
 import { createSong, cueAt, uniformScrollProgress, validateSong } from './core.js';
 import { getAudio, getBacking, localState, connectedWorkspace, saveWorkspace, retryWorkspaceSave, onWorkspaceStatus } from './local-workspace.js';
 import { $, node, button, iconTextButton, toast, plural, input } from './ui.js';
@@ -105,10 +105,33 @@ const { renderEditor, cancelLrclib, resetPreparation, resetEditorTab, refreshCon
     get workspaceGeneration() { return workspaceGeneration; }
   },
   resources: { els, previewPlayer, backingPreview, get backingPreviewId() { return backingPreviewId; } },
-  actions: { currentSong, status, changeSong, render, showLibrary, addSong, clearAudioPreview, clearBackingPreview, setAudioPreview, setBackingPreview, entryFor, privateMutation, backingKey, markRemoteDirty, persist, syncLocalLibrary, saveLibrarySong, deleteLibrarySong, displayTime },
+  actions: { currentSong, status, changeSong, render, showLibrary, addSong, clearAudioPreview, clearBackingPreview, setAudioPreview, setBackingPreview, entryFor, privateMutation, backingKey, markRemoteDirty, persist, syncLocalLibrary, saveLibrarySong, deleteLibrarySong, displayTime, loadSongProjects },
 });
 
 function currentSong() { return set.songs.find((song) => song.id === selectedId) || null; }
+async function loadSongProjects(song) {
+  const projects = new Map();
+  const songId = entryFor(song).songId;
+  if (songId && sessionActive) {
+    const result = await remote.listSongProjects(songId);
+    for (const item of result.projects) projects.set(item.id, { id: item.id, name: item.name });
+  } else {
+    // Local project snapshots own their song IDs. Linked cloud copies are
+    // independent snapshots and must not supply stale cloud membership.
+    const local = localState();
+    for (const item of local.projects) {
+      if (!local.links[`project:${item.id}`] && item.songs.some(member => member.id === song.id)) {
+        projects.set(item.id, { id: item.id, name: item.name });
+      }
+    }
+  }
+  // The open draft can contain a song newly added before its first save.
+  if ((project || localProjectId) && set.songs.some(member => member.id === song.id)) {
+    const id = project?.id || localProjectId;
+    projects.set(id, { id, name: set.name });
+  }
+  return [...projects.values()];
+}
 function status(song) {
   const errors = validateSong(song);
   if (onlineSongOpen && remoteDirty && song.reviewed && !errors.length) return 'Изменена';
@@ -644,6 +667,7 @@ $('#show-mode').addEventListener('click', () => {
 function launchEvent(song) {
   eventOrigin = onlineSongOpen && !project ? 'library' : 'projects';
   let localPlayback = false;
+  let artworkProjectId = project?.id || localProjectId;
   if (project) {
     const local = localState().projects.find(item => localState().links[`project:${item.id}`]?.id === project.id);
     if (local) {
@@ -651,14 +675,14 @@ function launchEvent(song) {
       const mapping = link.entries.find(item => item.songId === songId);
       const snapshot = mapping && local.songs.find(item => item.id === mapping.localId);
       if (!snapshot) { toast('Песни нет в локальной копии. Сохраните проект локально перед запуском.'); return; }
-      song = snapshot; localPlayback = true;
+      song = snapshot; localPlayback = true; artworkProjectId = local.id;
     }
   }
   if (validateSong(song).length) { toast('Для показа песня должна быть подготовлена и подтверждена.'); return; }
   playback.dispose(); previewPlayer.pause(); backingPreview.pause(); document.querySelectorAll('.toast').forEach(item => item.remove());
   $('#home-view').hidden = true; $('.topbar').hidden = true; els.prep.hidden = true; els.event.hidden = false; els.eventName.textContent = song.title;
   eventState = { song: structuredClone(song), endCaption: (eventOrigin === 'projects' ? set.endCaption?.trim() : '') || song.endCaption?.trim() || 'Ваша песенка спета', frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0 };
-  const audienceCover = $('#audience-cover'), activeCover = project?.cover || set.cover || song.cover;
+  const audienceCover = $('#audience-cover'), activeCover = presentationArtwork(song, artworkProjectId, project?.cover || set.cover);
   audienceCover.hidden = !activeCover; if (activeCover) audienceCover.src = activeCover;
   els.audience.classList.toggle('has-cover', Boolean(activeCover));
   $('#event-progress').disabled = false;

@@ -35,9 +35,21 @@ def error(message: str, code: str, status: int) -> JSONResponse:
 
 
 def valid_song(song: Any) -> bool:
-    return (isinstance(song, dict) and isinstance(song.get("title"), str) and isinstance(song.get("cues"), list)
+    if not (isinstance(song, dict) and isinstance(song.get("title"), str) and isinstance(song.get("cues"), list)
             and isinstance(song.get("duration"), (int, float))
-            and ("endCaption" not in song or isinstance(song["endCaption"], str) and len(song["endCaption"]) <= 1000))
+            and ("endCaption" not in song or isinstance(song["endCaption"], str) and len(song["endCaption"]) <= 1000)):
+        return False
+    covers=song.get("projectCovers", [])
+    if not isinstance(covers, list): return False
+    seen=set()
+    for item in covers:
+        if not isinstance(item, dict): return False
+        project_id, cover=item.get("projectId"), item.get("cover")
+        if not isinstance(project_id,str) or not project_id.strip() or len(project_id)>200 or project_id in seen: return False
+        if not isinstance(cover,str) or len(cover)>11_184_844: return False
+        if cover and not re.fullmatch(r"data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}",cover): return False
+        seen.add(project_id)
+    return True
 
 
 def valid_entry(entry: Any) -> bool:
@@ -199,6 +211,12 @@ async def song(request: Request) -> Response:
     except Missing: return error("Песня не найдена.","not_found",404)
     except (ValueError,KeyError,AttributeError,TypeError,json.JSONDecodeError): return error("Проверьте версию и песню.","invalid",400)
 
+async def song_projects(request: Request) -> Response:
+    found=require(request)
+    if isinstance(found, Response): return found
+    try: return JSONResponse({"projects": request.app.state.store.list_song_projects(request.path_params["song_id"])})
+    except Missing: return error("Песня не найдена.","not_found",404)
+
 def sniff(path: Path, content_type: str) -> bool:
     with path.open("rb") as stream: head=stream.read(12)
     if content_type == "audio/wav": return head[:4] == b"RIFF" and head[8:12] == b"WAVE"
@@ -303,7 +321,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     app=Starlette(exception_handlers={413: lambda request, exc: error("Данные для сохранения больше 5 МиБ. Уменьшите обложки проекта.", "too_large", 413)}, routes=[
         Route("/health",health), Route("/login",login,methods=["POST"]), Route("/session",get_session), Route("/logout",logout,methods=["POST"]),
         Route("/projects",projects,methods=["GET","POST"]), Route("/projects/{project_id}",project,methods=["GET","PUT","DELETE"]),
-        Route("/library",library), Route("/songs",songs,methods=["POST"]), Route("/songs/{song_id}",song,methods=["GET","PUT","DELETE"]), Route("/audio",upload_audio,methods=["POST"]), Route("/audio/cleanup",cleanup_audio,methods=["POST"]), Route("/audio/{audio_id}",audio), Route("/imports",imports,methods=["POST"]), Route("/imports/{migration_key}",imported_project),
+        Route("/library",library), Route("/songs",songs,methods=["POST"]), Route("/songs/{song_id}",song,methods=["GET","PUT","DELETE"]), Route("/songs/{song_id}/projects",song_projects), Route("/audio",upload_audio,methods=["POST"]), Route("/audio/cleanup",cleanup_audio,methods=["POST"]), Route("/audio/{audio_id}",audio), Route("/imports",imports,methods=["POST"]), Route("/imports/{migration_key}",imported_project),
     ])
     app.state.settings=settings; app.state.store=store
     app.state.login_attempts=defaultdict(deque)

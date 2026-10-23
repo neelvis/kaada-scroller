@@ -153,6 +153,54 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(stale.status_code,409)
         self.assertEqual(self.client.delete(f"/songs/{first['songId']}",headers=headers).status_code,204)
 
+    def test_project_song_covers_persist_and_membership_lists_only_actual_projects(self):
+        headers=self.login()
+        first=self.client.post("/projects",headers=headers,json={"name":"Same name"}).json()
+        artwork="data:image/png;base64,YQ=="
+        entry={"song":{**song(),"projectCovers":[{"projectId":first["id"],"cover":artwork}]}}
+        saved=self.client.put(f"/projects/{first['id']}",headers=headers,json={**first,"songs":[entry]})
+        self.assertEqual(saved.status_code,200)
+        saved_entry=saved.json()["songs"][0]
+        self.assertEqual(saved_entry["song"]["projectCovers"],[{"projectId":first["id"],"cover":artwork}])
+        second=self.client.post("/projects",headers=headers,json={"name":"Same name"}).json()
+        second_saved=self.client.put(f"/projects/{second['id']}",headers=headers,json={**second,"songs":[saved_entry]})
+        self.assertEqual(second_saved.status_code,200)
+        projects=self.client.get(f"/songs/{saved_entry['songId']}/projects",headers=headers)
+        self.assertEqual(projects.status_code,200)
+        self.assertEqual(projects.json(),{"projects":sorted([{"id":first["id"],"name":"Same name"},{"id":second["id"],"name":"Same name"}],key=lambda item:item["id"])})
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get(f"/songs/{saved_entry['songId']}/projects").status_code,401)
+
+    def test_project_song_cover_api_rejects_duplicate_and_malformed_project_covers(self):
+        headers=self.login(); project=self.client.post("/projects",headers=headers,json={"name":"Covers"}).json()
+        base={**project,"songs":[{"song":{**song(),"projectCovers":[{"projectId":project["id"],"cover":"data:image/png;base64,YQ=="}]}}]}
+        self.assertEqual(self.client.put(f"/projects/{project['id']}",headers=headers,json=base).status_code,200)
+        invalids=[
+            [{"projectId":project["id"],"cover":"data:image/png;base64,YQ=="},{"projectId":project["id"],"cover":""}],
+            [{"projectId":" ","cover":""}],
+            [{"projectId":project["id"],"cover":"javascript:bad"}],
+            "bad",
+        ]
+        for covers in invalids:
+            response=self.client.put(f"/projects/{project['id']}",headers=headers,json={**base,"songs":[{"song":{**song(),"projectCovers":covers}}]})
+            self.assertEqual(response.status_code,400)
+
+    def test_import_remaps_local_project_cover_key_to_created_cloud_project(self):
+        headers=self.login(); local_id="portable-project"
+        response=self.client.post("/imports",headers=headers,json={
+            "migrationKey":local_id,"name":"Portable","cover":"",
+            "songs":[{"song":{**song(),"projectCovers":[{"projectId":local_id,"cover":"data:image/png;base64,YQ=="}]}}],
+        })
+        self.assertEqual(response.status_code,201)
+        created=response.json(); self.assertNotEqual(created["id"],local_id)
+        self.assertEqual(created["songs"][0]["song"]["projectCovers"],[{"projectId":created["id"],"cover":"data:image/png;base64,YQ=="}])
+        retry=self.client.post("/imports",headers=headers,json={
+            "migrationKey":local_id,"name":"Portable","cover":"",
+            "songs":[{"song":{**song(),"projectCovers":[{"projectId":local_id,"cover":"data:image/png;base64,YQ=="}]}}],
+        })
+        self.assertEqual(retry.status_code,200)
+        self.assertEqual(retry.json(),created)
+
     def test_project_and_song_end_captions_and_blank_interludes_persist(self):
         headers=self.login()
         project=self.client.post("/projects",headers=headers,json={"name":"Captions"}).json()

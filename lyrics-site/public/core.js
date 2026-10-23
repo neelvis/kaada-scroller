@@ -103,6 +103,18 @@ function sanitizeSong(raw, songNumber) {
     throw importError(`песня ${songNumber}: время начала автоскролла должно быть неотрицательным целым числом.`);
   }
   if (raw.backing !== undefined && !plainObject(raw.backing)) throw importError(`песня ${songNumber}: некорректная минусовка.`);
+  const projectCovers = raw.projectCovers === undefined ? [] : raw.projectCovers;
+  if (!Array.isArray(projectCovers)) throw importError(`песня ${songNumber}: projectCovers должен быть списком.`);
+  const projectCoverIds = new Set();
+  for (const item of projectCovers) {
+    if (!plainObject(item)) throw importError(`песня ${songNumber}: некорректная обложка проекта.`);
+    const projectId = identifier(item.projectId, 'id проекта обложки');
+    if (projectCoverIds.has(projectId)) throw importError(`песня ${songNumber}: обложка проекта повторяется.`);
+    projectCoverIds.add(projectId);
+    if (typeof item.cover !== 'string' || (item.cover && (!/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(item.cover) || item.cover.length > MAX_COVER_LENGTH))) {
+      throw importError(`песня ${songNumber}: некорректная обложка проекта.`);
+    }
+  }
   return {
     schemaVersion: SCHEMA_VERSION,
     id: identifier(raw.id, `id песни ${songNumber}`),
@@ -112,6 +124,7 @@ function sanitizeSong(raw, songNumber) {
     album: text(raw.album, `альбом песни ${songNumber}`, { optional: true, max: 1000 }),
     endCaption: text(raw.endCaption, `финальная подпись песни ${songNumber}`, { optional: true, max: 1000 }),
     cover: typeof raw.cover === 'string' ? raw.cover : '',
+    projectCovers: projectCovers.map(item => ({ projectId: item.projectId, cover: item.cover })),
     language: text(raw.language, `язык песни ${songNumber}`, { optional: true, max: 100 }),
     duration,
     delayMs: raw.delayMs,
@@ -294,6 +307,7 @@ export function createSong(partial = {}) {
     album: typeof partial.album === 'string' ? partial.album : '',
     endCaption: typeof partial.endCaption === 'string' ? partial.endCaption : '',
     cover: typeof partial.cover === 'string' ? partial.cover : '',
+    projectCovers: Array.isArray(partial.projectCovers) ? partial.projectCovers.map(item => ({ projectId: item.projectId, cover: item.cover })) : [],
     language: typeof partial.language === 'string' ? partial.language : '',
     duration: finiteNumber(partial.duration, 0),
     delayMs: finiteNumber(partial.delayMs, 0),

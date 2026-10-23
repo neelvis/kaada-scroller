@@ -216,6 +216,11 @@
 .project-cover-tools{display:flex;align-items:center;gap:7px;margin-top:8px}
 .project-cover-tools .project-cover-picker{margin:0}
 .project-cover-tools .cover-remove-project{display:grid;place-items:center}
+.project-song-artwork .hint{margin:0 0 12px}
+.project-song-artwork .project-song-cover-field{display:inline-block;vertical-align:top;width:min(100%,260px);margin:0 22px 16px 0}
+.project-song-cover-field .cover-preview-wrap{max-width:100%}
+.project-song-cover-field .song-cover-preview{max-width:min(100%,220px);max-height:160px}
+.artwork-load-error{color:var(--danger,#f08b8b)}
 .hub-card-icon{position:absolute;right:15px;top:15px;width:36px;height:36px;display:grid;place-items:center;border:0;background:transparent;font-size:25px;line-height:1}
 .hub-action-glyph{display:grid;place-items:center;width:100%;height:100%;font-size:20px;line-height:1;font-weight:700}
 @media(max-width:780px){.song-details .field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

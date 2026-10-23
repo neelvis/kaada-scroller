@@ -1,5 +1,11 @@
 import { artworkDimensions } from './artwork-dimensions.js';
 
+/** Presentation uses a project's song override before project and primary art. */
+export function presentationArtwork(song, projectId, projectCover = '') {
+  if (!projectId) return song.cover || '';
+  return song.projectCovers?.find(item => item.projectId === projectId)?.cover || projectCover || song.cover || '';
+}
+
 /** Keep accepted source images small enough for JSON storage and screen display. */
 export const artworkLimits = Object.freeze({ source: 8 * 1024 * 1024, stored: 192 * 1024, dimension: 1600, pixels: 40_000_000, sourceDimension: 16_000 });
 const supported = new Set(['image/jpeg', 'image/png', 'image/webp']);

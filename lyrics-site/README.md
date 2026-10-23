@@ -119,6 +119,15 @@ an explanation to reduce its artwork or select old covers again for compression.
 Run `node tests/artwork-browser.mjs` after building to verify all three image
 formats, large-source preparation, cloud persistence and fresh local reopening.
 
+The song editor provides primary artwork and separate artwork for each project
+containing the song. Library song cards show only primary artwork. Presentation
+uses the song's artwork for the active project, then project artwork, then primary
+song artwork (the album-cover fallback), then no artwork. Presentation without a
+project uses only primary artwork. Project-editor song lists keep their existing
+appearance. Project-specific covers follow the project through cloud saves and
+local copies, including project ID changes during transfer. See
+[revision 27](../specs/features/timed-lyrics/revision-27.md) for requirements.
+
 ## Find an existing LRC
 
 In the **LRCLIB** tab, use **Find LRC in LRCLIB**. The separate search fields

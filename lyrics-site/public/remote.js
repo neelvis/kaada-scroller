@@ -42,6 +42,7 @@ export async function saveProject(id, project) { return request(`/projects/${enc
 export async function deleteProject(id, revision) { return request(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE', body: jsonBody({ revision }), headers: { 'Content-Type': 'application/json' } }); }
 export async function listLibrary(query = '') { return request(`/library?q=${encodeURIComponent(query)}`); }
 export async function getSong(id) { return request(`/songs/${encodeURIComponent(id)}`); }
+export async function listSongProjects(id) { return request(`/songs/${encodeURIComponent(id)}/projects`); }
 export async function deleteSong(id) { return request(`/songs/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
 export async function uploadAudio(file, { signal } = {}) {
   const type = ({ 'audio/mp3': 'audio/mpeg', 'audio/x-wav': 'audio/wav', 'audio/wave': 'audio/wav' })[file.type] || file.type || (/\.wav$/i.test(file.name || '') ? 'audio/wav' : 'audio/mpeg');

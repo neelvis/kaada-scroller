@@ -163,6 +163,13 @@ class Store:
             rows = db.execute("SELECT p.id,p.name,p.cover,p.end_caption,p.revision,COUNT(e.position) song_count FROM projects p LEFT JOIN project_entries e ON e.project_id=p.id GROUP BY p.id ORDER BY p.created_at,p.id").fetchall()
             return [{"id": r["id"], "name": r["name"], "cover": r["cover"], "endCaption": r["end_caption"], "revision": r["revision"], "songCount": r["song_count"]} for r in rows]
 
+    def list_song_projects(self, song_id: str) -> list[dict[str, str]]:
+        with self.read() as db:
+            if not db.execute("SELECT 1 FROM songs WHERE id=?", (song_id,)).fetchone(): raise Missing()
+            rows=db.execute("""SELECT p.id,p.name FROM projects p JOIN project_entries e ON e.project_id=p.id
+                WHERE e.song_id=? ORDER BY p.created_at,p.id""", (song_id,)).fetchall()
+            return [{"id": row["id"], "name": row["name"]} for row in rows]
+
     def library(self, query: str) -> list[dict[str, Any]]:
         with self.read() as db:
             rows = db.execute("""SELECT r.*,s.created_at song_created_at FROM song_revisions r JOIN (SELECT song_id, MAX(rowid) latest FROM song_revisions GROUP BY song_id) l ON l.song_id=r.song_id AND l.latest=r.rowid JOIN songs s ON s.id=r.song_id ORDER BY r.rowid DESC""").fetchall()
@@ -291,9 +298,18 @@ class Store:
             if existing: return self.full_project(db, existing["id"]), False
             project_id=str(uuid.uuid4())
             db.execute("INSERT INTO projects(id,name,migration_key,cover,end_caption) VALUES(?,?,?,?,?)", (project_id,name,migration_key,cover,end_caption))
+            entries=[self._remap_entry_project_cover(entry, migration_key, project_id) for entry in entries]
             resolved=[self._resolve_entry(db, entry) for entry in entries]
             db.executemany("INSERT INTO project_entries(project_id,position,song_id,revision_id) VALUES(?,?,?,?)", [(project_id,index,row["song_id"],row["id"]) for index,row in enumerate(resolved)])
             return self.full_project(db, project_id), True
+
+    @staticmethod
+    def _remap_entry_project_cover(entry: dict[str, Any], source_id: str, target_id: str) -> dict[str, Any]:
+        entry=dict(entry); song=dict(entry["song"])
+        if isinstance(song.get("projectCovers"), list):
+            song["projectCovers"]=[{**item, "projectId": target_id if item.get("projectId") == source_id else item.get("projectId")} for item in song["projectCovers"]]
+        entry["song"]=song
+        return entry
 
     def imported_project(self, migration_key: str) -> dict[str, Any]:
         with self.read() as db:

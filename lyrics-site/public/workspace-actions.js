@@ -138,7 +138,11 @@ export function createWorkspaceActions(context) {
       if (old && (!initialOld || old.id !== initialOld.id || contentFingerprint(old) !== contentFingerprint(initialOld))) {
         throw new Error('Локальная копия изменилась во время скачивания. Повторите сохранение.');
       }
-      if (old) { result.local.id = old.id; next.projects = next.projects.map(item => item.id === old.id ? result.local : item); }
+      if (old) {
+        const generatedId = result.local.id;
+        result.local.songs = result.local.songs.map(song => ({ ...song, projectCovers: (song.projectCovers || []).map(item => ({ ...item, projectId: item.projectId === generatedId ? old.id : item.projectId })) }));
+        result.local.id = old.id; next.projects = next.projects.map(item => item.id === old.id ? result.local : item);
+      }
       else next.projects.push(result.local);
       next.links[`project:${result.local.id}`] = projectLink(result.local, cloud);
       const total = (cloud.songs?.length || 0) + 1;
