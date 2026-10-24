@@ -63,7 +63,7 @@ export function createWorkspaceActions(context) {
     await context.state.persistChain;
     const found = localState().projects.find(item => item.id === id); if (!found) return false;
     const link = localState().links[`project:${id}`];
-    if (link && !playbackOnly) return openProject(link.id);
+    if (link && !playbackOnly && context.state.sessionActive) return openProject(link.id);
     if (!await context.actions.confirmProjectExit()) return false;
     cancelRecognition(); clearAudioPreview(); context.state.localProjectId = id; context.state.project = null; context.state.projectEntries.clear();
     context.state.onlineSongOpen = false; context.state.remoteDirty = false;

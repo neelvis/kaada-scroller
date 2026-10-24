@@ -192,3 +192,78 @@ test('workspace actions restore configured folders, reserve picker actions, and 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('linked local projects open their snapshot while signed out and honor playback and exit guards', async () => {
+  installDom(); installIndexedDb();
+  const { createWorkspaceActions } = await import('../public/workspace-actions.js');
+  const workspace = await import('../public/local-workspace.js');
+  await workspace.connectWorkspace(createDirectoryFixture().handle);
+  const snapshot = {
+    schemaVersion: 1, id: 'local-copy', name: 'Offline copy',
+    songs: [{ ...createSong({ id: 'offline-song', title: 'Offline song' }), extra: 'local snapshot' }],
+  };
+  await workspace.saveWorkspace({
+    schemaVersion: 1, library: [], projects: [snapshot],
+    links: { 'project:local-copy': { id: 'cloud-project', fingerprint: 'cloud-fingerprint' } },
+  });
+
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0, cloudOpens = [], confirms = 0, cancels = 0, clears = 0, renders = 0;
+  globalThis.fetch = async () => { fetchCalls++; throw new Error('Unexpected network request'); };
+  const state = {
+    sessionActive: false, persistChain: Promise.resolve(), localProjectId: null,
+    project: null, projectEntries: new Map(), onlineSongOpen: true, remoteDirty: true,
+    selectedId: null, set: null,
+  };
+  let allowExit = true;
+  const context = {
+    state,
+    resources: { els: { prep: { hidden: true } }, hub: { render() {} } },
+    actions: {
+      cancelRecognition() { cancels++; }, clearAudioPreview() { clears++; },
+      render() { renders++; }, openProject(id) { cloudOpens.push(id); },
+      createLibrarySong() {}, async confirmProjectExit() { confirms++; return allowExit; },
+    },
+  };
+  const actions = createWorkspaceActions(context);
+  try {
+    assert.equal(await actions.openLocalProject('local-copy'), true);
+    assert.deepEqual(cloudOpens, []);
+    assert.equal(fetchCalls, 0);
+    assert.equal(state.localProjectId, 'local-copy');
+    assert.equal(state.set.name, 'Offline copy');
+    assert.equal(state.set.songs[0].extra, 'local snapshot');
+    assert.equal(state.onlineSongOpen, false);
+    assert.equal(state.remoteDirty, false);
+
+    // Authenticated linked copies keep the existing cloud editing route.
+    state.sessionActive = true;
+    assert.equal(await actions.openLocalProject('local-copy'), undefined);
+    assert.deepEqual(cloudOpens, ['cloud-project']);
+    assert.equal(confirms, 1);
+
+    // Playback-only mode always opens the local snapshot, even when signed in.
+    assert.equal(await actions.openLocalProject('local-copy', { playbackOnly: true }), true);
+    assert.deepEqual(cloudOpens, ['cloud-project']);
+    assert.equal(state.localProjectId, 'local-copy');
+
+    // A cancelled exit leaves the current project and associated state intact.
+    state.sessionActive = false;
+    state.localProjectId = 'keep-me';
+    state.project = { id: 'currently-open' };
+    state.projectEntries = new Map([['entry', { id: 'entry' }]]);
+    state.set = { id: 'currently-open', name: 'Current', songs: [] };
+    state.selectedId = 'selected'; state.onlineSongOpen = true; state.remoteDirty = true;
+    allowExit = false;
+    assert.equal(await actions.openLocalProject('local-copy'), false);
+    assert.equal(state.localProjectId, 'keep-me');
+    assert.deepEqual(state.project, { id: 'currently-open' });
+    assert.deepEqual([...state.projectEntries], [['entry', { id: 'entry' }]]);
+    assert.equal(state.set.name, 'Current'); assert.equal(state.selectedId, 'selected');
+    assert.equal(state.onlineSongOpen, true); assert.equal(state.remoteDirty, true);
+    assert.equal(cancels, 2); assert.equal(clears, 2); assert.equal(renders, 2);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
