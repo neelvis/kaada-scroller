@@ -10,7 +10,7 @@
 .song-item>.song-select{flex:1;min-width:0}
 .song-live-option{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:10px;line-height:1;cursor:pointer;white-space:nowrap}
 .song-live-option input{width:13px;height:13px;margin:0;accent-color:var(--accent)}
-.song-live-option.has-tooltip::after{left:auto;right:0;transform:none}
+.song-live-option.has-tooltip::after{left:auto;right:0;transform:none;max-width:min(240px,calc(100vw - 48px))}
 .event-bar-start{display:flex;align-items:center;gap:4px}.event-menu-toggle{font-size:20px;line-height:1;padding:7px 10px}
 .audience.no-highlight .audience-line,.audience.no-highlight .audience-line.past,.audience.no-highlight .audience-line.active{color:var(--upcoming);font-weight:570;opacity:1;transform:none;text-shadow:none}.audience.no-highlight .audience-line.rest,.audience.no-highlight .audience-line.neutral{color:var(--muted)}
 .event-menu{position:fixed;inset:auto;width:min(420px,calc(100vw - 24px));max-height:min(620px,calc(100dvh - 24px));margin:0;z-index:5;overflow:auto}.event-menu-content{padding:18px}.event-menu-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:14px}.event-menu-heading h2{margin:0;font-size:19px;overflow-wrap:anywhere}.event-menu-songs{display:flex;flex-direction:column;gap:5px;max-height:min(45dvh,380px);overflow:auto;padding:12px 0}.event-menu-songs button{width:100%;text-align:left}.event-projects{width:100%}
@@ -118,6 +118,8 @@
 /* Keep list tooltips inside their row so they cannot enlarge the scroll area. */
 .interlude-notes{display:none;white-space:nowrap;min-height:1.2em}
 .audience .audience-lines.timed-rests .audience-line.rest.active{color:var(--accent);font-weight:800;opacity:1}
+.audience.no-highlight .audience-lines.timed-rests .audience-line.rest.active{color:var(--muted);font-weight:570;opacity:1;transform:none;text-shadow:none}
+.audience.no-highlight .audience-lines.timed-rests .rest.active .interlude-notes span{animation:none}
 .timed-rests .rest.active .interlude-label{display:none}
 .timed-rests .rest.active .interlude-notes{display:inline-block}
 .rest.empty-interlude .interlude-label{display:none}

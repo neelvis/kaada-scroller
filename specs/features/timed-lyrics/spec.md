@@ -43,7 +43,7 @@ Accepted extension: [revision 25 — artwork and album metadata](revision-25.md)
 Accepted extension: [revision 26 — cards, local copies and song presentation](revision-26.md)
 (implemented, verified and deployed).
 Accepted extension: [revision 28 — per-song live display emphasis](revision-28.md)
-(implemented; validation pending).
+(implemented and deployed; behavior acceptance pending).
 
 ## Purpose
 

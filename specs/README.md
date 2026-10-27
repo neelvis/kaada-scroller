@@ -23,4 +23,4 @@
 | TL revision 24 | Backing music in display mode | Deployed — acceptance pending | [Requirements](features/timed-lyrics/revision-24.md) |
 | TL revision 26 | Cards, local copies and song presentation | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-26.md) |
 | TL revision 27 | Project-specific song artwork | Implemented and verified locally — publication in progress | [Requirements](features/timed-lyrics/revision-27.md) |
-| TL revision 28 | Per-song live display emphasis | Implemented — validation pending | [Requirements](features/timed-lyrics/revision-28.md) |
+| TL revision 28 | Per-song live display emphasis | Implemented and deployed — behavior acceptance pending | [Requirements](features/timed-lyrics/revision-28.md) |
