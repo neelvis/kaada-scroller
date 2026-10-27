@@ -266,7 +266,7 @@ function entryFor(song) { return projectEntries.get(song.id) || {}; }
 function projectPayload() {
   return {
     revision: project.revision, name: set.name || project.name, cover: set.cover || '', endCaption: set.endCaption || '',
-    songs: set.songs.map(song => ({ ...entryFor(song), song: structuredClone(song) })),
+    songs: set.songs.map(song => ({ ...entryFor(song), live: set.liveSongs?.[song.id] === true, song: structuredClone(song) })),
   };
 }
 function adoptProject(next, { preserveSelection = false } = {}) {
@@ -279,8 +279,8 @@ function adoptProject(next, { preserveSelection = false } = {}) {
   const local = localState().projects.find(item => localState().links[`project:${item.id}`]?.id === next.id);
   const link = local && localState().links[`project:${local.id}`];
   if (link && (link.revision !== next.revision || link.entries?.length !== next.songs.length || next.songs.some((entry, index) => link.entries?.[index]?.revisionId !== entry.revisionId))) pendingLocalRefresh = next.id;
-  projectEntries = new Map((next.songs || []).map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null }]));
-  set = { schemaVersion: 1, id: next.id, name: next.name, cover: next.cover || '', endCaption: next.endCaption || '', songs: (next.songs || []).map(entry => entry.song) };
+  projectEntries = new Map((next.songs || []).map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null, live: entry.live === true }]));
+  set = { schemaVersion: 1, id: next.id, name: next.name, cover: next.cover || '', endCaption: next.endCaption || '', liveSongs: Object.fromEntries((next.songs || []).filter(entry => entry.live === true).map(entry => [entry.song.id, true])), songs: (next.songs || []).map(entry => entry.song) };
   selectedId = set.songs.some(song => song.id === previousSelection) ? previousSelection : (set.songs[selectedIndex]?.id || null);
   remoteDirty = false; remoteFailed = false; updateRemoteState(); render();
 }
@@ -603,10 +603,23 @@ function renderList() {
     const move = direction => { const target = index + direction; if (target < 0 || target >= set.songs.length) return; const songs = [...set.songs]; [songs[index], songs[target]] = [songs[target], songs[index]]; set = { ...set, songs }; markRemoteDirty(); render(); };
     const up = iconTextButton('↑', 'Переместить песню выше', 'song-reorder', () => move(-1)); up.disabled = index === 0;
     const down = iconTextButton('↓', 'Переместить песню ниже', 'song-reorder', () => move(1)); down.disabled = index === set.songs.length - 1;
+    const liveLabel = node('label', { className: 'song-live-option has-tooltip', 'data-tooltip': 'для live исполнения текущая строка песни не выделяется' }, [
+      node('input', { type: 'checkbox', checked: set.liveSongs?.[song.id] === true, 'aria-label': `Live: ${song.title || 'Без названия'}` }),
+      node('span', { text: 'Live' }),
+    ]);
+    liveLabel.querySelector('input').addEventListener('change', event => {
+      const liveSongs = { ...(set.liveSongs || {}) };
+      if (event.target.checked) liveSongs[song.id] = true;
+      else delete liveSongs[song.id];
+      set = { ...set, liveSongs };
+      if (project) projectEntries.set(song.id, { ...entryFor(song), live: event.target.checked });
+      markRemoteDirty();
+      persist();
+    });
     select.draggable = true;
     select.addEventListener('dragstart', event => { draggedSongId = song.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', song.id); select.classList.add('song-dragging'); });
     select.addEventListener('dragend', () => { draggedSongId = null; select.classList.remove('song-dragging'); });
-    const row = node('div', { className: `song-item${song.id === selectedId ? ' active' : ''}`, 'data-song-id': song.id }, [select, node('div', { className: 'song-reorder-wrap' }, [up, down])]);
+    const row = node('div', { className: `song-item${song.id === selectedId ? ' active' : ''}`, 'data-song-id': song.id }, [select, node('div', { className: 'song-item-controls' }, [liveLabel, node('div', { className: 'song-reorder-wrap' }, [up, down])])]);
     row.addEventListener('dragover', event => { if (draggedSongId) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; row.classList.add('song-drop-target'); } });
     row.addEventListener('dragleave', event => { if (!row.contains(event.relatedTarget)) row.classList.remove('song-drop-target'); });
     row.addEventListener('drop', event => { if (!draggedSongId) return; event.preventDefault(); row.classList.remove('song-drop-target'); moveSong(draggedSongId, index); });
@@ -666,6 +679,7 @@ $('#show-mode').addEventListener('click', () => {
 
 function launchEvent(song) {
   eventOrigin = onlineSongOpen && !project ? 'library' : 'projects';
+  if (eventOrigin === 'projects') highlightEnabled = set.liveSongs?.[song.id] !== true;
   let localPlayback = false;
   let artworkProjectId = project?.id || localProjectId;
   if (project) {
@@ -987,7 +1001,7 @@ function applyHighlight() {
 }
 function toggleHighlight() {
   highlightEnabled = !highlightEnabled;
-  try { localStorage.setItem('lyrics-highlight-current', String(highlightEnabled)); } catch {}
+  if (eventOrigin === 'library') try { localStorage.setItem('lyrics-highlight-current', String(highlightEnabled)); } catch {}
   applyHighlight();
 }
 try { highlightEnabled = localStorage.getItem('lyrics-highlight-current') !== 'false'; } catch {}

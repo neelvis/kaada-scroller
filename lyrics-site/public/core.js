@@ -157,12 +157,17 @@ function sanitizeSet(raw) {
       cueIds.add(cue.id);
     }
   }
+  const songIdSet = new Set(songs.map(song => song.id));
+  const liveSongs = plainObject(raw.liveSongs)
+    ? Object.fromEntries(Object.entries(raw.liveSongs).filter(([id, value]) => songIdSet.has(id) && value === true))
+    : {};
   return {
     schemaVersion: SCHEMA_VERSION,
     id: text(raw.id, 'id набора', { max: 200 }),
     name: text(raw.name, 'название набора', { max: 1000 }),
     cover: typeof raw.cover === 'string' ? raw.cover : '',
     endCaption: text(raw.endCaption, 'финальная подпись набора', { optional: true, max: 1000 }),
+    liveSongs,
     songs,
   };
 }

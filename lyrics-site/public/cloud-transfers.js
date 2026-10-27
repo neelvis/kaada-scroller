@@ -51,6 +51,7 @@ export async function uploadLocalProject(local, link, progress = () => {}, retry
     progress(`Загрузка файлов: ${index + 1} из ${local.songs.length}`);
     const entry = await uploadEntry({ ...song, projectCovers: (song.projectCovers || []).map(item => ({ ...item, projectId: item.projectId === local.id && link ? link.id : item.projectId })) });
     const prior = link?.entries?.find(entry => entry.localId === song.id);
+    Object.assign(entry, { live: local.liveSongs?.[song.id] === true });
     if (prior && prior.localId === song.id) Object.assign(entry, { songId: prior.songId, revisionId: prior.revisionId });
     songs.push(entry);
   }
@@ -69,7 +70,8 @@ export async function downloadProjectFiles(cloud, progress = () => {}) {
     songs.push(song);
     progress({ phase: 'downloading', completed: index + 1, total, label: `Скачивание: ${index + 1} из ${total}` });
   }
-  return { local: { schemaVersion: 1, id: localProjectId, name: cloud.name, cover: cloud.cover || '', endCaption: cloud.endCaption || '', songs }, audio };
+  const liveSongs = Object.fromEntries(cloud.songs.flatMap((entry, index) => entry.live === true ? [[songs[index].id, true]] : []));
+  return { local: { schemaVersion: 1, id: localProjectId, name: cloud.name, cover: cloud.cover || '', endCaption: cloud.endCaption || '', liveSongs, songs }, audio };
 }
 export function projectLink(local, cloud) {
   return { id: cloud.id, revision: cloud.revision, fingerprint: contentFingerprint(local), entries: cloud.songs.map((entry, index) => ({ localId: local.songs[index]?.id, songId: entry.songId, revisionId: entry.revisionId })) };
