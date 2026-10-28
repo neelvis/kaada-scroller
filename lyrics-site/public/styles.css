@@ -234,3 +234,17 @@
 @media(max-width:500px){.song-details .field-grid{grid-template-columns:1fr}.song-details .field-grid .field:first-child{grid-column:auto}}
 
 .audience-line.end-caption{color:var(--accent);opacity:1}
+
+/* Revision 29: quieter scrolling and fixed preparation navigation. */
+html{scrollbar-color:rgba(165,191,204,.28) transparent;scrollbar-width:thin}
+*::-webkit-scrollbar{width:8px;height:8px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:rgba(165,191,204,.28);border:2px solid transparent;border-radius:8px;background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background-color:rgba(165,191,204,.5)}
+.topbar{position:sticky;top:0;z-index:40}
+.song-section-nav{position:fixed;z-index:35;top:84px;right:20px;display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid rgba(40,80,97,.65);border-radius:12px;background:rgba(7,26,36,.86);backdrop-filter:blur(8px)}
+.song-section-link{width:38px;height:38px;padding:6px;font-size:20px;line-height:1}
+.song-section-link::after{left:auto;right:calc(100% + 8px);top:50%;transform:translateY(-50%)}
+#song-details,#project-song-artwork,#song-timeline,#song-music{scroll-margin-top:84px}
+.timeline-toggle{margin-top:12px;padding:6px 2px;color:var(--muted);font-size:13px}
+@media(max-width:780px){.song-section-nav{right:8px;top:76px;padding:5px}.song-section-link{width:34px;height:34px}.song-section-nav{gap:3px}}

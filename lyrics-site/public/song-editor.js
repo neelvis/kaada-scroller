@@ -20,6 +20,7 @@ export function createSongEditor(context) {
   const backingGeneration = new Map();
   const importDrafts = new Map();
   const estimatedRestStarts = new Set();
+  const expandedTimelines = new Map();
   const lrclibClient = new LrclibClient();
   let editorTab = 'lrclib';
   let editorTabSongId = null;
@@ -285,8 +286,7 @@ export function createSongEditor(context) {
       els.editor.append(node('div', { className: 'empty-state' }, [
         node('span', { className: 'empty-note', text: '♪' }),
         node('h1', { text: context.state.set.songs.length ? 'Выберите песню' : context.state.project ? 'Добавьте песни в проект' : 'Подготовьте первую песню' }),
-        node('p', { className: 'hint', text: context.state.set.songs.length ? 'Откройте песню в списке слева.' : 'Добавьте текст, музыку или оба компонента.' }),
-        button('Добавить песню', 'button primary', addSong),
+        node('p', { className: 'hint', text: context.state.project ? 'Откройте песню в списке слева или добавьте новую. Кнопка «Добавить песни» вверху позволяет создать песню или добавить её из библиотеки.' : context.state.set.songs.length ? 'Откройте песню в списке слева.' : 'Добавьте текст, музыку или оба компонента.' }),
       ])); return;
     }
     const validation = validateSong(song);
@@ -313,9 +313,9 @@ export function createSongEditor(context) {
     const header = node('div', { className: 'editor-header' }, [node('div', {}, [node('h1', { className: 'editor-title', text: song.title || 'Новая песня' }), node('p', { className: 'editor-subtitle', text: 'Текст, таймлайн и музыка для выступления' })]), statusControl]);
     const primaryCover = renderArtworkTarget(song, 'primary', 'Основная обложка · JPG, PNG, WebP', song.cover || '');
     primaryCover.classList.add('field');
-    const details = node('section', { className: 'section-card song-details' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Альбом', album), field('Версия записи', version), field('Подпись в конце песни', endCaption), field('Длительность, ММ:СС', duration), primaryCover])]);
+    const details = node('section', { id: 'song-details', className: 'section-card song-details' }, [node('h2', { text: 'О песне' }), node('div', { className: 'field-grid' }, [field('Название', title), field('Исполнитель', artist), field('Альбом', album), field('Версия записи', version), field('Подпись в конце песни', endCaption), field('Длительность, ММ:СС', duration), primaryCover])]);
     projectArtworkItems = node('div', { className: 'project-song-artwork-items' }, renderProjectArtworkItems(song));
-    projectArtworkSection = node('section', { className: 'section-card project-song-artwork' }, [node('h2', { text: 'Обложки песни в проектах' }), node('p', { className: 'hint', text: 'Доступны только проекты, в которых есть эта песня.' }), projectArtworkItems]);
+    projectArtworkSection = node('section', { id: 'project-song-artwork', className: 'section-card project-song-artwork' }, [node('h2', { text: 'Обложки песни в проектах' }), node('p', { className: 'hint', text: 'Доступны только проекты, в которых есть эта песня.' }), projectArtworkItems]);
     if (editorTabSongId !== song.id) { editorTabSongId = song.id; editorTab = 'lrclib'; }
     const drafts = importDrafts.get(song.id) || { lrc: '', plain: '' }; importDrafts.set(song.id, drafts);
     const panels = {
@@ -323,7 +323,7 @@ export function createSongEditor(context) {
       lrc: node('div', { id: 'lrc-panel', role: 'tabpanel', 'aria-labelledby': 'lrc-tab', className: 'editor-tab-panel' }, [renderImportCard(song, 'lrc', drafts)]),
       plain: node('div', { id: 'plain-panel', role: 'tabpanel', 'aria-labelledby': 'plain-tab', className: 'editor-tab-panel' }, [renderImportCard(song, 'plain', drafts)])
     };
-    const timeline = node('div', { className: 'editor-tab-panel' }, [renderCues(song, validation)]);
+    const timeline = node('div', { id: 'song-timeline', className: 'editor-tab-panel' }, [renderCues(song, validation)]);
     const tabs = node('div', { className: 'editor-tabs', role: 'tablist', 'aria-label': 'Подготовка песни' });
     const selectTab = (name, focus = false) => {
       editorTab = name;
@@ -342,7 +342,13 @@ export function createSongEditor(context) {
     selectTab(editorTab);
     // Keep the original player available while tapping in the text tab.
     const listen = node('div', { className: 'audio-preview text-reference', hidden: !song.source?.fileName }, [node('p', { className: 'hint', text: 'Оригинал для разметки' }), previewPlayer]);
-    els.editor.append(header, details, projectArtworkSection, tabs, ...Object.values(panels), timeline, listen, renderBackingCard(song), renderReview(song), renderSongActions(song));
+    const backing = renderBackingCard(song); backing.id = 'song-music';
+    const sectionNav = node('nav', { className: 'song-section-nav', 'aria-label': 'Разделы песни' });
+    for (const [icon, label, target] of [['ⓘ', 'О песне', 'song-details'], ['▧', 'Обложки в проектах', 'project-song-artwork'], ['≡', 'LRC и строки таймлайна', 'song-timeline'], ['♫', 'Музыка', 'song-music']]) {
+      const control = button(icon, 'button quiet has-tooltip song-section-link', () => document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      control.setAttribute('aria-label', label); control.setAttribute('data-tooltip', label); sectionNav.append(control);
+    }
+    els.editor.append(sectionNav, header, details, projectArtworkSection, tabs, ...Object.values(panels), timeline, listen, backing, renderReview(song), renderSongActions(song));
     setAudioPreview(song); setBackingPreview(song);
   }
   function formatDurationInput(value) {
@@ -518,6 +524,7 @@ export function createSongEditor(context) {
   }
   function confirmReplace(message) { const dialog = $('#confirm-dialog'); $('#confirm-text').textContent = message; return new Promise((resolve) => { dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true }); dialog.showModal(); }); }
   function renderCues(song, validation) {
+    if (!expandedTimelines.has(song.id)) expandedTimelines.set(song.id, song.cues.length <= 5);
     const card = node('section', { className: 'section-card' }); const table = node('div', { className: 'cue-table' });
     let deferCueRender = false;
     let pendingCueRender = false;
@@ -597,7 +604,7 @@ export function createSongEditor(context) {
       render();
     });
     const timeShiftControls = node('div', { className: 'time-shift-controls' }, [
-      node('label', { htmlFor: 'cue-time-shift', text: 'Подвинуть время, сек' }),
+      node('label', { htmlFor: 'cue-time-shift', text: 'Подвинуть время, сек', className: 'has-tooltip', 'data-tooltip': 'сместить все строки песни на указанное время', title: 'сместить все строки песни на указанное время' }),
       timeShift,
       applyTimeShift,
     ]);
@@ -687,6 +694,37 @@ export function createSongEditor(context) {
       row.addEventListener('drop', event => dropAt(event, rowBoundary(event)));
       table.append(boundaries[index], row);
     }); table.append(boundaries.at(-1)); card.append(table);
+    if (song.cues.length > 5 || !expandedTimelines.get(song.id)) {
+      const toggles = [];
+      let bottomToggle;
+      const syncToggle = () => {
+        const expanded = table.hidden;
+        expandedTimelines.set(song.id, expanded);
+        table.hidden = !expanded;
+        toggles.forEach(toggle => {
+          toggle.textContent = expanded ? 'Свернуть ↑↑' : 'Раскрыть ↓↓';
+          toggle.setAttribute('aria-expanded', String(expanded));
+        });
+        bottomToggle.hidden = !expanded;
+      };
+      const makeToggle = () => {
+        const toggle = button('Раскрыть ↓↓', 'button quiet timeline-toggle', syncToggle);
+        toggle.setAttribute('aria-expanded', 'false'); toggles.push(toggle); return toggle;
+      };
+      table.hidden = !expandedTimelines.get(song.id);
+      const topToggle = makeToggle();
+      if (!table.hidden) {
+        topToggle.textContent = 'Свернуть ↑↑';
+        topToggle.setAttribute('aria-expanded', 'true');
+      }
+      bottomToggle = makeToggle(); bottomToggle.hidden = true;
+      if (!table.hidden) {
+        bottomToggle.textContent = 'Свернуть ↑↑';
+        bottomToggle.setAttribute('aria-expanded', 'true');
+        bottomToggle.hidden = false;
+      }
+      card.append(topToggle, table, bottomToggle);
+    }
     if (validation.length) card.append(node('ul', { className: 'validation' }, validation.map((message) => node('li', { text: message })))); return card;
   }
   function renderReview(song) {

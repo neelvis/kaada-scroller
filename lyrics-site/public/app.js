@@ -950,7 +950,7 @@ async function signOut() {
   playback.dispose();
   cancelRecognition(); clearAudioPreview();
   const { cleared, revoked } = await sessionLifecycle.signOut(() => {
-    localProjectId = null; cloudProjects = []; sessionActive = false; onlineSongOpen = false; librarySongs = []; librarySelection += 1; $('#library-dialog').close(); $('#library-list').replaceChildren(); project = null; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateSessionUi(); render(); els.login.disabled = true;
+    localProjectId = null; cloudProjects = []; sessionActive = false; onlineSongOpen = false; librarySongs = []; librarySelection += 1; $('#library-dialog').close(); $('#library-list').replaceChildren(); project = null; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateSessionUi(); render(); showProjects(); els.login.disabled = true;
   });
   els.login.disabled = false;
   toast(!cleared ? 'Очистка локальных данных не завершилась. Откройте приложение заново, чтобы повторить её.' : revoked ? 'Вы вышли. Локальный набор и его записи не изменены.' : 'Данные на этом устройстве очищены, но сервер пока не подтвердил выход. Подключитесь к сети и откройте приложение ещё раз.');
