@@ -1,9 +1,12 @@
 import asyncio
+from contextlib import contextmanager
+from dataclasses import replace
 import io
 import httpx
 import json
 import os
 import sqlite3
+import tarfile
 import tempfile
 import unittest
 import wave
@@ -27,6 +30,10 @@ def song(title="Song"):
     return {"schemaVersion":1,"id":"local-id","title":title,"artist":"Artist","version":"original","language":"ru","duration":2,"delayMs":0,"reviewed":True,"source":{"kind":"manual","fileName":""},"cues":[{"id":"c1","start":0,"text":"text","type":"lyric"}]}
 
 
+def png(width=2,height=3,payload=b"original artwork bytes"):
+    return b"\x89PNG\r\n\x1a\n"+b"\x00\x00\x00\x0dIHDR"+width.to_bytes(4,"big")+height.to_bytes(4,"big")+b"\x08\x02\x00\x00\x00"+payload
+
+
 class ApiTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
@@ -41,6 +48,98 @@ class ApiTest(unittest.TestCase):
     def login(self):
         response=self.client.post("/login",headers=self.headers,json={"password":"organizer password"})
         self.assertEqual(response.status_code,200); return {**self.headers,"X-Lyrics-CSRF":response.json()["csrf"]}
+
+    def test_artwork_upload_preserves_original_bytes_deduplicates_and_requires_auth(self):
+        image=png(1800,1000)
+        unauth=self.client.post("/artwork",headers={"Content-Type":"image/png"},content=image)
+        self.assertEqual(unauth.status_code,401)
+        headers=self.login()
+        csrf=self.client.post("/artwork",headers={**self.headers,"Content-Type":"image/png"},content=image)
+        self.assertEqual(csrf.status_code,403)
+        first=self.client.post("/artwork",headers={**headers,"Content-Type":"image/png"},content=image)
+        self.assertEqual(first.status_code,201)
+        self.assertEqual(first.json()["id"],__import__("hashlib").sha256(image).hexdigest())
+        self.assertEqual(first.json()["cover"],"./api/artwork/"+first.json()["id"])
+        self.assertFalse(self.client.app.state.store.reserve_upload("quota-check",1024*1024,self.client.app.state.settings.quota_bytes))
+        fetched=self.client.get("/artwork/"+first.json()["id"])
+        self.assertEqual(fetched.status_code,200); self.assertEqual(fetched.content,image)
+        self.assertEqual(fetched.headers["cache-control"],"no-store")
+        head=self.client.head("/artwork/"+first.json()["id"])
+        self.assertEqual(head.status_code,200); self.assertEqual(head.content,b""); self.assertEqual(head.headers["content-length"],str(len(image)))
+        self.assertEqual(head.headers["cache-control"],"no-store")
+        anonymous=TestClient(self.client.app)
+        unauth_get=anonymous.get("/artwork/"+first.json()["id"])
+        self.assertEqual(unauth_get.status_code,401); self.assertEqual(unauth_get.headers["cache-control"],"no-store")
+        replay=self.client.post("/artwork",headers={**headers,"Content-Type":"image/png"},content=image)
+        self.assertEqual(replay.status_code,200); self.assertEqual(replay.json(),first.json())
+        self.assertEqual(list(self.client.app.state.store.data_dir.glob("upload-*")),[])
+
+    def test_artwork_upload_rejects_invalid_limits_and_bad_dimensions(self):
+        headers=self.login()
+        for content_type,body in (("image/png",b"not an image"),("image/jpeg",png())):
+            response=self.client.post("/artwork",headers={**headers,"Content-Type":content_type},content=body)
+            self.assertEqual(response.status_code,415)
+        for body in (png(16001,1),png(8000,6000)):
+            response=self.client.post("/artwork",headers={**headers,"Content-Type":"image/png"},content=body)
+            self.assertEqual(response.status_code,422)
+        too_large=b"\x89PNG\r\n\x1a\n"+b"x"*(8*1024*1024)
+        response=self.client.post("/artwork",headers={**headers,"Content-Type":"image/png"},content=too_large)
+        self.assertEqual(response.status_code,413)
+
+    def test_artwork_refs_are_checked_on_project_import_and_song_saves(self):
+        headers=self.login(); missing="./api/artwork/"+"a"*64
+        project=self.client.post("/projects",headers=headers,json={"name":"Ref"}).json()
+        unchanged=self.client.put(f"/projects/{project['id']}",headers=headers,json={**project,"cover":missing,"songs":[]})
+        self.assertEqual(unchanged.status_code,404)
+        self.assertEqual(self.client.get(f"/projects/{project['id']}").json()["cover"],"")
+        imported=self.client.post("/imports",headers=headers,json={"migrationKey":"ref-missing","name":"Ref","cover":missing,"songs":[]})
+        self.assertEqual(imported.status_code,404)
+        entry=self.client.post("/songs",headers=headers,json={"migrationKey":"song-ref","song":{**song(),"cover":missing}})
+        self.assertEqual(entry.status_code,404)
+        self.assertEqual(self.client.get("/library",headers=headers).json()["songs"],[])
+        asset=self.client.post("/artwork",headers={**headers,"Content-Type":"image/png"},content=png()).json()
+        self.client.app.state.settings=replace(self.client.app.state.settings,quota_bytes=len(png()))
+        (self.client.app.state.store.artwork_dir/asset["id"]).unlink()
+        physically_missing=self.client.put(f"/projects/{project['id']}",headers=headers,json={**project,"cover":asset["cover"],"songs":[]})
+        self.assertEqual(physically_missing.status_code,404)
+        self.assertEqual(self.client.head("/artwork/"+asset["id"],headers=headers).status_code,404)
+        repaired=self.client.post("/artwork",headers={**headers,"Content-Type":"image/png"},content=png())
+        self.assertEqual(repaired.status_code,200); self.assertEqual(repaired.json(),asset)
+        saved=self.client.put(f"/projects/{project['id']}",headers=headers,json={**project,"cover":asset["cover"],"songs":[]})
+        self.assertEqual(saved.status_code,200)
+
+    def test_artwork_duplicate_commit_failure_does_not_delete_existing_asset(self):
+        headers=self.login(); image=png(); stored=self.client.post("/artwork",headers={**headers,"Content-Type":"image/png"},content=image).json()
+        store=self.client.app.state.store; path=store.artwork_dir/stored["id"]
+        temporary=Path(self.temp.name)/"staged-duplicate"; temporary.write_bytes(image)
+        original_tx=store.tx
+
+        @contextmanager
+        def fail_commit():
+            with original_tx() as db:
+                yield db
+                raise RuntimeError("simulated commit failure")
+
+        with patch.object(store,"tx",fail_commit):
+            with self.assertRaisesRegex(RuntimeError,"simulated commit failure"):
+                store.finish_artwork("simulated-reservation",stored["id"],len(image),"image/png",temporary)
+        self.assertEqual(path.read_bytes(),image)
+
+    def test_artwork_references_and_originals_survive_backup_restore(self):
+        headers=self.login(); image=png(9,7,b"exact bytes")
+        asset=self.client.post("/artwork",headers={**headers,"Content-Type":"image/png"},content=image).json()
+        project=self.client.post("/projects",headers=headers,json={"name":"Artwork backup"}).json()
+        saved=self.client.put(f"/projects/{project['id']}",headers=headers,json={**project,"cover":asset["cover"],"songs":[]})
+        self.assertEqual(saved.status_code,200)
+        archive=Path(self.temp.name)/"artwork.tar.gz"; backup(self.client.app.state.store.data_dir,archive)
+        restored=Path(self.temp.name)/"artwork-restored"; restore(archive,restored)
+        try:
+            store=type(self.client.app.state.store)(restored)
+            with store.read() as db: self.assertEqual(db.execute("SELECT cover FROM projects WHERE id=?",(project["id"],)).fetchone()[0],asset["cover"])
+            self.assertEqual((restored/"artwork"/asset["id"]).read_bytes(),image)
+            with tarfile.open(archive,"r:gz") as bundle: self.assertIn("artwork/"+asset["id"],bundle.getnames())
+        finally:
+            import shutil; shutil.rmtree(restored,ignore_errors=True)
 
     def test_concurrent_login_bodies_cannot_bypass_attempt_limit(self):
         async def exercise():
@@ -275,7 +374,7 @@ class ApiTest(unittest.TestCase):
         conflict=self.client.put(path,headers=headers,json={**data,"song":song("Independent local edit")})
         self.assertEqual(conflict.status_code,409); self.assertEqual(conflict.json()["code"],"conflict")
         self.assertEqual(self.client.get(path).json(),updated)
-        self.assertEqual(self.client.get(f"/projects/{pinned['id']}").json()["songs"],[updated])
+        self.assertEqual(self.client.get(f"/projects/{pinned['id']}").json()["songs"],[{**updated,"live":False}])
         self.assertEqual(self.client.get("/library").json()["songs"][0]["revisionId"],updated["revisionId"])
         # A lost original upload response keeps its original baseline after an update.
         self.assertEqual(self.client.post("/songs",headers=headers,json={"migrationKey":"library","song":song()}).json(),original)
@@ -331,8 +430,8 @@ class ApiTest(unittest.TestCase):
         changed={**original, "song":{**original["song"], "cues":[{"id":"c1","start":1,"text":"new lyric","type":"lyric"}]}}
         saved=self.client.put(f"/projects/{first['id']}",headers=headers,json={**first,"songs":[changed]}).json()
         latest=saved["songs"][0]
-        self.assertEqual(self.client.get(f"/songs/{original['songId']}").json(),latest)
-        self.assertEqual(self.client.get(f"/projects/{second['id']}").json()["songs"],[latest])
+        self.assertEqual(self.client.get(f"/songs/{original['songId']}").json(),{k:v for k,v in latest.items() if k!="live"})
+        self.assertEqual(self.client.get(f"/projects/{second['id']}").json()["songs"],[{**latest,"live":False}])
         # The second editor has only reordered/renamed its old project. Its
         # unchanged song baseline must not revert the first editor's lyric.
         structural=self.client.put(f"/projects/{second['id']}",headers=headers,json={**second,"name":"Renamed","songs":[original,original]})
@@ -414,7 +513,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.get(f"/songs/{removed['songId']}").status_code,404)
         for stale,expected in zip(projects,([one,two],[two,one])):
             current=self.client.get(f"/projects/{stale['id']}").json()
-            self.assertEqual(current["songs"],expected); self.assertEqual(current["revision"],stale["revision"]+1)
+            self.assertEqual(current["songs"],[{**entry,"live":False} for entry in expected]); self.assertEqual(current["revision"],stale["revision"]+1)
             self.assertEqual(self.client.put(f"/projects/{stale['id']}",headers=headers,json=stale).status_code,409)
             self.assertEqual(self.client.put(f"/projects/{stale['id']}",headers=headers,json={**current,"songs":[removed]}).status_code,404)
         self.assertEqual(self.client.put(f"/songs/{removed['songId']}",headers=headers,json=removed).status_code,404)
@@ -650,7 +749,7 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(entry["audioId"],audio_id); self.assertIsNone(entry["backingAudioId"])
             with client.app.state.store.read() as migrated:
                 self.assertIn("backing_audio_id",{row[1] for row in migrated.execute("PRAGMA table_info(song_revisions)")})
-            migration_backups=list((restored/"backups").glob("pre-backing-migration-*.tar.gz"))
+            migration_backups=list((restored/"backups").glob("pre-artwork-migration-*.tar.gz"))
             self.assertEqual(len(migration_backups),1)
             self.assertEqual((restored/"backups").stat().st_mode & 0o777,0o700)
             self.assertEqual(migration_backups[0].stat().st_mode & 0o777,0o600)
@@ -664,7 +763,7 @@ class ApiTest(unittest.TestCase):
                 import shutil; shutil.rmtree(recovered,ignore_errors=True)
             # A later restart sees the migrated column and leaves the sole archive alone.
             create_app(settings)
-            self.assertEqual(len(list((restored/"backups").glob("pre-backing-migration-*.tar.gz"))),1)
+            self.assertEqual(len(list((restored/"backups").glob("pre-artwork-migration-*.tar.gz"))),1)
         finally:
             import shutil; shutil.rmtree(restored,ignore_errors=True)
 

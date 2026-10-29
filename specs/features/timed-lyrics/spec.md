@@ -44,6 +44,8 @@ Accepted extension: [revision 26 — cards, local copies and song presentation](
 (implemented, verified and deployed).
 Accepted extension: [revision 28 — per-song live display emphasis](revision-28.md)
 (implemented and deployed; behavior acceptance pending).
+Accepted extension: [revision 30 — original-quality artwork and automatic file storage](revision-30.md)
+(implemented, verified and deployed).
 
 ## Purpose
 

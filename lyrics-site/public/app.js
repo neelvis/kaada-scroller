@@ -7,7 +7,7 @@ import { createSongEditor } from './song-editor.js';
 import { createWorkspaceActions } from './workspace-actions.js';
 import { uploadLocalProject, projectLink } from './cloud-transfers.js';
 import { Playback } from './playback.js';
-import { sameEntryContent, reconcileProjectSave } from './save-reconciliation.js';
+import { sameEntryContent, reconcileProjectSave, recoverCommittedProjectSave } from './save-reconciliation.js';
 import * as remote from './remote.js';
 import { clearPrivateProjectCache, getPrivateAudio, removeDraft, removePreparedProject } from './offline-projects.js';
 import { createSessionLifecycle } from './session-lifecycle.js';
@@ -42,6 +42,7 @@ let project = null;
 let projectEntries = new Map();
 let remoteDirty = false;
 let remoteFailed = false;
+let remoteSavedNeedsArtwork = false;
 let pendingLocalRefresh = null;
 let saveBusy = false;
 const copyAttempts = new Map();
@@ -145,7 +146,7 @@ function changeSong(songId, change) {
   set = { ...set, songs: set.songs.map((song, i) => i === index ? next : song) };
   if (project || onlineSongOpen || localProjectId) markRemoteDirty();
 }
-function markRemoteDirty() { remoteDirty = true; remoteFailed = false; editGeneration += 1; updateRemoteState(); }
+function markRemoteDirty() { remoteDirty = true; remoteFailed = false; remoteSavedNeedsArtwork = false; editGeneration += 1; updateRemoteState(); }
 function updateRemoteState() {
   els.remote.hidden = els.prep.hidden;
   $('#add-library-song').disabled = !sessionActive;
@@ -178,7 +179,7 @@ function updateRemoteState() {
     const pill = els.editor.querySelector('.status-pill');
     if (pill) { pill.textContent = status(song); pill.classList.toggle('ready', songReady); }
   }
-  els.remote.textContent = pendingLocalRefresh && pendingLocalRefresh === project?.id ? 'В облаке сохранено · локальную копию нужно обновить' : remoteFailed ? 'Сохранение не удалось · изменения ожидают повтора' : remoteDirty ? 'Есть несохранённые изменения' : onlineSongOpen ? 'В облаке' : project ? 'Сохранено в облаке' : localProjectId ? 'Локальная копия' : '';
+  els.remote.textContent = remoteSavedNeedsArtwork ? 'Облако обновлено · загрузку обложек нужно повторить' : pendingLocalRefresh && pendingLocalRefresh === project?.id ? 'В облаке сохранено · локальную копию нужно обновить' : remoteFailed ? 'Сохранение не удалось · изменения ожидают повтора' : remoteDirty ? 'Есть несохранённые изменения' : onlineSongOpen ? 'В облаке' : project ? 'Сохранено в облаке' : localProjectId ? 'Локальная копия' : '';
 }
 
 function askLeaveProject() {
@@ -282,7 +283,7 @@ function adoptProject(next, { preserveSelection = false } = {}) {
   projectEntries = new Map((next.songs || []).map(entry => [entry.song.id, { songId: entry.songId, revisionId: entry.revisionId, audioId: entry.audioId, backingAudioId: entry.backingAudioId ?? null, live: entry.live === true }]));
   set = { schemaVersion: 1, id: next.id, name: next.name, cover: next.cover || '', endCaption: next.endCaption || '', liveSongs: Object.fromEntries((next.songs || []).filter(entry => entry.live === true).map(entry => [entry.song.id, true])), songs: (next.songs || []).map(entry => entry.song) };
   selectedId = set.songs.some(song => song.id === previousSelection) ? previousSelection : (set.songs[selectedIndex]?.id || null);
-  remoteDirty = false; remoteFailed = false; updateRemoteState(); render();
+  remoteDirty = false; remoteFailed = false; remoteSavedNeedsArtwork = false; updateRemoteState(); render();
 }
 function rebaseSavedProjectMetadata(saved, sent) {
   const result = reconcileProjectSave(set.songs, projectEntries, sent, saved, selectedId);
@@ -299,10 +300,12 @@ async function saveRemoteProject() {
   if (saveBusy || !sessionActive || (!project && !localProjectId)) return false;
   if ((project ? changedProjectSongs() : set.songs).some(song => validateSong(song).length)) { toast('Подтвердите готовность изменённых песен перед сохранением.'); return false; }
   const generation = editGeneration, owner = project?.id, localId = localProjectId, workspace = workspaceGeneration;
+  let sentProject = null, sentLocal = null;
   saveBusy = true; updateRemoteState();
   try {
     if (!project) {
       const snapshot = structuredClone(set), link = localState().links[`project:${localId}`];
+      sentLocal = snapshot;
       const pendingKey = `pending-project:${localId}`;
       let baseline = localState().links[pendingKey];
       if (!link && !baseline) {
@@ -325,7 +328,8 @@ async function saveRemoteProject() {
       }
       adoptProject(saved, { preserveSelection: true });
     } else if (remoteDirty) {
-      const draft = projectPayload(), saved = await remote.saveProject(owner, draft);
+      const draft = projectPayload(); sentProject = draft;
+      const saved = await remote.saveProject(owner, draft);
       if (!sessionActive || project?.id !== owner || workspaceGeneration !== workspace) return;
       const local = localState().projects.find(item => localState().links[`project:${item.id}`]?.id === saved.id);
       if (local) pendingLocalRefresh = saved.id;
@@ -343,6 +347,29 @@ async function saveRemoteProject() {
     await refreshHubCloud();
     return true;
   } catch (error) {
+    if (error.committed) {
+      if (!sessionActive || workspaceGeneration !== workspace || owner && project?.id !== owner) return false;
+      remoteFailed = false; remoteSavedNeedsArtwork = true; remoteDirty = true;
+      if (sentProject && error.wirePayload && error.result?.id === owner) {
+        rebaseSavedProjectMetadata(recoverCommittedProjectSave(sentProject, error.wirePayload, error.result), sentProject);
+      } else if (localId && error.result?.id) {
+        const next = structuredClone(localState()), key = `project:${localId}`;
+        if (next.links[key]?.id === error.result.id) {
+          next.links[key].revision = error.result.revision;
+          if (sentLocal && error.wirePayload?.songs) {
+            const priorEntries = next.links[key].entries || [];
+            next.links[key].entries = sentLocal.songs.flatMap((song, index) => {
+              const saved = error.result.songs[index], uploaded = error.wirePayload.songs[index];
+              if (saved && uploaded && sameEntryContent(saved, uploaded)) return [{ localId: song.id, songId: saved.songId, revisionId: saved.revisionId }];
+              const prior = priorEntries.find(entry => entry.localId === song.id);
+              return prior ? [prior] : [];
+            });
+          }
+          await saveWorkspace(next).catch(localError => toast(localError.message));
+        }
+      }
+      toast(error.message); return false;
+    }
     remoteFailed = true;
     if (error.status === 409) toast('Проект изменился в облаке. Ваши изменения остались в редакторе; при выходе вы сможете сбросить их.');
     else toast(error.message);
@@ -373,6 +400,7 @@ async function saveLibrarySong() {
       const result = reconcileProjectSave(set.songs, projectEntries, { songs: [{ ...original, song: snapshot }] }, { songs: [saved] }, selectedId);
       set = { ...set, songs: result.songs }; projectEntries = result.entries; selectedId = result.selectedId;
     }
+    remoteSavedNeedsArtwork = false;
     toast('Песня сохранена в облаке.');
     await refreshHubCloud();
     await loadOnlineLibraryItems();
@@ -381,7 +409,18 @@ async function saveLibrarySong() {
     if (saved.song.id !== snapshot.id || !sameEntryContent(saved, payload)) render();
     else updateRemoteState();
     return !remoteDirty;
-  } catch (error) { toast(error.message); return false; }
+  } catch (error) {
+    if (error.committed && sessionActive && workspace === workspaceGeneration && onlineSongOpen && currentSong()?.id === snapshot.id) {
+      remoteSavedNeedsArtwork = true;
+      if (error.result?.song && error.wirePayload?.song) {
+        const sent = { songs: [{ ...original, song: snapshot }] };
+        const safe = recoverCommittedProjectSave(sent, { songs: [error.wirePayload] }, { songs: [error.result] });
+        const result = reconcileProjectSave(set.songs, projectEntries, sent, safe, selectedId);
+        set = { ...set, songs: result.songs }; projectEntries = result.entries; selectedId = result.selectedId;
+      }
+    }
+    toast(error.message); return false;
+  }
   finally { saveBusy = false; updateRemoteState(); }
 }
 async function deleteLibrarySong(song = currentSong()) {
@@ -499,7 +538,7 @@ async function openLibrarySong(id) {
     const entry = await remote.getSong(id);
     if (!sessionActive || request !== librarySelection || workspace !== workspaceGeneration) return;
     cancelRecognition(); clearAudioPreview();
-    localProjectId = null; showPreparation(); project = null; onlineSongOpen = true; remoteDirty = false;
+    localProjectId = null; showPreparation(); project = null; onlineSongOpen = true; remoteDirty = false; remoteSavedNeedsArtwork = false;
     projectEntries = new Map([[entry.song.id, entry]]);
     set = { schemaVersion: 1, id: 'online-library', name: 'Онлайн-библиотека', songs: [entry.song] };
     selectedId = entry.song.id; render(); loadOnlineLibraryItems(); return true;
@@ -950,7 +989,7 @@ async function signOut() {
   playback.dispose();
   cancelRecognition(); clearAudioPreview();
   const { cleared, revoked } = await sessionLifecycle.signOut(() => {
-    localProjectId = null; cloudProjects = []; sessionActive = false; onlineSongOpen = false; librarySongs = []; librarySelection += 1; $('#library-dialog').close(); $('#library-list').replaceChildren(); project = null; projectEntries.clear(); remoteDirty = false; remoteFailed = false; set = legacySet; selectedId = null; updateSessionUi(); render(); showProjects(); els.login.disabled = true;
+    localProjectId = null; cloudProjects = []; sessionActive = false; onlineSongOpen = false; librarySongs = []; librarySelection += 1; $('#library-dialog').close(); $('#library-list').replaceChildren(); project = null; projectEntries.clear(); remoteDirty = false; remoteFailed = false; remoteSavedNeedsArtwork = false; set = legacySet; selectedId = null; updateSessionUi(); render(); showProjects(); els.login.disabled = true;
   });
   els.login.disabled = false;
   toast(!cleared ? 'Очистка локальных данных не завершилась. Откройте приложение заново, чтобы повторить её.' : revoked ? 'Вы вышли. Локальный набор и его записи не изменены.' : 'Данные на этом устройстве очищены, но сервер пока не подтвердил выход. Подключитесь к сети и откройте приложение ещё раз.');
@@ -1069,7 +1108,7 @@ const hub = createWorkspaceHub({
       $('#show-mode').hidden = true; $('#project-add-menu').hidden = true; $('#delete-library-song').hidden = true; $('#toolbar-song-actions').hidden = true;
       if (project || localProjectId) {
         project = null; localProjectId = null; projectEntries.clear();
-        remoteDirty = false; remoteFailed = false; pendingLocalRefresh = null; set = legacySet; selectedId = null;
+        remoteDirty = false; remoteFailed = false; remoteSavedNeedsArtwork = false; pendingLocalRefresh = null; set = legacySet; selectedId = null;
       }
       if (onlineSongOpen) { onlineSongOpen = false; remoteDirty = false; projectEntries.clear(); set = legacySet; selectedId = null; updateRemoteState(); }
       return true;

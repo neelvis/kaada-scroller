@@ -110,14 +110,23 @@ folder snapshots remain for recovery.
 
 Song and project artwork accepts JPG, PNG and WebP source files up to 8 MiB.
 Images are limited to 40 megapixels and 16000 pixels on either side before
-decoding.
-Larger images are resized to at most 1600 pixels on the longest side and encoded
-as WebP until their stored size is at most 192 KiB. Small images retain their
-original bytes. Local snapshots preserve artwork when reopened. Cloud JSON writes
-have a combined 5 MiB limit; an oversized project is rejected before sending with
-an explanation to reduce its artwork or select old covers again for compression.
-Run `node tests/artwork-browser.mjs` after building to verify all three image
-formats, large-source preparation, cloud persistence and fresh local reopening.
+decoding. Accepted originals retain their bytes, format and resolution; artwork
+is not resized or recompressed for storage or presentation.
+
+Cloud saves automatically upload artwork as authenticated, content-addressed
+files and send references in JSON. Existing embedded covers are transferred on
+the next save without selecting them again. Unchanged images reuse the same
+stored asset. The 5 MiB JSON limit still applies to project metadata and lyrics,
+but image bytes no longer consume it. Artwork shares the server's configured
+media quota with audio. Failed uploads or saves preserve the editor's changes.
+Previously compressed detail cannot be recovered without uploading an original.
+
+Local snapshots retain the image bytes for offline presentation. The remote
+adapter resolves asset references before exposing songs and projects to the
+editor and local-copy workflow, so existing local files remain compatible. See
+[revision 30](../specs/features/timed-lyrics/revision-30.md) for requirements.
+Run `npm run test:artwork` after building to check original-byte persistence,
+automatic offload above 5 MiB, retry safety and offline local reopening.
 
 The song editor provides primary artwork and separate artwork for each project
 containing the song. Library song cards show only primary artwork. Presentation

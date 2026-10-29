@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sameEntryContent, reconcileProjectSave } from '../public/save-reconciliation.js';
+import { sameEntryContent, reconcileProjectSave, recoverCommittedProjectSave } from '../public/save-reconciliation.js';
 const entry = (id, text, revisionId, backingAudioId = null) => ({ songId: id, revisionId, audioId: null, backingAudioId, song: { id, title: id, reviewed: true, cues: [{ text }], ...(backingAudioId ? { backing: { fileName: 'track.wav' } } : {}) } });
 test('save reconciliation adopts newer cloud content for untouched songs while retaining new local edits', () => {
   const a = entry('a', 'old A', 'a1'), b = entry('b', 'old B', 'b1');
@@ -30,4 +30,26 @@ test('new server IDs rebase without losing newer audio edits or restoring remove
 });
 test('content equality ignores JSON key order, local IDs and absent empty backing', () => {
   assert.equal(sameEntryContent({ song: { id: 'a', title: 'T', backing: { fileName: '' } } }, { audioId: null, song: { title: 'T', id: 'b' } }), true);
+});
+
+test('committed save recovery binds known uploaded songs while protecting an unavailable newer head', () => {
+  const before = entry('draft', 'uploaded', undefined), stale = entry('shared', 'old', 'r1');
+  before.song.cover = 'data:image/png;base64,YQ==';
+  stale.song.cover = 'data:image/png;base64,Yg==';
+  const wire = structuredClone({ songs: [before, stale] });
+  wire.songs[0].song.cover = './api/artwork/' + 'a'.repeat(64);
+  wire.songs[1].song.cover = './api/artwork/' + 'b'.repeat(64);
+  const saved = { revision: 2, songs: [
+    { ...wire.songs[0], songId: 'created', revisionId: 'created-r1', song: { ...wire.songs[0].song, id: 'created' } },
+    { ...wire.songs[1], revisionId: 'r2', song: { ...wire.songs[1].song, cover: './api/artwork/' + 'c'.repeat(64) } },
+  ] };
+  const sent = { songs: [before, stale] }, recovered = recoverCommittedProjectSave(sent, wire, saved);
+  const newerEdit = { ...before.song, title: 'Edited during upload' };
+  const result = reconcileProjectSave([newerEdit, stale.song], new Map([['draft', before], ['shared', stale]]), sent, recovered, 'draft');
+  assert.equal(recovered.revision, 2);
+  assert.equal(result.songs[0].title, 'Edited during upload');
+  assert.equal(result.songs[0].cover, before.song.cover);
+  assert.equal(result.entries.get('created').revisionId, 'created-r1');
+  assert.equal(result.entries.get('shared').revisionId, 'r1', 'unavailable newer head cannot become an edit baseline');
+  assert.equal(result.songs[1].cover, stale.song.cover, 'local data never contains unresolved cloud refs');
 });

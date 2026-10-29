@@ -13,6 +13,19 @@ export function sameEntryContent(left, right) {
   return JSON.stringify(content(left)) === JSON.stringify(content(right));
 }
 
+// A committed save may return a newer shared song whose artwork cannot yet be
+// downloaded. Advance only bodies proven equal to the submitted wire content;
+// retain older baselines for other songs so retry cannot overwrite that head.
+export function recoverCommittedProjectSave(sent, wire, saved) {
+  return { ...saved, songs: saved.songs.map((returned, index) => {
+    const before = sent.songs[index], uploaded = wire.songs[index];
+    if (!before || !uploaded) return before;
+    return sameEntryContent(returned, uploaded)
+      ? { ...returned, song: { ...before.song, id: returned.song.id } }
+      : before;
+  }).filter(Boolean) };
+}
+
 export function reconcileProjectSave(songs, entries, sent, saved, selectedId) {
   const nextSongs = [...songs], nextEntries = new Map(entries);
   saved.songs.forEach((returned, index) => {

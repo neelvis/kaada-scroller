@@ -4,7 +4,9 @@ import json
 import logging
 import math
 import os
+import re
 import sqlite3
+import stat
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -24,9 +26,12 @@ class Store:
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.audio_dir = self.data_dir / "audio"
+        self.artwork_dir = self.data_dir / "artwork"
         self.db_path = self.data_dir / "lyrics.sqlite3"
         self._backup_before_backing_migration()
         self.audio_dir.mkdir(exist_ok=True)
+        self.artwork_dir.mkdir(mode=0o700,exist_ok=True)
+        if self.artwork_dir.is_symlink() or not self.artwork_dir.is_dir(): raise RuntimeError("unsafe artwork directory")
         self._init()
         self._recover_interrupted_uploads()
 
@@ -43,7 +48,12 @@ class Store:
                 db.close()
         except sqlite3.DatabaseError as exc:
             raise RuntimeError("cannot inspect existing lyrics database before migration") from exc
-        if "backing_audio_id" in columns: return
+        db=sqlite3.connect(f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True)
+        try: artwork_table=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='artwork'").fetchone()
+        finally: db.close()
+        needs_artwork_backup=artwork_table is None
+        needs_backing_backup="backing_audio_id" not in columns
+        if not needs_artwork_backup and not needs_backing_backup: return
         backup_dir=self.data_dir / "backups"
         if backup_dir.exists():
             if backup_dir.is_symlink() or not backup_dir.is_dir():
@@ -53,7 +63,8 @@ class Store:
             backup_dir.mkdir(mode=0o700)
             if backup_dir.is_symlink() or not backup_dir.is_dir():
                 raise RuntimeError("unsafe lyrics backup directory")
-        archive=backup_dir / f"pre-backing-migration-{uuid.uuid4()}.tar.gz"
+        migration="artwork" if needs_artwork_backup else "backing"
+        archive=backup_dir / f"pre-{migration}-migration-{uuid.uuid4()}.tar.gz"
         try:
             backup(self.data_dir, archive)
         except Exception as exc:
@@ -71,6 +82,7 @@ class Store:
         with self.read() as db:
             db.executescript("""
             CREATE TABLE IF NOT EXISTS audio(id TEXT PRIMARY KEY, file_name TEXT NOT NULL, duration REAL NOT NULL, bytes INTEGER NOT NULL, mime_type TEXT NOT NULL DEFAULT 'audio/mpeg', content_hash TEXT UNIQUE, owner_token_hash TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+            CREATE TABLE IF NOT EXISTS artwork(id TEXT PRIMARY KEY, bytes INTEGER NOT NULL, mime_type TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS upload_reservations(id TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS songs(id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS song_revisions(id TEXT PRIMARY KEY, song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE, audio_id TEXT REFERENCES audio(id), backing_audio_id TEXT REFERENCES audio(id), body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -101,6 +113,7 @@ class Store:
         with self.tx() as db:
             db.execute("DELETE FROM upload_reservations")
             tracked={row[0] for row in db.execute("SELECT id FROM audio")}
+            artwork_tracked={row[0] for row in db.execute("SELECT id FROM artwork")}
         for candidate in self.data_dir.iterdir():
             if candidate.is_file() and candidate.name.startswith("upload-"):
                 candidate.unlink(missing_ok=True)
@@ -109,6 +122,9 @@ class Store:
             try: uuid.UUID(candidate.name)
             except ValueError: continue
             if candidate.name not in tracked: candidate.unlink(missing_ok=True)
+        for candidate in self.artwork_dir.iterdir():
+            if not candidate.is_file(): continue
+            if candidate.name not in artwork_tracked: candidate.unlink(missing_ok=True)
 
     @contextmanager
     def tx(self) -> Iterator[sqlite3.Connection]:
@@ -247,7 +263,13 @@ class Store:
     def reserve_upload(self, reservation_id: str, delta: int, quota_bytes: int) -> bool:
         """Reserve staging bytes before they reach disk, across all live uploads."""
         with self.tx() as db:
-            used=db.execute("SELECT COALESCE(SUM(bytes),0) FROM audio").fetchone()[0]
+            audio_used=db.execute("SELECT COALESCE(SUM(bytes),0) FROM audio").fetchone()[0]
+            artwork_used=0
+            for row in db.execute("SELECT id FROM artwork"):
+                try: metadata=(self.artwork_dir/row["id"]).lstat()
+                except OSError: continue
+                if stat.S_ISREG(metadata.st_mode): artwork_used+=metadata.st_size
+            used=audio_used+artwork_used
             pending=db.execute("SELECT COALESCE(SUM(bytes),0) FROM upload_reservations").fetchone()[0]
             if used + pending + delta > quota_bytes: return False
             db.execute("INSERT INTO upload_reservations(id,bytes) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET bytes=bytes+excluded.bytes", (reservation_id,delta))
@@ -277,6 +299,48 @@ class Store:
             if destination: destination.unlink(missing_ok=True)
             raise
 
+    def finish_artwork(self, reservation_id: str, content_hash: str, size: int, mime_type: str, temporary_file: Path) -> tuple[str, bool]:
+        destination: Path | None=None
+        installed=False
+        try:
+            with self.tx() as db:
+                prior=db.execute("SELECT id FROM artwork WHERE id=?", (content_hash,)).fetchone()
+                db.execute("DELETE FROM upload_reservations WHERE id=?", (reservation_id,))
+                if prior:
+                    destination=self.artwork_dir/prior["id"]
+                    if destination.is_file():
+                        temporary_file.unlink(missing_ok=True)
+                    else:
+                        os.replace(temporary_file,destination)
+                        installed=True
+                        directory_fd=os.open(self.artwork_dir,os.O_RDONLY)
+                        try: os.fsync(directory_fd)
+                        finally: os.close(directory_fd)
+                    return prior["id"], False
+                destination=self.artwork_dir/content_hash
+                os.replace(temporary_file,destination)
+                installed=True
+                directory_fd=os.open(self.artwork_dir,os.O_RDONLY)
+                try: os.fsync(directory_fd)
+                finally: os.close(directory_fd)
+                db.execute("INSERT INTO artwork(id,bytes,mime_type) VALUES(?,?,?)", (content_hash,size,mime_type))
+                return content_hash, True
+        except Exception:
+            if installed and destination: destination.unlink(missing_ok=True)
+            raise
+
+    def _validate_artwork_ref(self, db: sqlite3.Connection, value: str) -> None:
+        if value.startswith("./api/artwork/"):
+            asset_id=value.removeprefix("./api/artwork/")
+            if (not re.fullmatch(r"[a-f0-9]{64}", asset_id) or
+                    not db.execute("SELECT 1 FROM artwork WHERE id=?", (asset_id,)).fetchone() or
+                    not (self.artwork_dir/asset_id).is_file()): raise Missing()
+
+    def _validate_song_artwork(self, db: sqlite3.Connection, song: dict[str, Any]) -> None:
+        cover=song.get("cover", "")
+        if isinstance(cover,str): self._validate_artwork_ref(db,cover)
+        for item in song.get("projectCovers", []): self._validate_artwork_ref(db,item["cover"])
+
     def cleanup_orphan_audio(self, owner_token_hash: str, keep_ids: set[str]) -> list[str]:
         """Delete only explicitly unreferenced uploads not named by the caller's live draft."""
         with self.tx() as db:
@@ -292,6 +356,7 @@ class Store:
         with self.tx() as db:
             p=self.project_row(db, project_id)
             if p["revision"] != revision: raise Conflict()
+            self._validate_artwork_ref(db,cover)
             resolved=[self._resolve_entry(db, e) for e in entries]
             db.execute("UPDATE projects SET name=?,cover=?,end_caption=?,revision=revision+1 WHERE id=?", (name, cover, end_caption, project_id))
             db.execute("DELETE FROM project_entries WHERE project_id=?", (project_id,))
@@ -303,6 +368,7 @@ class Store:
         with self.tx() as db:
             existing=db.execute("SELECT id FROM projects WHERE migration_key=?", (migration_key,)).fetchone()
             if existing: return self.full_project(db, existing["id"]), False
+            self._validate_artwork_ref(db,cover)
             project_id=str(uuid.uuid4())
             db.execute("INSERT INTO projects(id,name,migration_key,cover,end_caption) VALUES(?,?,?,?,?)", (project_id,name,migration_key,cover,end_caption))
             entries=[self._remap_entry_project_cover(entry, migration_key, project_id) for entry in entries]
@@ -326,6 +392,7 @@ class Store:
 
     def _resolve_entry(self, db: sqlite3.Connection, raw: dict[str, Any]) -> sqlite3.Row:
         song=dict(raw["song"])
+        self._validate_song_artwork(db,song)
         audio_id=raw.get("audioId")
         if audio_id and not db.execute("SELECT 1 FROM audio WHERE id=?", (audio_id,)).fetchone(): raise Missing()
         song_id, revision_id=raw.get("songId"),raw.get("revisionId")

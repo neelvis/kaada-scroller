@@ -26,6 +26,9 @@ from .config import Settings, decode_scrypt
 from .store import Conflict, DuplicateSong, InvalidSong, Missing, Store
 
 MAX_UPLOAD = 15 * 1024 * 1024
+MAX_ARTWORK_UPLOAD = 8 * 1024 * 1024
+MAX_ARTWORK_PIXELS = 40_000_000
+MAX_ARTWORK_SIDE = 16_000
 MAX_DURATION = 20 * 60
 LOGIN_WINDOW, LOGIN_ATTEMPTS = 300, 8
 
@@ -39,6 +42,7 @@ def valid_song(song: Any) -> bool:
             and isinstance(song.get("duration"), (int, float))
             and ("endCaption" not in song or isinstance(song["endCaption"], str) and len(song["endCaption"]) <= 1000)):
         return False
+    if "cover" in song and not valid_cover(song["cover"]): return False
     covers=song.get("projectCovers", [])
     if not isinstance(covers, list): return False
     seen=set()
@@ -46,10 +50,15 @@ def valid_song(song: Any) -> bool:
         if not isinstance(item, dict): return False
         project_id, cover=item.get("projectId"), item.get("cover")
         if not isinstance(project_id,str) or not project_id.strip() or len(project_id)>200 or project_id in seen: return False
-        if not isinstance(cover,str) or len(cover)>11_184_844: return False
-        if cover and not re.fullmatch(r"data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}",cover): return False
+        if not valid_cover(cover): return False
         seen.add(project_id)
     return True
+
+
+def valid_cover(value: Any) -> bool:
+    return isinstance(value,str) and (not value or bool(
+        re.fullmatch(r"\./api/artwork/[a-f0-9]{64}",value) or
+        len(value)<=11_184_844 and re.fullmatch(r"data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}",value)))
 
 
 def valid_entry(entry: Any) -> bool:
@@ -162,12 +171,12 @@ async def project(request: Request) -> Response:
         data=await body_json(request)
         if request.method == "DELETE":
             store.delete_project(project_id,data["revision"]); return Response(status_code=204)
-        name=data["name"].strip(); entries=data["songs"]
-        if not isinstance(data["revision"],int) or not isinstance(entries,list) or len(entries)>250 or not name: raise ValueError()
+        name=data["name"].strip(); entries=data["songs"]; cover=data.get("cover","")
+        if not isinstance(data["revision"],int) or not isinstance(entries,list) or len(entries)>250 or not name or not valid_cover(cover): raise ValueError()
         if not all(valid_entry(e) for e in entries): raise ValueError()
         end_caption=data.get("endCaption", "")
         if not isinstance(end_caption, str) or len(end_caption)>1000: raise ValueError()
-        return JSONResponse(store.save_project(project_id,data["revision"],name,entries,data.get("cover", ""),end_caption))
+        return JSONResponse(store.save_project(project_id,data["revision"],name,entries,cover,end_caption))
     except Conflict: return error("Проект уже изменён другим организатором. Загрузите новую версию перед повторной попыткой.","conflict",409)
     except DuplicateSong: return error("Песня с таким названием, исполнителем, альбомом и версией записи уже есть. Измените одно из полей.","duplicate_song",409)
     except InvalidSong: return error("Подтвердите готовность песни и проверьте её текст, длительность и таймлайн.","not_ready",400)
@@ -281,6 +290,94 @@ async def audio(request: Request) -> Response:
     return FileResponse(path, media_type=row["mime_type"], headers=headers)
 
 
+def artwork_dimensions(data: bytes) -> tuple[int,int]:
+    length=len(data)
+    if length>=24 and data[:8]==b"\x89PNG\r\n\x1a\n" and data[12:16]==b"IHDR":
+        return int.from_bytes(data[16:20],"big"),int.from_bytes(data[20:24],"big")
+    if length>=4 and data[:2]==b"\xff\xd8":
+        offset=2
+        while offset+4<=length:
+            if data[offset]!=0xff: break
+            offset+=1
+            while offset<length and data[offset]==0xff: offset+=1
+            if offset>=length: break
+            marker=data[offset]; offset+=1
+            if marker in (0xda,0xd9): break
+            if marker==0x01 or 0xd0<=marker<=0xd8: continue
+            if offset+2>length: break
+            seglen=int.from_bytes(data[offset:offset+2],"big")
+            if seglen<2 or offset+seglen>length: break
+            if 0xc0<=marker<=0xcf and marker not in (0xc4,0xc8,0xcc) and seglen>=7:
+                return int.from_bytes(data[offset+5:offset+7],"big"),int.from_bytes(data[offset+3:offset+5],"big")
+            offset+=seglen
+    if length>=12 and data[:4]==b"RIFF" and data[8:12]==b"WEBP":
+        offset=12
+        while offset+8<=length:
+            kind=data[offset:offset+4]; size=int.from_bytes(data[offset+4:offset+8],"little"); start=offset+8
+            if start+size>length: break
+            if kind==b"VP8X" and size>=10:
+                return int.from_bytes(data[start+4:start+7],"little")+1,int.from_bytes(data[start+7:start+10],"little")+1
+            if kind==b"VP8L" and size>=5 and data[start]==0x2f:
+                bits=int.from_bytes(data[start+1:start+5],"little")
+                return (bits&0x3fff)+1,((bits>>14)&0x3fff)+1
+            if kind==b"VP8 " and size>=10 and data[start+3:start+6]==b"\x9d\x01\x2a":
+                return int.from_bytes(data[start+6:start+8],"little")&0x3fff,int.from_bytes(data[start+8:start+10],"little")&0x3fff
+            offset=start+size+(size%2)
+    raise ValueError("invalid artwork")
+
+
+async def upload_artwork(request: Request) -> Response:
+    found=require(request,True)
+    if isinstance(found,Response): return found
+    content_type=request.headers.get("content-type","").split(";",1)[0]
+    if content_type not in {"image/jpeg","image/png","image/webp"}: return error("Загрузите JPG, PNG или WebP.","invalid_media",415)
+    store=request.app.state.store; fd,temp_name=tempfile.mkstemp(prefix="upload-",dir=store.data_dir)
+    size=0; reservation_id=str(uuid.uuid4()); digest=hashlib.sha256(); reserved=False
+    try:
+        with os.fdopen(fd,"wb") as out:
+            async for chunk in request.stream():
+                if size+len(chunk)>MAX_ARTWORK_UPLOAD: return error("Изображение больше 8 МиБ.","too_large",413)
+                if not store.reserve_upload(reservation_id,len(chunk),request.app.state.settings.quota_bytes): return error("В библиотеке недостаточно места для этого изображения.","quota",413)
+                reserved=True; size+=len(chunk); digest.update(chunk); out.write(chunk)
+            out.flush(); os.fsync(out.fileno())
+        temp=Path(temp_name); data=temp.read_bytes()
+        signature_ok=(content_type=="image/png" and data.startswith(b"\x89PNG\r\n\x1a\n") or
+                      content_type=="image/jpeg" and data.startswith(b"\xff\xd8") or
+                      content_type=="image/webp" and len(data)>=12 and data[:4]==b"RIFF" and data[8:12]==b"WEBP")
+        if not signature_ok: return error("Файл не совпадает с заявленным форматом изображения.","invalid_media",415)
+        try: width,height=artwork_dimensions(data)
+        except ValueError: return error("Файл не похож на заявленное изображение.","invalid_media",415)
+        if width<1 or height<1 or width>MAX_ARTWORK_SIDE or height>MAX_ARTWORK_SIDE or width*height>MAX_ARTWORK_PIXELS:
+            return error("Размер изображения превышает допустимый предел.","invalid_media",422)
+        asset_id,created=store.finish_artwork(reservation_id,digest.hexdigest(),size,content_type,temp); reserved=False; temp_name=""
+        return JSONResponse({"id":asset_id,"cover":"./api/artwork/"+asset_id},status_code=201 if created else 200)
+    except OSError:
+        return error("На сервере недостаточно места для изображения.","quota",507)
+    finally:
+        if reserved: store.release_upload(reservation_id)
+        if temp_name: Path(temp_name).unlink(missing_ok=True)
+
+
+async def artwork(request: Request) -> Response:
+    found=require(request)
+    if isinstance(found,Response):
+        found.headers["Cache-Control"]="no-store"
+        return found
+    asset_id=request.path_params["artwork_id"]
+    if not re.fullmatch(r"[a-f0-9]{64}",asset_id):
+        response=error("Изображение не найдено.","not_found",404); response.headers["Cache-Control"]="no-store"
+        return response
+    store=request.app.state.store
+    with store.read() as db: row=db.execute("SELECT mime_type FROM artwork WHERE id=?",(asset_id,)).fetchone()
+    path=store.artwork_dir/asset_id
+    if not row or not path.is_file():
+        response=error("Изображение не найдено.","not_found",404); response.headers["Cache-Control"]="no-store"
+        return response
+    if request.method=="HEAD":
+        return Response(status_code=200,headers={"Content-Type":row["mime_type"],"Content-Length":str(path.stat().st_size),"Cache-Control":"no-store"})
+    return FileResponse(path,media_type=row["mime_type"],headers={"Content-Disposition":"inline","Cache-Control":"no-store"})
+
+
 async def cleanup_audio(request: Request) -> Response:
     found=require(request, True)
     if isinstance(found, Response): return found
@@ -302,7 +399,9 @@ async def imports(request: Request) -> Response:
         entries=[{"song":item["song"],"audioId":item.get("audioId"),"backingAudioId":item.get("backingAudioId")} for item in songs]
         end_caption=data.get("endCaption", "")
         if not isinstance(end_caption, str) or len(end_caption)>1000: raise ValueError()
-        project, created=store.import_project(key,name,entries,data.get("cover", ""),end_caption)
+        cover=data.get("cover","")
+        if not valid_cover(cover): raise ValueError()
+        project, created=store.import_project(key,name,entries,cover,end_caption)
         return JSONResponse(project,status_code=201 if created else 200)
     except Conflict: return error("Импорт уже изменён.","conflict",409)
     except DuplicateSong: return error("Песня с таким названием, исполнителем и версией записи уже есть. Измените одно из полей.","duplicate_song",409)
@@ -321,7 +420,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     app=Starlette(exception_handlers={413: lambda request, exc: error("Данные для сохранения больше 5 МиБ. Уменьшите обложки проекта.", "too_large", 413)}, routes=[
         Route("/health",health), Route("/login",login,methods=["POST"]), Route("/session",get_session), Route("/logout",logout,methods=["POST"]),
         Route("/projects",projects,methods=["GET","POST"]), Route("/projects/{project_id}",project,methods=["GET","PUT","DELETE"]),
-        Route("/library",library), Route("/songs",songs,methods=["POST"]), Route("/songs/{song_id}",song,methods=["GET","PUT","DELETE"]), Route("/songs/{song_id}/projects",song_projects), Route("/audio",upload_audio,methods=["POST"]), Route("/audio/cleanup",cleanup_audio,methods=["POST"]), Route("/audio/{audio_id}",audio), Route("/imports",imports,methods=["POST"]), Route("/imports/{migration_key}",imported_project),
+        Route("/library",library), Route("/songs",songs,methods=["POST"]), Route("/songs/{song_id}",song,methods=["GET","PUT","DELETE"]), Route("/songs/{song_id}/projects",song_projects), Route("/artwork",upload_artwork,methods=["POST"]), Route("/artwork/{artwork_id}",artwork,methods=["GET","HEAD"]), Route("/audio",upload_audio,methods=["POST"]), Route("/audio/cleanup",cleanup_audio,methods=["POST"]), Route("/audio/{audio_id}",audio), Route("/imports",imports,methods=["POST"]), Route("/imports/{migration_key}",imported_project),
     ])
     app.state.settings=settings; app.state.store=store
     app.state.login_attempts=defaultdict(deque)

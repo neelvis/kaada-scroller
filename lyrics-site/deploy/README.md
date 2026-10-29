@@ -5,12 +5,12 @@ private API source/runtime and persistent data have separate paths:
 
 - `/srv/nasty-edu-lyrics/releases/ID`, selected by `current`;
 - `/srv/nasty-edu-lyrics/backend-releases/ID`, selected by `backend-current`;
-- `/var/lib/kaada-lyrics`: private SQLite database, audio and credentials.
+- `/var/lib/kaada-lyrics`: private SQLite database, audio, artwork and credentials.
 
 Neither release switching nor ordinary NastyEdu deployment removes project data.
 The API listens only on `127.0.0.1:8096`; Nginx forwards `/lyrics/api/` before the
 existing `/lyrics/` static mount. It runs as `kaada-lyrics`, with a 256 MiB memory
-limit, a private environment file and a configurable 1 GiB audio allowance.
+limit, a private environment file and a configurable 1 GiB combined media allowance.
 
 ## Validate, build and stage
 
@@ -74,13 +74,33 @@ Activation locks the deploy operation, checks source/runtime hashes, selects the
 new API, restarts only its service, waits for health, then selects the frontend.
 Failure restores both previous links and restarts the previous API. To roll back,
 use a retained prior paired package's activator. Do not select mismatched API and
-frontend generations manually. Database upgrades must stay compatible with the
-retained paired release; back up before a future incompatible migration.
+frontend generations manually. Database upgrades require a reviewed compatibility
+and recovery path. The artwork storage revision below has an explicit older-API
+rollback restriction.
 
 Check `/lyrics/`, `/lyrics/api/health`, anonymous project/audio rejection, JS/MJS/
 WASM MIME, main `/` and `/health`, authenticated save/reopen and offline Start.
 Close/reopen existing lyrics tabs to adopt the new service-worker shell; do not
 update during a performance.
+
+## Original artwork storage (revision 30)
+
+Publish frontend and API together. Startup creates a protected, consistent
+`backups/pre-artwork-migration-UUID.tar.gz` archive before adding the artwork
+table to an existing store; backup failure prevents startup. The archive contains
+the pre-migration database and media and remains private to the service user.
+New artwork files live under `/var/lib/kaada-lyrics/artwork/` and share the
+configured media quota with audio. They are authenticated API assets, not public
+static release files. Existing embedded images are moved only when users save;
+startup does not rewrite song or project bodies.
+
+After the first reference-based artwork save, an older API is not a complete
+rollback target: older override validation does not accept the new references.
+Prefer a forward correction retaining artwork support. A full older-generation
+rollback requires an administrator to stop the API, preserve the current store,
+restore a verified pre-artwork backup and activate the matching older pair. A
+restore loses changes made after that backup; do not perform it automatically.
+The normal activation failure rollback remains safe before any reference writes.
 
 ## Data backup and restoration
 
@@ -97,8 +117,8 @@ The CLI must run with working directory `/srv/nasty-edu-lyrics/backend-current`.
 The archive contains a consistent SQLite snapshot and SHA-256-checked reference
 files. Keep credentials.json separately in a protected backup. Restore validates
 manifest paths, byte hashes, SQLite integrity and every referenced audio file
-before replacing its target. Existing target credentials are preserved. A new
-host requires the separately backed-up credential file and correct service-user
+and artwork asset before replacing its target. Existing target credentials are
+preserved. A new host requires the separately backed-up credential file and correct service-user
 ownership before restart. Verify restoration in a fresh directory first; then
 restore the stopped production data directory and restart the API.
 
@@ -485,3 +505,24 @@ not read private school songs, projects or credentials. Authenticated cloud
 writes were verified using the disposable local API before publication.
 Native OS permission prompts and projector rehearsal remain manual checks.
 Close and reopen existing lyrics tabs to adopt the new service-worker shell.
+
+## Revision 30 publication (2026-10-29)
+
+Paired release `20261029_205240` publishes original-quality artwork and automatic
+asset storage. Its 62-entry payload manifest SHA-256 is
+`8e140ed4c0f33c5e21d44170747657f659d0f45bad89355a517e4db7dab1d679`.
+Source/public files were checked against staging, and the pinned runtime was
+installed without package-network access. Preparation and paired activation
+succeeded; both live links select this release, the API is active, and its
+automatic restart count is zero. The preceding pair is `20261029_202809`; observe
+the artwork rollback restriction above once reference-based saves begin.
+
+Production smoke checks matched `app.js`, `remote.js`, `artwork.js`,
+`save-reconciliation.js`, `sw.js` and `cache-manifest.js` against the staged
+manifest. Nine public health/access checks passed, including rejection of anonymous
+artwork access. A fresh anonymous browser confirmed byte-identical PNG preparation
+without reducing its 1800-pixel width and reported no page errors. Authenticated
+saves and offline reopening were verified with disposable local services. No
+private production library contents or credentials were inspected. Successful
+startup passed the guarded pre-artwork-backup path; direct inspection of the
+protected archive was not performed under the deploy account.

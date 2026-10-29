@@ -1,4 +1,4 @@
-"""Offline backup and restore for the private metadata and audio store."""
+"""Offline backup and restore for private metadata, audio and artwork assets."""
 from __future__ import annotations
 
 import argparse
@@ -21,7 +21,7 @@ def sha256(path: Path) -> str:
 
 
 def backup(data_dir: Path, archive: Path) -> None:
-    db=data_dir/"lyrics.sqlite3"; audio=data_dir/"audio"
+    db=data_dir/"lyrics.sqlite3"; audio=data_dir/"audio"; artwork=data_dir/"artwork"
     if not db.is_file(): raise ValueError("metadata database does not exist")
     parent=archive.parent
     try: parent.lstat()
@@ -29,6 +29,7 @@ def backup(data_dir: Path, archive: Path) -> None:
     if archive.exists() or archive.is_symlink() or not parent.is_dir() or parent.is_symlink():
         raise ValueError("unsafe backup destination")
     if audio.is_symlink() or not audio.is_dir(): raise ValueError("unsafe audio directory")
+    if artwork.is_symlink() or artwork.exists() and not artwork.is_dir(): raise ValueError("unsafe artwork directory")
     descriptor, temporary_archive=tempfile.mkstemp(prefix=f".{archive.name}.",suffix=".tmp",dir=parent)
     os.close(descriptor)
     temporary_path=Path(temporary_archive)
@@ -40,11 +41,14 @@ def backup(data_dir: Path, archive: Path) -> None:
             finally: target.close(); source.close()
             audio_files=sorted(audio.iterdir())
             if any(file.is_symlink() or not file.is_file() for file in audio_files): raise ValueError("unsafe audio file")
-            files=[snapshot]+audio_files
-            manifest={"format":1,"files":{("metadata.sqlite3" if f==snapshot else "audio/"+f.name): {"sha256":sha256(f),"bytes":f.stat().st_size} for f in files}}
+            artwork_files=sorted(artwork.iterdir()) if artwork.exists() else []
+            if any(file.is_symlink() or not file.is_file() for file in artwork_files): raise ValueError("unsafe artwork file")
+            files=[snapshot]+audio_files+artwork_files
+            manifest={"format":1,"files":{("metadata.sqlite3" if f==snapshot else ("audio/" if f in audio_files else "artwork/")+f.name): {"sha256":sha256(f),"bytes":f.stat().st_size} for f in files}}
             with tarfile.open(temporary_path,"w:gz") as output:
                 output.add(snapshot,arcname="metadata.sqlite3")
-                for file in files[1:]: output.add(file,arcname="audio/"+file.name)
+                for file in audio_files: output.add(file,arcname="audio/"+file.name)
+                for file in artwork_files: output.add(file,arcname="artwork/"+file.name)
                 payload=json.dumps(manifest,sort_keys=True).encode(); info=tarfile.TarInfo("manifest.json"); info.size=len(payload); output.addfile(info,io.BytesIO(payload))
         os.chmod(temporary_path,0o600)
         archive_fd=os.open(temporary_path,os.O_RDONLY)
@@ -68,6 +72,7 @@ def restore(archive: Path, data_dir: Path) -> None:
             if len(member_names) != len(members): raise ValueError("duplicate backup members")
             input.extractall(root, members)
         (root / "audio").mkdir(exist_ok=True)
+        (root / "artwork").mkdir(exist_ok=True)
         manifest=json.loads((root/"manifest.json").read_text())
         if manifest.get("format") != 1: raise ValueError("unsupported backup format")
         expected_files=manifest.get("files")
@@ -75,7 +80,7 @@ def restore(archive: Path, data_dir: Path) -> None:
             raise ValueError("backup manifest does not cover exactly the restored files")
         for name, expected in manifest["files"].items():
             parts=Path(name).parts
-            if name != "metadata.sqlite3" and not (len(parts)==2 and parts[0]=="audio" and parts[1] not in {"", ".", ".."}):
+            if name != "metadata.sqlite3" and not (len(parts)==2 and parts[0] in {"audio","artwork"} and parts[1] not in {"", ".", ".."}):
                 raise ValueError("unsafe backup manifest")
             path=root/name
             if not path.is_file() or sha256(path)!=expected["sha256"] or path.stat().st_size!=expected["bytes"]: raise ValueError("backup integrity check failed")
@@ -89,12 +94,24 @@ def restore(archive: Path, data_dir: Path) -> None:
             # archives must include both kinds of private audio if linked.
             if "backing_audio_id" in columns:
                 referenced.extend(row[0] for row in database.execute("SELECT DISTINCT backing_audio_id FROM song_revisions WHERE backing_audio_id IS NOT NULL"))
+            artwork_references=set()
+            def record_artwork(value):
+                if isinstance(value,str) and value.startswith("./api/artwork/"):
+                    asset_id=value.removeprefix("./api/artwork/")
+                    if len(asset_id)!=64 or any(c not in "0123456789abcdef" for c in asset_id): raise ValueError("backup has invalid artwork reference")
+                    artwork_references.add(asset_id)
+            if "artwork" in {row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type='table'")}:
+                for body, in database.execute("SELECT body FROM song_revisions"):
+                    song=json.loads(body); record_artwork(song.get("cover"))
+                    for item in song.get("projectCovers",[]): record_artwork(item.get("cover") if isinstance(item,dict) else None)
+                for cover, in database.execute("SELECT cover FROM projects"): record_artwork(cover)
         except sqlite3.DatabaseError as exc:
             raise ValueError("backup database is invalid") from exc
         finally:
             database.close()
         if any(not (root / "audio" / audio_id).is_file() for audio_id in referenced): raise ValueError("backup misses referenced audio")
-        replacement=staged/"replacement"; replacement.mkdir(); shutil.copy2(root/"metadata.sqlite3",replacement/"lyrics.sqlite3"); shutil.copytree(root/"audio",replacement/"audio")
+        if any(not (root / "artwork" / asset_id).is_file() for asset_id in artwork_references): raise ValueError("backup misses referenced artwork")
+        replacement=staged/"replacement"; replacement.mkdir(); shutil.copy2(root/"metadata.sqlite3",replacement/"lyrics.sqlite3"); shutil.copytree(root/"audio",replacement/"audio"); shutil.copytree(root/"artwork",replacement/"artwork")
         credential=data_dir/"credentials.json"
         if credential.exists():
             if credential.is_symlink() or not credential.is_file(): raise ValueError("existing credentials file is unsafe")

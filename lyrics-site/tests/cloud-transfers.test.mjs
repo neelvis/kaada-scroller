@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { contentFingerprint, downloadProjectFiles, matchesContentFingerprint, projectLink, uploadLocalProject } from '../public/cloud-transfers.js';
 import { createSong, normalizeSet } from '../public/core.js';
 
 const project = () => ({ schemaVersion: 1, id: 'local-project', name: 'Project', songs: [createSong({ id: 'local-song', title: 'Song' })] });
+const artworkId = createHash('sha256').update('a').digest('hex');
+const artworkRef = `./api/artwork/${artworkId}`;
+function artworkResponse(url, options = {}) {
+  if (url === './api/artwork') return new Response(JSON.stringify({ id: artworkId, cover: artworkRef }), { headers: { 'Content-Type': 'application/json' } });
+  if (url === artworkRef && options.method === 'HEAD') return new Response(null, { status: 404 });
+  if (url === artworkRef) return new Response('a', { headers: { 'Content-Type': 'image/png' } });
+  return null;
+}
 
 test('projectLink pins cloud song revisions to their local project version IDs', () => {
   const local = project();
@@ -85,6 +94,7 @@ test('linked upload remaps the local project cover association to its cloud proj
   const local = project();
   local.songs[0].projectCovers = [{ projectId: local.id, cover: 'data:image/png;base64,YQ==' }];
   globalThis.fetch = async (url, options) => {
+    const artwork = artworkResponse(url, options); if (artwork) return artwork;
     if (options.method === 'GET') return new Response(JSON.stringify({ revision: 4 }), { headers: { 'Content-Type': 'application/json' } });
     writes.push(JSON.parse(options.body));
     return new Response(JSON.stringify({ id: 'cloud-project', revision: 5 }), { headers: { 'Content-Type': 'application/json' } });
@@ -122,6 +132,7 @@ test('lost import response retries retain newer edits and original song bindings
   const current = structuredClone(baseline); current.songs.reverse(); current.songs[1].title = 'Changed after lost response'; current.name = 'New local name';
   const originalFetch = globalThis.fetch, writes = [];
   globalThis.fetch = async (url, options) => {
+    const artwork = artworkResponse(url, options); if (artwork) return artwork;
     if (options.method === 'PUT') { const body = JSON.parse(options.body); writes.push(body); return new Response(JSON.stringify({ ...completed, name: body.name, revision: 2, songs: body.songs }), { headers: { 'Content-Type': 'application/json' } }); }
     return new Response(JSON.stringify(completed), { headers: { 'Content-Type': 'application/json' } });
   };

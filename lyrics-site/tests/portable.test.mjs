@@ -95,7 +95,7 @@ test('export rejects missing, unreadable or empty linked audio', async () => {
 test('empty sets export and import with a manifest only', async () => {
   const set = { schemaVersion: 1, id: 'empty', name: 'Empty', songs: [] };
   const archive = await exportPortableSet(set, async () => { assert.fail('No song loader'); });
-  assert.deepEqual((await importPortableSet(archive)).set, { ...set, cover: '', endCaption: '' });
+  assert.deepEqual((await importPortableSet(archive)).set, { ...set, cover: '', endCaption: '', liveSongs: {} });
 });
 
 test('ZIP imports reject missing manifests, missing audio and absent path fields', async () => {

@@ -23,7 +23,7 @@
     "test:cues": "node tests/cue-interludes-browser.mjs",
     "test:cards": "node tests/revision-26-browser.mjs",
     "test:timeline-expansion": "node tests/timeline-expansion-browser.mjs",
-    "test:artwork": "node tests/revision-27-browser.mjs"
+    "test:artwork": "node tests/artwork-browser.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1"
