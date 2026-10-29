@@ -25,3 +25,4 @@
 | TL revision 27 | Project-specific song artwork | Implemented and verified locally — publication in progress | [Requirements](features/timed-lyrics/revision-27.md) |
 | TL revision 28 | Per-song live display emphasis | Implemented and deployed — behavior acceptance pending | [Requirements](features/timed-lyrics/revision-28.md) |
 | TL revision 30 | Original-quality artwork and automatic file storage | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-30.md) |
+| TL revision 31 | Loading feedback and song-list navigation | Implemented, verified and deployed | [Requirements](features/timed-lyrics/revision-31.md) |

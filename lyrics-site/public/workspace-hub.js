@@ -5,6 +5,9 @@ import { DEFAULT_LIBRARY_SORT, LIBRARY_SORTS, sortLibrarySongs } from './library
 export function createWorkspaceHub({ state, actions }) {
   let destination = 'projects';
   let tooltipId = 0;
+  const pendingOpens = new Set();
+  const busyCard = key => key.replace(/:(edit|play)$/, '');
+  const cardPending = key => [...pendingOpens].some(pending => busyCard(pending) === busyCard(key));
   const $ = selector => document.querySelector(selector);
   const sortSelect = node('select', { id: 'hub-library-sort', 'aria-label': 'Сортировка песен' }, LIBRARY_SORTS.map(option => node('option', { value: option.value, text: option.label })));
   let savedSort = null;
@@ -67,10 +70,10 @@ export function createWorkspaceHub({ state, actions }) {
     $('#hub-search').value = ''; render(); actions.refresh();
     return true;
   }
-  function songPlayControl(item) {
+  function songPlayControl(item, cardRef) {
     const song = item.song || (Array.isArray(item.cues) ? item : null);
     const ready = song ? !validateSong(song).length : item.reviewed === true && item.valid === true;
-    const control = iconButton('play', 'Запустить', '', () => actions.playCloudSong(item.id));
+    const control = iconButton('play', 'Запустить', '', () => openAction(cardRef(), `cloud-song:${item.id}:play`, () => actions.playCloudSong(item.id)));
     if (ready) return control;
     control.disabled = true;
     const id = `hub-play-tooltip-${++tooltipId}`;
@@ -99,6 +102,22 @@ export function createWorkspaceHub({ state, actions }) {
     });
     return card;
   }
+  function openAction(card, key, action) {
+    if (cardPending(key)) return;
+    pendingOpens.add(key);
+    card.classList.add('is-opening'); card.setAttribute('aria-busy', 'true');
+    card.querySelectorAll('.hub-card-actions button[aria-label="Запустить"]').forEach(control => control.disabled = true);
+    Promise.resolve().then(action).catch(error => {
+      // The action normally reports its own errors; this guard ensures a rejected
+      // action cannot strand the card in its loading state.
+      console.error(error);
+    }).finally(() => {
+      pendingOpens.delete(key);
+      if (card.isConnected) { card.classList.remove('is-opening'); card.removeAttribute('aria-busy'); }
+      render();
+    });
+  }
+  const cardBusy = (...keys) => keys.some(cardPending);
   function render() {
     const data = state(), isProjects = destination === 'projects';
     $('#hub-title').textContent = isProjects ? 'Проекты' : 'Библиотека песен';
@@ -119,7 +138,7 @@ export function createWorkspaceHub({ state, actions }) {
       const metadata = cloud || item;
       if (!matches(metadata)) continue;
       const controls = [
-        iconButton('play', 'Запустить', '', () => actions.play(item.id)),
+        iconButton('play', 'Запустить', '', () => openAction(card, `local:${item.id}:play`, () => actions.play(item.id))),
       ];
       if (link && data.session) {
         controls.push(downloadControl(link.id, true));
@@ -127,25 +146,28 @@ export function createWorkspaceHub({ state, actions }) {
       } else if (!link) controls.push(iconButton('trash', 'Удалить проект', 'danger', () => actions.remove('project', item.id)));
       const subtitle = `песен: ${item.songs.length} · ${Math.ceil(item.songs.reduce((sum, song) => sum + (song.duration || 0), 0) / 60)} мин`;
       const readiness = node('p', { className: 'hub-readiness', text: 'Проверка готовности…' });
-      const card = makeOpenCard(node('article', { className: `hub-card${metadata.cover ? ' project-cover-card' : ''}`, 'data-local-id': item.id, 'data-cloud-id': link?.id }, [
+      const opening = cardBusy(`local:${item.id}:edit`, `local:${item.id}:play`);
+      if (opening) controls.find(control => control.matches?.('[aria-label="Запустить"]')).disabled = true;
+      const card = makeOpenCard(node('article', { className: `hub-card${metadata.cover ? ' project-cover-card' : ''}${opening ? ' is-opening' : ''}`, 'data-local-id': item.id, 'data-cloud-id': link?.id, 'aria-busy': opening ? 'true' : null }, [
         node('div', { className: 'hub-card-top' }, [node('span', { className: 'eyebrow', text: 'ПРОЕКТ' }), cardIcon('project')]),
         node('h2', { text: metadata.name || 'Без названия' }),
         metadata.cover ? node('img', { className: 'hub-card-cover', src: metadata.cover, alt: 'Обложка проекта' }) : null,
         node('p', { className: 'hub-card-meta', text: subtitle }),
         readiness,
         node('div', { className: 'hub-card-actions' }, controls),
-      ]), `проект ${metadata.name || 'Без названия'}`, () => actions.openProject(item.id));
+      ]), `проект ${metadata.name || 'Без названия'}`, () => openAction(card, `local:${item.id}:edit`, () => actions.openProject(item.id)));
       cards.push(card);
       actions.readiness(item).then(text => { if (card.isConnected) readiness.textContent = text; }).catch(() => { if (card.isConnected) readiness.textContent = 'Файлы недоступны — подключите папку'; });
     }
     if (data.session) for (const item of cloudItems) {
       if ((isProjects && linkedIds.has(item.id)) || !matches(item)) continue;
+      let card;
       const controls = isProjects ? [
-        iconButton('play', 'Запустить', '', () => actions.playCloudProject(item.id)),
+        iconButton('play', 'Запустить', '', () => openAction(card, `cloud-project:${item.id}:play`, () => actions.playCloudProject(item.id))),
         downloadControl(item.id),
         iconButton('trash', 'Удалить проект', 'danger', () => actions.removeCloudProject(item.id)),
       ] : [
-        songPlayControl(item),
+        songPlayControl(item, () => card),
         (() => {
           const copy = iconButton('copy', 'Создать копию', '', () => actions.createLibraryCopy(item));
           if (item.reviewed === true && item.valid === true) return copy;
@@ -158,14 +180,18 @@ export function createWorkspaceHub({ state, actions }) {
         iconButton('trash', 'Удалить песню', 'danger', () => actions.removeCloudSong(item.id)),
       ];
       const songInfo = item.song || item;
-      cards.push(makeOpenCard(node('article', { className: `hub-card cloud${isProjects ? (item.cover ? ' project-cover-card' : '') : ' song-cover-card'}`, 'data-cloud-id': item.id }, [
+      const openKey = `${isProjects ? 'cloud-project' : 'cloud-song'}:${item.id}:edit`;
+      const opening = cardBusy(openKey, `${isProjects ? 'cloud-project' : 'cloud-song'}:${item.id}:play`);
+      if (opening) controls.filter(control => control.matches?.('[aria-label="Запустить"]')).forEach(control => control.disabled = true);
+      card = makeOpenCard(node('article', { className: `hub-card cloud${isProjects ? (item.cover ? ' project-cover-card' : '') : ' song-cover-card'}${opening ? ' is-opening' : ''}`, 'data-cloud-id': item.id, 'aria-busy': opening ? 'true' : null }, [
         node('div', { className: 'hub-card-top' }, [node('span', { className: 'eyebrow', text: isProjects ? 'ПРОЕКТ' : 'ПЕСНЯ' }), isProjects ? cardIcon('project') : songIcons(item)]),
         node('h2', { text: item.name || item.title || 'Без названия' }),
         ...(isProjects ? [node('p', { className: 'hub-card-meta', text: `песен: ${item.songCount}` })] : songMetadata(item)),
         isProjects && item.cover ? node('img', { className: 'hub-card-cover', src: item.cover, alt: 'Обложка проекта' }) : null,
         !isProjects && songInfo.cover ? node('img', { className: 'hub-card-cover', src: songInfo.cover, alt: 'Обложка песни' }) : null,
         node('div', { className: 'hub-card-actions' }, controls),
-      ]), `${isProjects ? 'проект' : 'песню'} ${item.name || item.title || 'Без названия'}`, () => isProjects ? actions.openCloudProject(item.id) : actions.openCloudSong(item.id)));
+      ]), `${isProjects ? 'проект' : 'песню'} ${item.name || item.title || 'Без названия'}`, () => openAction(card, openKey, () => isProjects ? actions.openCloudProject(item.id) : actions.openCloudSong(item.id)));
+      cards.push(card);
     }
     if (!cards.length) cards.push(node('div', { className: 'hub-empty' }, [
       node('span', { className: 'empty-note', text: isProjects ? '♫' : '♪' }),

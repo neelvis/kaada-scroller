@@ -526,3 +526,15 @@ saves and offline reopening were verified with disposable local services. No
 private production library contents or credentials were inspected. Successful
 startup passed the guarded pre-artwork-backup path; direct inspection of the
 protected archive was not performed under the deploy account.
+
+## Revision 31 publication (2026-10-30)
+
+Paired release `20261029_213151` publishes card loading feedback, derived song
+numbers and display-menu scroll retention/current-song indication. See the
+[revision 31 requirements and validation](../../specs/features/timed-lyrics/revision-31.md).
+Frontend unit tests pass 138/138; two focused browser gates pass loading/retry,
+numbered reorder and project/online-library menu behavior. Source/build, staged
+checksums, production hashes, health/access and fresh-browser boot checks pass.
+Backend source/runtime inputs are unchanged. Both live links select the release;
+the API is active with zero automatic restarts. Previous pair `20261029_212929`
+is retained. Close and reopen existing tabs to adopt the updated cached shell.

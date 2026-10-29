@@ -43,6 +43,8 @@
 .event-icon-button:hover::after,.event-icon-button:focus-visible::after{opacity:1;visibility:visible}
 .event-menu-toggle::after{top:calc(100% + 8px);bottom:auto;left:0;right:auto}
 .event-menu-toggle[aria-expanded=true]::after{visibility:hidden}
+.song-number{display:grid;place-items:center;width:22px;height:22px;flex:none;border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.event-menu-songs button[aria-current=true]{border-color:var(--accent);background:rgba(35,192,235,.14);color:var(--text);box-shadow:inset 3px 0 var(--accent);font-weight:750}
 .event-controls{padding:12px 18px;display:flex;flex-direction:column;gap:10px;flex:none;background:var(--bg);opacity:1;transition:opacity .2s}
 .event-control-row{width:100%;display:flex;align-items:center;gap:18px}
 .event-actions{display:flex;align-items:center;gap:7px;flex:none}

@@ -54,6 +54,9 @@ let onlineLibraryItems = [];
 let onlineLibraryRequest = 0;
 let eventOrigin = 'projects';
 let eventMenuRequest = 0;
+let eventMenuScrollContext = null;
+let eventMenuScroll = { outer: 0, inner: 0 };
+let eventMenuListHydrated = false;
 let workspaceGeneration = 0;
 let backingPreviewId = null;
 let backingPreviewUrl = null;
@@ -636,6 +639,7 @@ function renderList() {
   set.songs.forEach((song, index) => {
     const ready = !validateSong(song).length;
     const select = node('button', { type: 'button', className: 'song-select', onclick: () => { selectedId = song.id; resetEditorTab(); render(); } }, [
+      node('span', { className: 'song-number', text: String(index + 1), 'aria-hidden': 'true' }),
       node('span', { className: `song-dot${ready ? ' ready' : ''}`, 'aria-hidden': true }),
       node('span', { className: 'song-item-copy' }, [node('span', { className: 'song-item-title', text: song.title || 'Без названия' }), ...(song.artist ? [node('span', { className: 'song-item-artist', text: song.artist })] : []), ...(song.album ? [node('span', { className: 'song-item-album', text: song.album })] : []), ...(song.version ? [node('span', { className: 'song-item-version', text: song.version })] : []), node('span', { className: `song-item-status ${ready ? 'ready' : 'needs-preparation'}`, text: status(song) })])
     ]);
@@ -923,18 +927,36 @@ async function launchLibrarySongInDisplay(id) {
   } catch (error) { toast(`Не удалось открыть песню: ${error.message}`); }
 }
 function showEventMenu() {
-  if ($('#event-menu').open) { $('#event-menu').close(); return; }
-  const list = $('#event-menu-songs'), request = ++eventMenuRequest;
+  const list = $('#event-menu-songs'), menu = $('#event-menu');
+  if (menu.open) {
+    if (eventMenuListHydrated) eventMenuScroll = { outer: menu.scrollTop, inner: list.scrollTop };
+    eventMenuListHydrated = false; menu.close(); return;
+  }
+  const request = ++eventMenuRequest;
+  const context = eventOrigin === 'library' ? 'library' : `project:${project?.id || localProjectId || set.id || 'unknown'}`;
+  if (eventMenuScrollContext !== context) { eventMenuScrollContext = context; eventMenuScroll = { outer: 0, inner: 0 }; }
+  const rememberScroll = () => { if (eventMenuListHydrated) eventMenuScroll = { outer: menu.scrollTop, inner: list.scrollTop }; };
+  const restoreScroll = () => {
+    if (!menu.open || request !== eventMenuRequest) return;
+    menu.scrollTop = Math.min(eventMenuScroll.outer, Math.max(0, menu.scrollHeight - menu.clientHeight));
+    list.scrollTop = Math.min(eventMenuScroll.inner, Math.max(0, list.scrollHeight - list.clientHeight));
+    eventMenuScroll = { outer: menu.scrollTop, inner: list.scrollTop };
+    requestAnimationFrame(() => { if (request === eventMenuRequest) eventMenuListHydrated = true; });
+  };
+  eventMenuListHydrated = false;
+  menu.onscroll = rememberScroll; list.onscroll = rememberScroll;
   list.replaceChildren(); $('#event-project-name').textContent = eventOrigin === 'library' ? 'Онлайн-библиотека' : set.name;
   $('#event-menu-title').previousElementSibling.textContent = eventOrigin === 'library' ? 'Библиотека' : 'Проект';
   const addSongs = songs => {
     if (!$('#event-menu').open || request !== eventMenuRequest) return;
     list.replaceChildren();
-    for (const song of songs) {
+    for (const [index, song] of songs.entries()) {
       const ready = song.song
         ? song.reviewed === true && song.valid === true
         : typeof song.valid === 'boolean' ? song.reviewed === true && song.valid === true : !validateSong(song).length;
-      const item = button(`${song.title || song.song?.title || 'Без названия'}${ready ? '' : ' · нужна подготовка'}`, 'button quiet', () => {
+      const item = button(`${index + 1}. ${song.title || song.song?.title || 'Без названия'}${ready ? '' : ' · нужна подготовка'}`, 'button quiet', () => {
+        rememberScroll();
+        eventMenuListHydrated = false;
         $('#event-menu').close();
         if (eventOrigin === 'library') launchLibrarySongInDisplay(song.id);
         else { selectedId = song.id; render(); launchEvent(song); }
@@ -944,10 +966,11 @@ function showEventMenu() {
       list.append(item);
     }
     if (!songs.length) list.append(node('p', { className: 'hint', text: 'В библиотеке пока нет песен.' }));
+    requestAnimationFrame(restoreScroll);
   };
   if (eventOrigin === 'library') {
     list.append(node('p', { className: 'hint', text: 'Загружаем песни…' }));
-    remote.listLibrary().then(result => addSongs(result.songs || [])).catch(error => {
+    remote.listLibrary().then(result => addSongs(sortLibrarySongs(result.songs || [], onlineLibrarySort.value))).catch(error => {
       if (request === eventMenuRequest) list.replaceChildren(node('p', { className: 'hint', text: error.message }));
     });
   } else {
