@@ -22,12 +22,13 @@ title, readiness checks, playback timing and artwork fallback rules.
   a name must not change the song's normal library title, artwork or another
   project's name. Only offer projects containing the song, preserving existing
   membership-loading error and retry behavior.
-- **TL-R32.2 — Display menu naming:** In the display-mode Media library menu
-  opened for a project, use the song's nonblank name for that project; otherwise
+- **TL-R32.2 — Display naming:** In the display-mode song heading and Media
+  library menu opened for a project, use the song's nonblank name for that
+  project; otherwise
   use its normal library title. Treat whitespace-only input as empty. Preserve
   numbering, order, readiness indicators and current-song indication. Presentation
   launched directly from the online library uses normal library titles. This
-  revision does not rename library cards, project-editor lists or song headings.
+  revision does not rename library cards or project-editor lists.
 - **TL-R32.3 — Persistence and compatibility:** Preserve project names through
   cloud save/reload, local project copies, offline presentation and native portable
   export/import, including project-identity remapping. Project renaming must not
@@ -55,9 +56,10 @@ title, readiness checks, playback timing and artwork fallback rules.
 ## Acceptance criteria
 
 - **TL-AC32.1 (R32.1–R32.3):** Put one song in projects A and B. Set distinct
-  names beside their artwork settings. Each project's display menu shows its own
-  name; direct-library presentation and normal library cards retain the original
-  title. Clear A's name or enter only spaces and verify normal-title fallback.
+  names beside their artwork settings. Each project's display menu and heading
+  show its own name; direct-library presentation and normal library cards retain
+  the original title. Clear A's name or enter only spaces and verify normal-title
+  fallback.
   Reorder songs and verify numbering/current-song indication remain correct.
 - **TL-AC32.2 (R32.3):** Save and reload the names, rename a project, reopen a
   local copy offline and round-trip a native portable project with remapped IDs.
@@ -143,3 +145,26 @@ browser, using only synthetic OPFS data and intercepted API requests, verified
 project-name menu labels, standby artwork, Play/pause/reset and zero reset position
 without page errors or production API writes. Close and reopen existing tabs to
 adopt the updated application shell.
+
+## Small display follow-up (2026-10-30)
+
+The user explicitly requested the project-specific name in the display heading,
+with normal-title fallback, as well as smooth movement between lyric lines.
+R32.2 and AC32.1 now include the heading. This bounded presentation refinement
+uses the existing naming rules and TL-R12 smooth-positioning requirement; it
+does not introduce a new feature specification.
+
+Validation: the 138-test frontend baseline passed; the fresh build and extended
+`node tests/revision-32-browser.mjs` passed, covering project A/B and blank-name
+heading fallback, direct-library headings, interpolated timed movement and reduced
+motion alongside the existing standby/playback scenarios. Independent scoped
+review found no actionable issues. JavaScript syntax and diff checks passed.
+
+Published paired release `20261030_044135`; previous pair `20261030_042855`
+remains available. The 61-entry manifest SHA-256 is
+`a558b66dc261ccaaaff2963d59edbdc4a8343019ffa1beefb13038e6b7b7c319`.
+Both live links select the new release, the API is active with zero automatic
+restarts, health/access checks passed, and changed assets plus generated cache
+files and runtime MIME/hash checks matched the package. A fresh signed-out
+production browser with synthetic local project data verified the project-name
+heading/menu, standby, Play/pause/reset and no page errors or API writes.

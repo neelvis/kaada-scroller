@@ -120,6 +120,7 @@
 /* Keep list tooltips inside their row so they cannot enlarge the scroll area. */
 .interlude-notes{display:none;white-space:nowrap;min-height:1.2em}
 .audience .audience-lines.timed-rests .audience-line.rest.active{color:var(--accent);font-weight:800;opacity:1}
+.audience-lines.timed-rests{transition:transform .6s ease-in-out}
 .audience.no-highlight .audience-lines.timed-rests .audience-line.rest.active{color:var(--muted);font-weight:570;opacity:1;transform:none;text-shadow:none}
 .audience.no-highlight .audience-lines.timed-rests .rest.active .interlude-notes span{animation:none}
 .timed-rests .rest.active .interlude-label{display:none}
@@ -132,6 +133,7 @@
 .interlude-notes span:nth-child(3){animation-delay:-.8s}
 @keyframes interlude-note{0%,100%{transform:translateY(.08em) rotate(-7deg);opacity:.65}50%{transform:translateY(-.16em) rotate(7deg);opacity:1}}
 @media(prefers-reduced-motion:reduce){.timed-rests .rest.active .interlude-notes span{animation:none}}
+@media(prefers-reduced-motion:reduce){.audience-lines.timed-rests{transition:none}}
 
 /* Song metadata in project editing mirrors the card hierarchy. */
 .song-item-artist{display:block;color:var(--text);font-weight:750;font-size:12px;margin-top:2px}

@@ -113,6 +113,12 @@ const { renderEditor, cancelLrclib, resetPreparation, resetEditorTab, refreshCon
 });
 
 function currentSong() { return set.songs.find((song) => song.id === selectedId) || null; }
+function displaySongTitle(song, projectId = project?.id || localProjectId) {
+  const projectName = eventOrigin === 'projects' && projectId
+    ? song.projectCovers?.find(cover => cover.projectId === projectId)?.libraryName?.trim()
+    : '';
+  return projectName || song.title || 'Без названия';
+}
 async function loadSongProjects(song) {
   const projects = new Map();
   const songId = entryFor(song).songId;
@@ -737,7 +743,7 @@ function launchEvent(song) {
   }
   if (validateSong(song).length) { toast('Для показа песня должна быть подготовлена и подтверждена.'); return; }
   playback.dispose(); previewPlayer.pause(); backingPreview.pause(); document.querySelectorAll('.toast').forEach(item => item.remove());
-  $('#home-view').hidden = true; $('.topbar').hidden = true; els.prep.hidden = true; els.event.hidden = false; els.eventName.textContent = song.title;
+  $('#home-view').hidden = true; $('.topbar').hidden = true; els.prep.hidden = true; els.event.hidden = false; els.eventName.textContent = displaySongTitle(song, artworkProjectId);
   eventState = { song: structuredClone(song), endCaption: song.endCaption?.trim() || (eventOrigin === 'projects' ? set.endCaption?.trim() : '') || 'Ваша песенка спета', frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0, lyricsRevealed: false };
   const audienceCover = $('#audience-cover'), activeCover = presentationArtwork(song, artworkProjectId, project?.cover || set.cover);
   audienceCover.hidden = !activeCover; if (activeCover) audienceCover.src = activeCover;
@@ -960,11 +966,7 @@ function showEventMenu() {
     list.replaceChildren();
     for (const [index, song] of songs.entries()) {
       const songData = song.song || song;
-      const projectId = project?.id || localProjectId;
-      const projectName = eventOrigin === 'projects' && projectId
-        ? songData.projectCovers?.find(cover => cover.projectId === projectId)?.libraryName?.trim()
-        : '';
-      const title = projectName || song.title || song.song?.title || 'Без названия';
+      const title = displaySongTitle(songData);
       const ready = song.song
         ? song.reviewed === true && song.valid === true
         : typeof song.valid === 'boolean' ? song.reviewed === true && song.valid === true : !validateSong(song).length;

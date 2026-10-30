@@ -74,6 +74,19 @@ try {
     assert.equal(await page.locator('#audience').evaluate(el => el.classList.contains('lyrics-standby')), false);
   };
   await assertStandby(true);
+  assert.equal(await page.locator('#event-song-name').innerText(), 'A only name', 'project header uses the project-specific library name');
+  const timedStartY = await lines.evaluate(el => new DOMMatrixReadOnly(getComputedStyle(el).transform).m42);
+  await page.locator('#event-progress').evaluate(el => { el.value = '8'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  const timedTargetY = await lines.evaluate(el => new DOMMatrixReadOnly(el.style.transform).m42);
+  await page.waitForTimeout(120);
+  const timedInterpolatedY = await lines.evaluate(el => new DOMMatrixReadOnly(getComputedStyle(el).transform).m42);
+  await page.waitForTimeout(600);
+  assert.notEqual(timedTargetY, timedStartY, 'timed cue change moves the lyric stack');
+  assert.ok(timedInterpolatedY < Math.max(timedStartY, timedTargetY) && timedInterpolatedY > Math.min(timedStartY, timedTargetY), `timed lyric movement interpolates between cue positions (${timedStartY} → ${timedInterpolatedY} → ${timedTargetY})`);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  assert.equal(await lines.evaluate(el => getComputedStyle(el).transitionDuration), '0s', 'reduced motion disables timed lyric transitions');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.locator('#event-reset').dblclick(); await assertStandby(true);
   await cover.evaluate(img => img.decode());
   assert.equal(await cover.evaluate(img => img.naturalWidth / img.naturalHeight), 0.5, 'portrait cover proportions are retained');
   await mkdir(resolve('test-results/revision-32'), { recursive: true });
@@ -85,6 +98,7 @@ try {
   assert.equal(await menuSongs.nth(2).innerText(), '3. No artwork title');
   assert.equal(await menuSongs.nth(0).getAttribute('aria-current'), 'true');
   await menuSongs.nth(1).click(); await assertStandby(true);
+  assert.equal(await page.locator('#event-song-name').innerText(), 'Original landscape title', 'project header falls back when the project-specific name is blank');
   assert.equal(await cover.evaluate(async img => { await img.decode(); const r = img.getBoundingClientRect(); return [img.naturalWidth / img.naturalHeight, getComputedStyle(img).objectFit, Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)]; }).then(result => result.slice(0, 2).join('|')), '2.5|contain');
   const bounds = await cover.evaluate(img => { const r = img.getBoundingClientRect(), a = document.querySelector('#audience').getBoundingClientRect(); return { image: { left: r.left, right: r.right, top: r.top, bottom: r.bottom }, audience: { left: a.left, right: a.right, top: a.top, bottom: a.bottom }, centerDelta: [Math.abs((r.left + r.right - a.left - a.right) / 2), Math.abs((r.top + r.bottom - a.top - a.bottom) / 2)] }; });
   assert.ok(bounds.image.left >= bounds.audience.left && bounds.image.right <= bounds.audience.right && bounds.image.top >= bounds.audience.top && bounds.image.bottom <= bounds.audience.bottom, JSON.stringify(bounds));
@@ -114,6 +128,7 @@ try {
   await page.locator('#projects').click();
   await page.locator(`#hub-list [data-cloud-id="${seeded.projects[1]}"] h2`).click();
   await page.locator('#project-songs').waitFor({ state: 'visible' }); await page.locator('#show-mode').click();
+  assert.equal(await page.locator('#event-song-name').innerText(), 'B only name', 'header resolves the active project name when switching projects');
   await page.locator('#event-menu-toggle').click();
   assert.equal(await page.locator('#event-menu-songs button').nth(0).innerText(), '1. B only name');
 
@@ -130,7 +145,9 @@ try {
   await page.locator('#library').click(); await page.locator(`#hub-list [data-cloud-id="${seeded.songs[0]}"] h2`).click();
   await page.waitForFunction(() => document.querySelector('[aria-label="Имя в медиатеке · Standby A"]')?.value === 'Edited project name');
   assert.equal(await page.getByRole('textbox', { name: 'Имя в медиатеке · Standby A' }).inputValue(), 'Edited project name');
-  await page.locator('#show-mode').click(); await page.locator('#event-menu-toggle').click();
+  await page.locator('#show-mode').click();
+  assert.equal(await page.locator('#event-song-name').innerText(), 'Original portrait title', 'direct library display keeps the normal title');
+  await page.locator('#event-menu-toggle').click();
   await page.locator('#event-menu-songs button').last().waitFor();
   const directMenu = await page.locator('#event-menu-songs button').allTextContents();
   assert.ok(directMenu.some(text => text.includes('Original portrait title')), JSON.stringify(directMenu));
@@ -142,7 +159,9 @@ try {
   assert.equal(await page.locator('#event-menu-songs button').filter({ hasText: 'Edited project name' }).count(), 0);
   await page.locator('#event-menu-close').click(); await page.locator('#event-home').click(); await page.locator('#projects').click();
   await page.locator(`#hub-list [data-cloud-id="${seeded.projects[0]}"] h2`).click();
-  await page.locator('#project-songs').waitFor({ state: 'visible' }); await page.locator('#show-mode').click(); await page.locator('#event-menu-toggle').click();
+  await page.locator('#project-songs').waitFor({ state: 'visible' }); await page.locator('#show-mode').click();
+  assert.equal(await page.locator('#event-song-name').innerText(), 'Edited project name', 'project header uses the project-specific library name');
+  await page.locator('#event-menu-toggle').click();
   await page.locator('#event-menu-songs button').last().waitFor();
   assert.equal(await page.locator('#event-menu-songs button').first().innerText(), '1. Edited project name', 'project display resolves the latest saved library name');
   await page.locator('#event-menu-close').click(); await page.locator('#event-home').click(); await page.locator('#library').click();
