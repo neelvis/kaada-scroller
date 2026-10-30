@@ -159,6 +159,8 @@ test('legacy sets receive empty end captions and reject oversized captions', () 
 test('project song covers round trip and malformed or duplicate project IDs are rejected', () => {
   const set = { schemaVersion: 1, id: 'set', name: 'Set', songs: [{ ...song(), projectCovers: [{ projectId: 'project-a', cover: 'data:image/webp;base64,YQ==', libraryName: 'Evening song' }, { projectId: 'project-b', cover: '', libraryName: 'Name only' }] }] };
   assert.deepEqual(importSet(exportSet(set)).songs[0].projectCovers, set.songs[0].projectCovers);
+  const legacyArtwork = importSet(JSON.stringify({ ...set, songs: [{ ...set.songs[0], projectCovers: [{ projectId: 'project-a', cover: null }] }] }));
+  assert.deepEqual(legacyArtwork.songs[0].projectCovers, [{ projectId: 'project-a', cover: '' }]);
   assert.throws(() => importSet(JSON.stringify({ ...set, songs: [{ ...set.songs[0], projectCovers: [...set.songs[0].projectCovers, ...set.songs[0].projectCovers] }] })), /повторяется/);
   assert.throws(() => importSet(JSON.stringify({ ...set, songs: [{ ...set.songs[0], projectCovers: [{ projectId: 'project-a', cover: 'invalid' }] }] })), /обложка проекта/);
   assert.throws(() => importSet(JSON.stringify({ ...set, songs: [{ ...set.songs[0], projectCovers: [{ projectId: 'project-a', cover: '', libraryName: 'x'.repeat(1001) }] }] })), /имя в медиатеке/);
