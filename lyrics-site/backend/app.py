@@ -51,6 +51,7 @@ def valid_song(song: Any) -> bool:
         project_id, cover=item.get("projectId"), item.get("cover")
         if not isinstance(project_id,str) or not project_id.strip() or len(project_id)>200 or project_id in seen: return False
         if not valid_cover(cover): return False
+        if "libraryName" in item and (not isinstance(item["libraryName"],str) or len(item["libraryName"])>1000): return False
         seen.add(project_id)
     return True
 

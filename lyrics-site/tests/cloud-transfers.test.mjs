@@ -70,7 +70,7 @@ test('replaying an unlinked project upload returns the previously completed migr
 
 test('project downloads keep cloud IDs unchanged and assign independent local media keys', async () => {
   const originalFetch = globalThis.fetch;
-  const source = { ...createSong({ id: 'cloud-song', title: 'Song', backing: { fileName: 'track.wav' } }), projectCovers: [{ projectId: 'cloud-project', cover: 'data:image/png;base64,YQ==' }] };
+  const source = { ...createSong({ id: 'cloud-song', title: 'Song', backing: { fileName: 'track.wav' } }), projectCovers: [{ projectId: 'cloud-project', cover: 'data:image/png;base64,YQ==', libraryName: 'Cloud project name' }] };
   const cloud = { id: 'cloud-project', name: 'Cloud project', songs: [{ song: source, backingAudioId: 'backing-id', audioId: 'original-id' }] };
   globalThis.fetch = async url => new Response(url.endsWith('backing-id') ? 'backing bytes' : 'original bytes');
   try {
@@ -78,6 +78,7 @@ test('project downloads keep cloud IDs unchanged and assign independent local me
     const localSong = downloaded.local.songs[0];
     assert.notEqual(localSong.id, source.id);
     assert.equal(downloaded.local.id, localSong.projectCovers[0].projectId);
+    assert.equal(localSong.projectCovers[0].libraryName, 'Cloud project name');
     assert.equal(source.id, 'cloud-song');
     assert.equal(await downloaded.audio.get(`backing:${localSong.id}`).text(), 'backing bytes');
     assert.equal(await downloaded.audio.get(`original:${localSong.id}`).text(), 'original bytes');
@@ -92,7 +93,7 @@ test('linked upload remaps the local project cover association to its cloud proj
   await connectWorkspace(createDirectoryFixture().handle);
   const originalFetch = globalThis.fetch, writes = [];
   const local = project();
-  local.songs[0].projectCovers = [{ projectId: local.id, cover: 'data:image/png;base64,YQ==' }];
+  local.songs[0].projectCovers = [{ projectId: local.id, cover: 'data:image/png;base64,YQ==', libraryName: 'Local project name' }];
   globalThis.fetch = async (url, options) => {
     const artwork = artworkResponse(url, options); if (artwork) return artwork;
     if (options.method === 'GET') return new Response(JSON.stringify({ revision: 4 }), { headers: { 'Content-Type': 'application/json' } });
@@ -102,6 +103,7 @@ test('linked upload remaps the local project cover association to its cloud proj
   try {
     await uploadLocalProject(local, { id: 'cloud-project', revision: 4 });
     assert.equal(writes[0].songs[0].song.projectCovers[0].projectId, 'cloud-project');
+    assert.equal(writes[0].songs[0].song.projectCovers[0].libraryName, 'Local project name');
     assert.equal(local.songs[0].projectCovers[0].projectId, local.id);
   } finally { globalThis.fetch = originalFetch; }
 });
@@ -127,7 +129,7 @@ test('lost import response retries retain newer edits and original song bindings
   const { createDirectoryFixture } = await import('./workspace-memory-fixture.mjs');
   await connectWorkspace(createDirectoryFixture().handle);
   const baseline = project(); baseline.songs.push(createSong({ id: 'local-second', title: 'Second' }));
-  baseline.songs[0].projectCovers = [{ projectId: baseline.id, cover: 'data:image/png;base64,YQ==' }];
+  baseline.songs[0].projectCovers = [{ projectId: baseline.id, cover: 'data:image/png;base64,YQ==', libraryName: 'Portable name' }];
   const completed = { id: 'created', name: baseline.name, revision: 1, songs: baseline.songs.map((song, index) => ({ songId: `cloud-${index}`, revisionId: `r-${index}`, audioId: null, backingAudioId: null, song: { ...song, id: `cloud-${index}`, projectCovers: song.projectCovers.map(item => ({ ...item, projectId: item.projectId === baseline.id ? 'created' : item.projectId })) } })) };
   const current = structuredClone(baseline); current.songs.reverse(); current.songs[1].title = 'Changed after lost response'; current.name = 'New local name';
   const originalFetch = globalThis.fetch, writes = [];
@@ -143,6 +145,7 @@ test('lost import response retries retain newer edits and original song bindings
     assert.deepEqual(writes[0].songs.map(entry => entry.songId), ['cloud-1', 'cloud-0']);
     assert.equal(writes[0].songs[1].song.title, 'Changed after lost response');
     assert.equal(writes[0].songs[1].song.projectCovers[0].projectId, completed.id);
+    assert.equal(writes[0].songs[1].song.projectCovers[0].libraryName, 'Portable name');
     assert.equal(writes[0].revision, 1);
     completed.name = 'Concurrent cloud rename';
     await assert.rejects(uploadLocalProject(current, null, () => {}, baseline), error => error.code === 'conflict');

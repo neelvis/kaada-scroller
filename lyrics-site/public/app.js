@@ -738,10 +738,11 @@ function launchEvent(song) {
   if (validateSong(song).length) { toast('Для показа песня должна быть подготовлена и подтверждена.'); return; }
   playback.dispose(); previewPlayer.pause(); backingPreview.pause(); document.querySelectorAll('.toast').forEach(item => item.remove());
   $('#home-view').hidden = true; $('.topbar').hidden = true; els.prep.hidden = true; els.event.hidden = false; els.eventName.textContent = song.title;
-  eventState = { song: structuredClone(song), endCaption: song.endCaption?.trim() || (eventOrigin === 'projects' ? set.endCaption?.trim() : '') || 'Ваша песенка спета', frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0 };
+  eventState = { song: structuredClone(song), endCaption: song.endCaption?.trim() || (eventOrigin === 'projects' ? set.endCaption?.trim() : '') || 'Ваша песенка спета', frame: 0, lastIndex: null, ended: false, manualScrollIndex: 0, lyricsRevealed: false };
   const audienceCover = $('#audience-cover'), activeCover = presentationArtwork(song, artworkProjectId, project?.cover || set.cover);
   audienceCover.hidden = !activeCover; if (activeCover) audienceCover.src = activeCover;
   els.audience.classList.toggle('has-cover', Boolean(activeCover));
+  syncLyricsVisibility();
   $('#event-progress').disabled = false;
   const owner = localPlayback ? null : project, entry = localPlayback ? {} : { ...entryFor(song) };
   let loaded = null;
@@ -863,6 +864,8 @@ function toggleFullscreen() {
 function displayTime(seconds) { return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`; }
 function updateEvent() {
   const song = eventState.song; if (!song) return;
+  if (playback.running) eventState.lyricsRevealed = true;
+  syncLyricsVisibility();
   els.audienceLines.classList.toggle('playback-running', playback.running);
   const elapsed = playback.elapsed(); const current = cueAt(song, elapsed);
   if (current.index !== eventState.lastIndex || current.ended !== eventState.ended) {
@@ -895,10 +898,15 @@ function startEvent() {
   return playback.start();
 }
 function resetEvent() {
-  playback.reset(); eventState.lastIndex = null; eventState.ended = false;
+  playback.reset(); eventState.lyricsRevealed = false; syncLyricsVisibility(); eventState.lastIndex = null; eventState.ended = false;
   $('#event-audio-status').hidden = true; $('#event-lyrics-only').hidden = true;
   if (eventState.song) { renderAudience(-1, false); updateEvent(); }
   scheduleControlsDimming();
+}
+function syncLyricsVisibility() {
+  const standby = Boolean(eventState.song && !eventState.lyricsRevealed);
+  els.audience.classList.toggle('lyrics-standby', standby);
+  els.audienceLines.setAttribute('aria-hidden', String(standby));
 }
 function exitEvent() {
   playback.dispose(); $('#event-menu').close();
@@ -951,10 +959,16 @@ function showEventMenu() {
     if (!$('#event-menu').open || request !== eventMenuRequest) return;
     list.replaceChildren();
     for (const [index, song] of songs.entries()) {
+      const songData = song.song || song;
+      const projectId = project?.id || localProjectId;
+      const projectName = eventOrigin === 'projects' && projectId
+        ? songData.projectCovers?.find(cover => cover.projectId === projectId)?.libraryName?.trim()
+        : '';
+      const title = projectName || song.title || song.song?.title || 'Без названия';
       const ready = song.song
         ? song.reviewed === true && song.valid === true
         : typeof song.valid === 'boolean' ? song.reviewed === true && song.valid === true : !validateSong(song).length;
-      const item = button(`${index + 1}. ${song.title || song.song?.title || 'Без названия'}${ready ? '' : ' · нужна подготовка'}`, 'button quiet', () => {
+      const item = button(`${index + 1}. ${title}${ready ? '' : ' · нужна подготовка'}`, 'button quiet', () => {
         rememberScroll();
         eventMenuListHydrated = false;
         $('#event-menu').close();

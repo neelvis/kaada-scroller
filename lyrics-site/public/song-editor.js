@@ -210,8 +210,25 @@ export function createSongEditor(context) {
   function setArtwork(song, target, data) {
     changeSong(song.id, latest => {
       if (target === 'primary') return { ...latest, cover: data };
-      const covers = (Array.isArray(latest.projectCovers) ? latest.projectCovers : []).filter(item => item?.projectId !== target);
-      return { ...latest, projectCovers: data ? [...covers, { projectId: target, cover: data }] : covers };
+      const covers = Array.isArray(latest.projectCovers) ? latest.projectCovers : [];
+      const existing = covers.find(item => item?.projectId === target);
+      const next = covers.filter(item => item?.projectId !== target);
+      const entry = { ...(existing || {}), projectId: target, cover: data };
+      if (data || entry.libraryName?.trim()) next.push(entry);
+      return { ...latest, projectCovers: next };
+    });
+  }
+  function setProjectLibraryName(song, projectId, value) {
+    const libraryName = value.trim().slice(0, 1000);
+    changeSong(song.id, latest => {
+      const entries = Array.isArray(latest.projectCovers) ? latest.projectCovers : [];
+      const existing = entries.find(item => item?.projectId === projectId);
+      const next = entries.filter(item => item?.projectId !== projectId);
+      const entry = { ...(existing || {}), projectId, cover: existing?.cover || '' };
+      if (libraryName) entry.libraryName = libraryName;
+      else delete entry.libraryName;
+      if (entry.cover || libraryName) next.push(entry);
+      return { ...latest, projectCovers: next };
     });
   }
   function renderArtworkTarget(song, target, label, data) {
@@ -258,8 +275,16 @@ export function createSongEditor(context) {
       }),
     ];
     return (membership.projects || []).map(project => {
-      const coverData = (Array.isArray(song.projectCovers) ? song.projectCovers : []).find(item => item?.projectId === project.id)?.cover || '';
-      return renderArtworkTarget(song, project.id, `Обложка песни · ${project.name}`, coverData);
+      const association = (Array.isArray(song.projectCovers) ? song.projectCovers : []).find(item => item?.projectId === project.id);
+      const coverData = association?.cover || '';
+      const libraryName = input(association?.libraryName || '', 'text', { maxlength: '1000', autocomplete: 'off', 'aria-label': `Имя в медиатеке · ${project.name}` });
+      libraryName.addEventListener('change', () => {
+        setProjectLibraryName(song, project.id, libraryName.value);
+        refreshProjectArtwork(currentSong(), artworkContext(currentSong()));
+      });
+      const nameField = field('Имя в медиатеке', libraryName);
+      nameField.classList.add('project-song-library-name');
+      return node('div', { className: 'project-song-association', 'data-project-id': project.id }, [nameField, renderArtworkTarget(song, project.id, `Обложка песни · ${project.name}`, coverData)]);
     });
   }
 

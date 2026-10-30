@@ -256,11 +256,11 @@ class ApiTest(unittest.TestCase):
         headers=self.login()
         first=self.client.post("/projects",headers=headers,json={"name":"Same name"}).json()
         artwork="data:image/png;base64,YQ=="
-        entry={"song":{**song(),"projectCovers":[{"projectId":first["id"],"cover":artwork}]}}
+        entry={"song":{**song(),"projectCovers":[{"projectId":first["id"],"cover":artwork,"libraryName":"Project title"},{"projectId":"other-project","cover":"","libraryName":"Name only"}]}}
         saved=self.client.put(f"/projects/{first['id']}",headers=headers,json={**first,"songs":[entry]})
         self.assertEqual(saved.status_code,200)
         saved_entry=saved.json()["songs"][0]
-        self.assertEqual(saved_entry["song"]["projectCovers"],[{"projectId":first["id"],"cover":artwork}])
+        self.assertEqual(saved_entry["song"]["projectCovers"],[{"projectId":first["id"],"cover":artwork,"libraryName":"Project title"},{"projectId":"other-project","cover":"","libraryName":"Name only"}])
         second=self.client.post("/projects",headers=headers,json={"name":"Same name"}).json()
         second_saved=self.client.put(f"/projects/{second['id']}",headers=headers,json={**second,"songs":[saved_entry]})
         self.assertEqual(second_saved.status_code,200)
@@ -278,6 +278,8 @@ class ApiTest(unittest.TestCase):
             [{"projectId":project["id"],"cover":"data:image/png;base64,YQ=="},{"projectId":project["id"],"cover":""}],
             [{"projectId":" ","cover":""}],
             [{"projectId":project["id"],"cover":"javascript:bad"}],
+            [{"projectId":project["id"],"cover":"","libraryName":"x"*1001}],
+            [{"projectId":project["id"],"cover":"","libraryName":12}],
             "bad",
         ]
         for covers in invalids:
@@ -288,14 +290,14 @@ class ApiTest(unittest.TestCase):
         headers=self.login(); local_id="portable-project"
         response=self.client.post("/imports",headers=headers,json={
             "migrationKey":local_id,"name":"Portable","cover":"",
-            "songs":[{"song":{**song(),"projectCovers":[{"projectId":local_id,"cover":"data:image/png;base64,YQ=="}]}}],
+            "songs":[{"song":{**song(),"projectCovers":[{"projectId":local_id,"cover":"data:image/png;base64,YQ==","libraryName":"Renamed"}]}}],
         })
         self.assertEqual(response.status_code,201)
         created=response.json(); self.assertNotEqual(created["id"],local_id)
-        self.assertEqual(created["songs"][0]["song"]["projectCovers"],[{"projectId":created["id"],"cover":"data:image/png;base64,YQ=="}])
+        self.assertEqual(created["songs"][0]["song"]["projectCovers"],[{"projectId":created["id"],"cover":"data:image/png;base64,YQ==","libraryName":"Renamed"}])
         retry=self.client.post("/imports",headers=headers,json={
             "migrationKey":local_id,"name":"Portable","cover":"",
-            "songs":[{"song":{**song(),"projectCovers":[{"projectId":local_id,"cover":"data:image/png;base64,YQ=="}]}}],
+            "songs":[{"song":{**song(),"projectCovers":[{"projectId":local_id,"cover":"data:image/png;base64,YQ==","libraryName":"Renamed"}]}}],
         })
         self.assertEqual(retry.status_code,200)
         self.assertEqual(retry.json(),created)

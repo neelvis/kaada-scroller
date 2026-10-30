@@ -129,13 +129,19 @@ Run `npm run test:artwork` after building to check original-byte persistence,
 automatic offload above 5 MiB, retry safety and offline local reopening.
 
 The song editor provides primary artwork and separate artwork for each project
-containing the song. Library song cards show only primary artwork. Presentation
-uses the song's artwork for the active project, then project artwork, then primary
-song artwork (the album-cover fallback), then no artwork. Presentation without a
-project uses only primary artwork. Project-editor song lists keep their existing
-appearance. Project-specific covers follow the project through cloud saves and
-local copies, including project ID changes during transfer. See
-[revision 27](../specs/features/timed-lyrics/revision-27.md) for requirements.
+containing the song. Each containing project also has an optional **Имя в
+медиатеке** field. It changes only that project's song label in the display-mode
+Media library menu; blank names use the normal library title. It does not rename
+the song, library cards, project-editor lists or presentation song heading, and
+does not change readiness. Presentation launched directly from the online library
+uses the normal library title. Names are stored with the project's song artwork
+association and follow the project through cloud saves and local copies, including
+project ID changes during transfer. Library cards show only primary artwork.
+Presentation uses the song's artwork for the active project, then project artwork,
+then primary song artwork (the album-cover fallback), then no artwork.
+Presentation without a project uses only primary artwork. Project-editor song
+lists keep their existing appearance. See [revision 27](../specs/features/timed-lyrics/revision-27.md)
+and [revision 32](../specs/features/timed-lyrics/revision-32.md) for requirements.
 
 ## Find an existing LRC
 
@@ -174,16 +180,24 @@ Revision 5 is published in paired release `20261012_202705`.
 
 ## Show the lyrics
 
-Select a ready song and enter **Display mode**. Press **Start** to launch its
-lyrics and selected backing track together. Without a backing track, start the
-external music at the same moment. The original vocal reference is never used as
-show audio. **Mute/unmute** changes sound without pausing or shifting the timeline.
-Audio errors offer retry or an explicit lyrics-only launch.
+Select a ready song and enter **Display mode**. Presentation opens in cover-only
+standby: audience lyrics remain hidden and the selected artwork is centered and
+shown without cropping. Without artwork, the audience area shows its background
+without lyrics or placeholder text. Press **Start** to begin the selected backing
+track and reveal lyrics; without a backing track, start the external music at the
+same moment. The original vocal reference is never used as show audio.
+**Mute/unmute** changes sound without pausing or shifting the timeline.
+An audio startup failure keeps lyrics hidden and offers retry or an explicit
+lyrics-only launch, which reveals them when playback starts.
 Without a backing track, the crossed-speaker button remains visible and disabled;
 its tooltip reads `для этой песни нет минусовки`.
 While playback is running, **Start** becomes **Pause**. Press it to pause lyrics
 and backing audio at the current position; press **Start** again to resume there.
-This also works without backing audio. See [display pause requirements](../specs/features/timed-lyrics/revision-7.md).
+This also works without backing audio. Pausing keeps lyrics visible. Double-click
+**Stop and reset** to return to zero and restore cover-only standby; seeking or
+manually scrolling before playback does not reveal lyrics. See [display pause
+requirements](../specs/features/timed-lyrics/revision-7.md) and [revision
+32](../specs/features/timed-lyrics/revision-32.md).
 
 With **ignore timecodes** enabled, lyrics stay at their initial position for
 10 seconds, then scroll at constant spatial speed until the declared song end.

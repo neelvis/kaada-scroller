@@ -114,6 +114,9 @@ function sanitizeSong(raw, songNumber) {
     if (typeof item.cover !== 'string' || (item.cover && (!/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(item.cover) || item.cover.length > MAX_COVER_LENGTH))) {
       throw importError(`песня ${songNumber}: некорректная обложка проекта.`);
     }
+    if (item.libraryName !== undefined && (typeof item.libraryName !== 'string' || item.libraryName.length > 1000)) {
+      throw importError(`песня ${songNumber}: некорректное имя в медиатеке проекта.`);
+    }
   }
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -124,7 +127,7 @@ function sanitizeSong(raw, songNumber) {
     album: text(raw.album, `альбом песни ${songNumber}`, { optional: true, max: 1000 }),
     endCaption: text(raw.endCaption, `финальная подпись песни ${songNumber}`, { optional: true, max: 1000 }),
     cover: typeof raw.cover === 'string' ? raw.cover : '',
-    projectCovers: projectCovers.map(item => ({ projectId: item.projectId, cover: item.cover })),
+    projectCovers: projectCovers.map(item => ({ projectId: item.projectId, cover: item.cover, ...(item.libraryName === undefined ? {} : { libraryName: item.libraryName.trim() }) })),
     language: text(raw.language, `язык песни ${songNumber}`, { optional: true, max: 100 }),
     duration,
     delayMs: raw.delayMs,
@@ -312,7 +315,7 @@ export function createSong(partial = {}) {
     album: typeof partial.album === 'string' ? partial.album : '',
     endCaption: typeof partial.endCaption === 'string' ? partial.endCaption : '',
     cover: typeof partial.cover === 'string' ? partial.cover : '',
-    projectCovers: Array.isArray(partial.projectCovers) ? partial.projectCovers.map(item => ({ projectId: item.projectId, cover: item.cover })) : [],
+    projectCovers: Array.isArray(partial.projectCovers) ? partial.projectCovers.map(item => ({ projectId: item.projectId, cover: item.cover, ...(typeof item.libraryName === 'string' ? { libraryName: item.libraryName } : {}) })) : [],
     language: typeof partial.language === 'string' ? partial.language : '',
     duration: finiteNumber(partial.duration, 0),
     delayMs: finiteNumber(partial.delayMs, 0),
